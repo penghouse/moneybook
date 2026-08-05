@@ -1,0 +1,153 @@
+@import "tailwindcss";
+
+/* Tailwind v4's `dark:` follows prefers-color-scheme by default, which
+   makes a manual toggle impossible. Drive it from <html data-theme>
+   instead — written server-side from a cookie (lib/theme.ts) so the very
+   first paint is already correct, no inline script and no flash — and
+   keep the media query as the fallback for the "system" setting, which
+   deliberately writes no attribute at all. */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme]) *, :root:not([data-theme])) {
+      @slot;
+    }
+  }
+}
+
+@theme {
+  /* The accent's one hard requirement is that it never be mistaken for a
+     P&L colour: this app paints the debit tag and the under-budget bar
+     with it, and neither means "gained". Indigo sits ~245°, far from
+     both income green (~145°) and expense red (~15°).
+
+     The previous accent was a deep teal at ~176° — close enough to the
+     income green that at chip size the two read as the same colour,
+     which is exactly the confusion the rule exists to prevent.
+
+     Neutrals are cool greys to match. A green-cast grey under an indigo
+     accent reads as two palettes fighting. */
+  --color-paper: #f2f4f6;
+  --color-card: #ffffff;
+  --color-sunken: #f2f4f6;
+  --color-ink: #191f28;
+  --color-ink-muted: #4e5968;
+  --color-ink-faint: #8b95a1;
+  --color-rule: #e5e8eb;
+  --color-rule-soft: #edf0f3;
+  --color-accent: #4338ca;
+  --color-accent-ink: #ffffff;
+  --color-accent-soft: #eeedfb;
+  /* P&L colours are unchanged: both already clear AA, and moving them
+     would only weaken the separation the accent change just bought. */
+  --color-positive: #0f7a3d;
+  --color-positive-soft: #e6f4ec;
+  --color-negative: #b3261e;
+  --color-negative-soft: #fceceb;
+  --color-warning: #8a5a00;
+
+  /* Chart series. Separate tokens from the UI accent on purpose: the UI
+     accent is stepped for text and buttons, and its dark step (#a5a0f5,
+     OKLCH L 0.74) sits above the 0.48–0.67 band a chart mark needs on a
+     dark surface. These two were run through the data-viz validator
+     against this app's own card surfaces (#ffffff / #171c23) and clear
+     every gate — lightness band, chroma floor, CVD separation, and 3:1
+     contrast — in both modes.
+
+     Series 2 is orange rather than the P&L red: a liability is not a
+     loss, and reusing the loss colour would say it was. Income green and
+     expense red stay reserved for the income statement. */
+  --color-series-1: #4338ca;
+  --color-series-2: #eb6834;
+
+  --radius-card: 1rem;
+  --radius-control: 0.75rem;
+
+  /* Korean first. A Korean webfont is heavy even subsetted and the
+     device's own face renders better than anything we could ship, so
+     only the Latin/numeral face (Geist, loaded in layout.tsx) comes from
+     the network. Previously `body { font-family: Arial }` overrode this
+     entirely and the app rendered in Arial + a system Hangul fallback. */
+  --font-sans:
+    var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+    "Pretendard Variable", Pretendard, system-ui, "Segoe UI", "Malgun Gothic", "맑은 고딕",
+    sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Dark palette — not a naive inversion. The accent is lightened so it
+   still carries on a dark ground, and the P&L colours are pulled back so
+   they stay legible without glowing. Declared twice: once for the
+   explicit choice, once for "follow the device". */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --color-paper: #101418;
+    --color-card: #171c23;
+    --color-sunken: #21272f;
+    --color-ink: #e8ebf0;
+    --color-ink-muted: #a0a8b4;
+    --color-ink-faint: #6e7783;
+    --color-rule: #2a313a;
+    --color-rule-soft: #232a33;
+    --color-accent: #a5a0f5;
+    --color-accent-ink: #0d1017;
+    --color-accent-soft: #23214a;
+    --color-positive: #55d68a;
+    --color-positive-soft: #122c1e;
+    --color-negative: #f98f86;
+    --color-negative-soft: #331715;
+    --color-warning: #e0a63a;
+    --color-series-1: #9085e9;
+    --color-series-2: #d95926;
+  }
+}
+
+:root[data-theme="dark"] {
+  --color-paper: #101418;
+  --color-card: #171c23;
+  --color-sunken: #21272f;
+  --color-ink: #e8ebf0;
+  --color-ink-muted: #a0a8b4;
+  --color-ink-faint: #6e7783;
+  --color-rule: #2a313a;
+  --color-rule-soft: #232a33;
+  --color-accent: #a5a0f5;
+  --color-accent-ink: #0d1017;
+  --color-accent-soft: #23214a;
+  --color-positive: #55d68a;
+  --color-positive-soft: #122c1e;
+  --color-negative: #f98f86;
+  --color-negative-soft: #331715;
+  --color-warning: #e0a63a;
+  --color-series-1: #9085e9;
+  --color-series-2: #d95926;
+}
+
+@layer base {
+  /* 16px minimum on anything focusable: below that iOS Safari zooms the
+     page on focus and the user has to pinch back out after every entry. */
+  input,
+  select,
+  textarea {
+    font-size: 1rem;
+  }
+
+  /* Money and dates are read down a column, so digits must not jiggle. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Amount fields are typed, never nudged one unit at a time. The
+     spinners only steal width from the number itself — and on a phone
+     the split view has two of them side by side. */
+  input[type="number"] {
+    appearance: textfield;
+  }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+}

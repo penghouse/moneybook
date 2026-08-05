@@ -1,0 +1,489 @@
+import { and, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
+import {
+  accounts,
+  transactionLines,
+  transactions,
+  type AccountGroup,
+  type LineSide,
+  type TransactionKind,
+} from "@/db/schema";
+import type { Db } from "@/db/types";
+import { monthRange } from "./date";
+import { getOrFetchRate, RateUnavailableError } from "./exchange-rates";
+import { convertMinorUnits } from "./money";
+
+const CREDIT_NORMAL_GROUPS: ReadonlySet<AccountGroup> = new Set(["liability", "equity", "income"]);
+
+/**
+ * Flips sign for credit-normal groups so a "healthy" balance is always
+ * positive: money owed on a credit card, equity, and income all read as
+ * positive numbers, even though they're right(credit)-heavy in raw
+ * left-minus-right terms.
+ */
+function normalBalance(group: AccountGroup, netLeftMinusRight: number): number {
+  return CREDIT_NORMAL_GROUPS.has(group) ? -netLeftMinusRight : netLeftMinusRight;
+}
+
+export class UnbalancedTransactionError extends Error {}
+
+export interface BalanceLineInput {
+  side: LineSide;
+  currency: string;
+  amount: number;
+  rate: number | null;
+  baseAmount: number;
+}
+
+/**
+ * The one gate every save path (server actions, CSV import, the
+ * "환율 반영" revaluation flow) must pass before a transaction's lines
+ * are written. Throws on the first violation rather than collecting all
+ * of them — this app's transactions are small enough that "fix one, try
+ * again" is fine.
+ *
+ * A `kind: 'revaluation'` transaction is special: the leg denominated in
+ * a foreign (non-base) currency moves baseAmount without moving its own
+ * currency's amount (the point of a revaluation is that the dollar
+ * balance didn't change, only its won valuation did), so that leg is
+ * exempt from the amount*rate=baseAmount check and must have amount=0,
+ * rate=null instead. The offsetting P&L leg (외화환산이익/손실), which is
+ * denominated in the base currency itself, is not exempt and is
+ * validated normally.
+ */
+export function assertBalanced(
+  lines: readonly BalanceLineInput[],
+  baseCurrency: string,
+  kind: TransactionKind = "normal",
+): void {
+  if (lines.length < 2) {
+    throw new UnbalancedTransactionError("a transaction needs at least two lines");
+  }
+  if (!lines.some((l) => l.side === "left") || !lines.some((l) => l.side === "right")) {
+    throw new UnbalancedTransactionError(
+      "a transaction needs at least one left line and one right line",
+    );
+  }
+
+  let left = 0;
+  let right = 0;
+
+  for (const line of lines) {
+    if (line.amount < 0 || line.baseAmount < 0) {
+      throw new UnbalancedTransactionError(
+        "amount and baseAmount must not be negative; direction comes from `side`",
+      );
+    }
+
+    const isRevaluationLeg = kind === "revaluation" && line.currency !== baseCurrency;
+
+    if (isRevaluationLeg) {
+      if (line.rate !== null || line.amount !== 0) {
+        throw new UnbalancedTransactionError(
+          "a revaluation line in a foreign currency must have amount=0 and rate=null",
+        );
+      }
+    } else {
+      if (line.rate === null || line.rate <= 0) {
+        throw new UnbalancedTransactionError("a non-revaluation line needs a positive rate");
+      }
+      const expected = convertMinorUnits(line.amount, line.rate, line.currency, baseCurrency);
+      if (expected !== line.baseAmount) {
+        throw new UnbalancedTransactionError(
+          `baseAmount (${line.baseAmount}) does not match amount*rate (expected ${expected})`,
+        );
+      }
+    }
+
+    if (line.side === "left") left += line.baseAmount;
+    else right += line.baseAmount;
+  }
+
+  if (left !== right) {
+    throw new UnbalancedTransactionError(`left (${left}) and right (${right}) do not balance`);
+  }
+}
+
+export interface AccountBalance {
+  accountId: string;
+  group: AccountGroup;
+  name: string;
+  currency: string;
+  /** Signed, in the account's own currency's minor units. Positive = normal balance direction. */
+  amount: number;
+  /** Signed, in the section's base currency's minor units. Positive = normal balance direction. */
+  baseAmount: number;
+}
+
+async function queryAccountNets(db: Db, conditions: readonly SQL[]): Promise<AccountBalance[]> {
+  const netAmount = sql<number>`sum(case when ${transactionLines.side} = 'left' then ${transactionLines.amount} else -${transactionLines.amount} end)`;
+  const netBaseAmount = sql<number>`sum(case when ${transactionLines.side} = 'left' then ${transactionLines.baseAmount} else -${transactionLines.baseAmount} end)`;
+
+  const rows = await db
+    .select({
+      accountId: accounts.id,
+      group: accounts.group,
+      name: accounts.name,
+      currency: accounts.currency,
+      amount: netAmount,
+      baseAmount: netBaseAmount,
+    })
+    .from(transactionLines)
+    .innerJoin(transactions, eq(transactionLines.transactionId, transactions.id))
+    .innerJoin(accounts, eq(transactionLines.accountId, accounts.id))
+    .where(and(...conditions))
+    .groupBy(accounts.id, accounts.group, accounts.name, accounts.currency);
+
+  return rows.map((r) => ({
+    accountId: r.accountId,
+    group: r.group,
+    name: r.name,
+    currency: r.currency,
+    amount: normalBalance(r.group, r.amount),
+    baseAmount: normalBalance(r.group, r.baseAmount),
+  }));
+}
+
+/**
+ * Point-in-time balance per account with any activity on or before
+ * `asOf`. Accounts with no lines in range are omitted, not zero-filled —
+ * that's a presentation-layer join against the full account list.
+ */
+export async function getAccountBalances(
+  db: Db,
+  params: { sectionId: string; asOf: string },
+): Promise<AccountBalance[]> {
+  return queryAccountNets(db, [
+    eq(transactions.sectionId, params.sectionId),
+    lte(transactions.date, params.asOf),
+  ]);
+}
+
+/** Same shape as getAccountBalances, but net activity within [from, to] inclusive. */
+export async function getAccountFlows(
+  db: Db,
+  params: { sectionId: string; from: string; to: string },
+): Promise<AccountBalance[]> {
+  return queryAccountNets(db, [
+    eq(transactions.sectionId, params.sectionId),
+    gte(transactions.date, params.from),
+    lte(transactions.date, params.to),
+  ]);
+}
+
+export interface MonthlyTotal {
+  yearMonth: string;
+  /** Base-currency minor units, both always >= 0 (already sign-normalized). */
+  income: number;
+  expense: number;
+}
+
+/**
+ * One query grouped by month + group, not one query per month — the
+ * trend chart's whole point is showing many months at once.
+ */
+export async function getMonthlyTotals(
+  db: Db,
+  params: { sectionId: string; months: readonly string[] },
+): Promise<MonthlyTotal[]> {
+  if (params.months.length === 0) return [];
+  const sortedMonths = [...params.months].sort();
+  const from = monthRange(sortedMonths[0]).from;
+  const to = monthRange(sortedMonths[sortedMonths.length - 1]).to;
+
+  const yearMonth = sql<string>`substr(${transactions.date}, 1, 7)`;
+  const netBaseAmount = sql<number>`sum(case when ${transactionLines.side} = 'left' then ${transactionLines.baseAmount} else -${transactionLines.baseAmount} end)`;
+
+  const rows = await db
+    .select({ yearMonth, group: accounts.group, net: netBaseAmount })
+    .from(transactionLines)
+    .innerJoin(transactions, eq(transactionLines.transactionId, transactions.id))
+    .innerJoin(accounts, eq(transactionLines.accountId, accounts.id))
+    .where(
+      and(
+        eq(transactions.sectionId, params.sectionId),
+        gte(transactions.date, from),
+        lte(transactions.date, to),
+        inArray(accounts.group, ["income", "expense"]),
+      ),
+    )
+    .groupBy(yearMonth, accounts.group);
+
+  const byMonth = new Map<string, { income: number; expense: number }>();
+  for (const ym of sortedMonths) byMonth.set(ym, { income: 0, expense: 0 });
+  for (const row of rows) {
+    const bucket = byMonth.get(row.yearMonth);
+    if (!bucket) continue; // outside the requested months (shouldn't happen given from/to)
+    if (row.group === "income") bucket.income = normalBalance("income", row.net);
+    else bucket.expense = normalBalance("expense", row.net);
+  }
+
+  return sortedMonths.map((yearMonth) => ({ yearMonth, ...byMonth.get(yearMonth)! }));
+}
+
+interface UnrealizedFxBase {
+  accountId: string;
+  name: string;
+  currency: string;
+  /** Signed, own-currency minor units — normal-balance direction. */
+  amount: number;
+  /** Signed, base-currency minor units, fixed at each transaction's own rate. */
+  bookBaseAmount: number;
+}
+
+export type UnrealizedFx = UnrealizedFxBase &
+  (
+    | {
+        rateUnavailable: false;
+        /** Signed, base-currency minor units, at asOf's rate. */
+        currentBaseAmount: number;
+        unrealized: number;
+        rateDate: string;
+        isFallback: boolean;
+      }
+    /**
+     * No rate could be fetched or fallen back to for this currency. The
+     * account's book value is still known and still counts toward the
+     * balance sheet totals, so this is reported rather than thrown —
+     * a missing rate must never take down the whole page.
+     */
+    | { rateUnavailable: true }
+  );
+
+/** An entry whose current value is known — the only kind that can be revalued. */
+export type ResolvedUnrealizedFx = Extract<UnrealizedFx, { rateUnavailable: false }>;
+
+/**
+ * For every foreign-currency account with a nonzero balance, compares
+ * its recorded (book) base-currency value against what it's worth at
+ * asOf's exchange rate. The gap is what a "환율 반영" revaluation would
+ * post — this function only reads, it never writes.
+ *
+ * Balance-sheet totals are always book value (fixed at each
+ * transaction's own rate), so nothing here feeds them; a currency whose
+ * rate is unavailable simply can't show a current value or an
+ * unrealized difference until a rate exists.
+ */
+export async function getUnrealizedFx(
+  db: Db,
+  params: { sectionId: string; baseCurrency: string; asOf: string },
+): Promise<UnrealizedFx[]> {
+  const balances = await getAccountBalances(db, {
+    sectionId: params.sectionId,
+    asOf: params.asOf,
+  });
+  const foreign = balances.filter((b) => b.currency !== params.baseCurrency && b.amount !== 0);
+
+  const results: UnrealizedFx[] = [];
+  for (const b of foreign) {
+    const base: UnrealizedFxBase = {
+      accountId: b.accountId,
+      name: b.name,
+      currency: b.currency,
+      amount: b.amount,
+      bookBaseAmount: b.baseAmount,
+    };
+
+    let rate;
+    try {
+      rate = await getOrFetchRate(db, {
+        date: params.asOf,
+        base: b.currency,
+        quote: params.baseCurrency,
+      });
+    } catch (error) {
+      if (error instanceof RateUnavailableError) {
+        results.push({ ...base, rateUnavailable: true });
+        continue;
+      }
+      throw error;
+    }
+
+    const currentBaseAmount = convertMinorUnits(
+      b.amount,
+      rate.rate,
+      b.currency,
+      params.baseCurrency,
+    );
+    results.push({
+      ...base,
+      rateUnavailable: false,
+      currentBaseAmount,
+      unrealized: currentBaseAmount - b.baseAmount,
+      rateDate: rate.date,
+      isFallback: rate.isFallback,
+    });
+  }
+  return results;
+}
+
+export interface MonthlyBalanceSheet {
+  yearMonth: string;
+  /** Base-currency minor units, normal-balance direction (both usually >= 0). */
+  assets: number;
+  liabilities: number;
+  /** assets − liabilities. */
+  netWorth: number;
+}
+
+/**
+ * The balance sheet as it stood at the end of each requested month.
+ *
+ * A balance is a *level*, not a flow, so this cannot be a per-month
+ * aggregate the way `getMonthlyTotals` is: a month with no transactions
+ * has a delta of zero and a balance equal to whatever the month before
+ * ended at. Getting that wrong shows up as a chart that drops to zero
+ * every quiet month, so it is what the unit test pins first.
+ *
+ * The whole book is summed and accumulated, then the requested window is
+ * sliced off the end — the months before the window are what establish
+ * its opening balance, so they cannot be filtered out in SQL. At one
+ * person's scale this is a single grouped scan and a fold, which beats a
+ * window function over a generated month series for readability at no
+ * practical cost.
+ */
+export async function getMonthlyBalanceSheet(
+  db: Db,
+  params: { sectionId: string; months: readonly string[] },
+): Promise<MonthlyBalanceSheet[]> {
+  if (params.months.length === 0) return [];
+  const sortedMonths = [...params.months].sort();
+  const lastMonth = sortedMonths[sortedMonths.length - 1];
+
+  const yearMonth = sql<string>`substr(${transactions.date}, 1, 7)`;
+  const net = sql<number>`sum(case when ${transactionLines.side} = 'left' then ${transactionLines.baseAmount} else -${transactionLines.baseAmount} end)`;
+
+  const rows = await db
+    .select({ yearMonth, group: accounts.group, net })
+    .from(transactionLines)
+    .innerJoin(transactions, eq(transactionLines.transactionId, transactions.id))
+    .innerJoin(accounts, eq(transactionLines.accountId, accounts.id))
+    .where(
+      and(
+        eq(transactions.sectionId, params.sectionId),
+        lte(yearMonth, lastMonth),
+        inArray(accounts.group, ["asset", "liability"]),
+      ),
+    )
+    .groupBy(yearMonth, accounts.group);
+
+  const deltasByMonth = new Map<string, { assets: number; liabilities: number }>();
+  for (const row of rows) {
+    const bucket = deltasByMonth.get(row.yearMonth) ?? { assets: 0, liabilities: 0 };
+    if (row.group === "asset") bucket.assets += row.net;
+    else bucket.liabilities += normalBalance("liability", row.net);
+    deltasByMonth.set(row.yearMonth, bucket);
+  }
+
+  let assets = 0;
+  let liabilities = 0;
+  const running = new Map<string, { assets: number; liabilities: number }>();
+  for (const month of [...deltasByMonth.keys()].sort()) {
+    const delta = deltasByMonth.get(month)!;
+    assets += delta.assets;
+    liabilities += delta.liabilities;
+    running.set(month, { assets, liabilities });
+  }
+
+  // Carry the last known balance forward across months with no activity,
+  // rather than reporting them as zero.
+  const monthsWithActivity = [...running.keys()].sort();
+  return sortedMonths.map((month) => {
+    let latest = { assets: 0, liabilities: 0 };
+    for (const activeMonth of monthsWithActivity) {
+      if (activeMonth > month) break;
+      latest = running.get(activeMonth)!;
+    }
+    return {
+      yearMonth: month,
+      assets: latest.assets,
+      liabilities: latest.liabilities,
+      netWorth: latest.assets - latest.liabilities,
+    };
+  });
+}
+
+export interface RunningBalance {
+  transactionId: string;
+  /** Signed, in `currency`'s minor units. */
+  amount: number;
+  currency: string;
+}
+
+/**
+ * The balance standing *after* each transaction, for the balance column
+ * in the transaction list.
+ *
+ * Two modes, because "the balance" means different things depending on
+ * what the list is showing:
+ *
+ * - **No account filter** → net worth, in the base currency. Note this
+ *   is unchanged by a transfer between two asset accounts, which is
+ *   correct and is the quickest way to sanity-check the sign handling.
+ * - **One account** → that account's own balance, in *its* currency. A
+ *   bank balance is the money in that account, not its base-currency
+ *   valuation.
+ *
+ * Net worth needs no per-group sign flip. `normalBalance` negates
+ * credit-normal groups, so assets carry `left − right` and liabilities
+ * carry `−(left − right)`; net worth is `assets − liabilities`, and the
+ * two negations cancel. Both groups therefore contribute raw
+ * `left − right` and a single CASE covers them.
+ *
+ * The running sum must cover every earlier transaction, not just the
+ * ones on screen, so the window runs over the whole section and only the
+ * requested ids are returned. `id` is the final tiebreak in the window's
+ * ORDER BY, and the caller's list query must break ties the same way —
+ * otherwise two transactions sharing a date and timestamp can be summed
+ * in one order and displayed in another, which shows up as balances that
+ * appear to run backwards.
+ */
+export async function getRunningBalances(
+  db: Db,
+  params: {
+    sectionId: string;
+    baseCurrency: string;
+    transactionIds: readonly string[];
+    /** Omit for net worth across the whole book. */
+    account?: { id: string; group: AccountGroup; currency: string };
+  },
+): Promise<RunningBalance[]> {
+  if (params.transactionIds.length === 0) return [];
+
+  const { account } = params;
+  const column = account ? transactionLines.amount : transactionLines.baseAmount;
+  const delta = sql<number>`sum(case when ${transactionLines.side} = 'left' then ${column} else -${column} end)`;
+
+  const scope = account
+    ? sql`${transactionLines.accountId} = ${account.id}`
+    : sql`${accounts.group} in ('asset', 'liability')`;
+
+  const rows = await db.all<{ id: string; running: number }>(sql`
+    with tx_delta as (
+      select ${transactions.id} as id,
+             ${transactions.date} as date,
+             ${transactions.createdAt} as created_at,
+             ${delta} as delta
+      from ${transactionLines}
+      inner join ${transactions} on ${transactionLines.transactionId} = ${transactions.id}
+      inner join ${accounts} on ${transactionLines.accountId} = ${accounts.id}
+      where ${transactions.sectionId} = ${params.sectionId} and ${scope}
+      group by ${transactions.id}
+    ),
+    accumulated as (
+      select id,
+             sum(delta) over (order by date, created_at, id) as running
+      from tx_delta
+    )
+    select id, running from accumulated
+    where id in (${sql.join(
+      params.transactionIds.map((id) => sql`${id}`),
+      sql`, `,
+    )})
+  `);
+
+  return rows.map((r) => ({
+    transactionId: r.id,
+    amount: account ? normalBalance(account.group, Number(r.running)) : Number(r.running),
+    currency: account ? account.currency : params.baseCurrency,
+  }));
+}

@@ -1,0 +1,259 @@
+import { test, expect, type Locator, type Page } from "@playwright/test";
+import { eq } from "drizzle-orm";
+import { db } from "../db/client";
+import { accounts, exchangeRates, sections } from "../db/schema";
+import { today } from "../lib/date";
+import { getOrCreateSection } from "../lib/current-section";
+import { seedSession, SESSION_COOKIE_NAME } from "./auth-helper";
+
+test.describe("entry", () => {
+  // sections.id is a UUID, so "the last-created section" isn't
+  // recoverable by sorting id — tests that need their own section back
+  // read this instead of guessing.
+  let currentUserId = "";
+
+  test.beforeEach(async ({ context }, testInfo) => {
+    const seeded = await seedSession(`entry-${testInfo.testId}@example.com`);
+    currentUserId = seeded.userId;
+    await context.addCookies([
+      {
+        name: SESSION_COOKIE_NAME,
+        value: seeded.token,
+        url: "http://localhost:3000",
+      },
+    ]);
+  });
+
+  // The layout's header renders two forms of its own (locale toggle,
+  // logout) before <main>, so a bare page.locator("form").first() grabs
+  // one of those instead — scope to <main>, where the create form is
+  // first (before the transaction list's filter form and any edit
+  // forms), to actually land on the entry form.
+  function createForm(page: Page): Locator {
+    return page.locator("main form").first();
+  }
+
+  async function pickAccount(scope: Locator, inputIndex: number, name: string) {
+    const inputs = scope.locator('input[placeholder="계정 검색"]');
+    await inputs.nth(inputIndex).click();
+    await inputs.nth(inputIndex).fill(name);
+    await scope.getByRole("button", { name }).first().click();
+  }
+
+  test("creates a simple same-currency transaction and shows it in the list", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("12000");
+    await form.locator('input[name="title"]').fill("점심");
+    await form.getByRole("button", { name: "저장" }).click();
+
+    await expect(page.getByText("점심")).toBeVisible();
+    await expect(page.getByText(/식비.*12,000/)).toBeVisible();
+    await expect(page.getByText(/신용카드.*12,000/)).toBeVisible();
+  });
+
+  test("clears amount/title but keeps the date after a save (rapid entry)", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+    const dateInput = form.locator('input[type="date"]').first();
+    const dateBefore = await dateInput.inputValue();
+
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("5000");
+    await form.locator('input[name="title"]').fill("커피");
+    await form.getByRole("button", { name: "저장" }).click();
+
+    await expect(page.getByText("커피")).toBeVisible();
+    await expect(dateInput).toHaveValue(dateBefore);
+    await expect(form.locator('input[name="title"]')).toHaveValue("");
+    await expect(form.locator('input[type="number"]').first()).toHaveValue("");
+  });
+
+  test("rejects a split transaction until debit and credit totals match", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+    await form.getByRole("button", { name: "분할" }).click();
+
+    // The split view is a T-account: left legs live in the left column,
+    // right legs in the right one. Addressing the columns directly is
+    // both what the design promises and what makes this test stable —
+    // leg indices used to depend on the order lines were added in.
+    const leftColumn = form.getByTestId("entry-column-left");
+    const rightColumn = form.getByTestId("entry-column-right");
+
+    await pickAccount(leftColumn, 0, "식비");
+    await leftColumn.locator('input[name="amount"]').nth(0).fill("30000");
+    await leftColumn.getByRole("button", { name: /줄 추가/ }).click();
+    await pickAccount(leftColumn, 1, "생활용품");
+    await leftColumn.locator('input[name="amount"]').nth(1).fill("15000");
+
+    await expect(leftColumn.getByTestId("entry-leg")).toHaveCount(2);
+    await expect(rightColumn.getByTestId("entry-leg")).toHaveCount(1);
+
+    await pickAccount(rightColumn, 0, "신용카드");
+    await rightColumn.locator('input[name="amount"]').nth(0).fill("40000"); // wrong on purpose
+
+    const saveButton = form.getByRole("button", { name: "저장" });
+    await expect(saveButton).toBeDisabled();
+    await expect(form.getByText(/불일치/)).toBeVisible();
+
+    await rightColumn.locator('input[name="amount"]').nth(0).fill("45000"); // now correct
+    await expect(form.getByText(/일치/)).toBeVisible();
+    await expect(saveButton).toBeEnabled();
+    await saveButton.click();
+
+    // The list shows one line per transaction: the first account plus a
+    // count, and the debit total.
+    // The row's collapsed <details> still holds an edit form in the DOM,
+    // so assert on the summary rather than the whole list item.
+    const summary = page.locator("main li").first().locator("summary");
+    await expect(summary.getByText("식비 외 1")).toBeVisible();
+    // Exact: the balance column beneath now reads "-₩45,000" (net worth
+    // is negative with only a card debt on the books), which a substring
+    // match would also hit.
+    await expect(summary.getByText("₩45,000", { exact: true })).toBeVisible();
+  });
+
+  test("a cross-currency line auto-fills the rate from a cached exchange rate and computes the base total", async ({
+    page,
+  }) => {
+    // beforeEach only seeds the auth user/session; the section itself is
+    // created lazily by the app on first request, so ensure it exists
+    // before seeding data into it.
+    const section = await getOrCreateSection(db, {
+      userId: currentUserId,
+      locale: "ko",
+    });
+
+    await db.insert(accounts).values({
+      sectionId: section.id,
+      group: "asset",
+      name: "달러예금",
+      currency: "USD",
+      sortOrder: 100,
+    });
+    // Pre-seed the rate so this doesn't depend on reaching frankfurter.app
+    // from the sandbox (its egress is blocked here). Must match the same
+    // "today" the app itself computes (section timezone), not the test
+    // runner's UTC date, or the entry form's live lookup misses the cache.
+    // exchange_rates is global (not scoped per section), and another spec
+    // (accounts.spec.ts's manual-rate test) may have already claimed
+    // today's USD->KRW row — upsert instead of a bare insert.
+    await db
+      .insert(exchangeRates)
+      .values({
+        date: today(section.timezone),
+        base: "USD",
+        quote: "KRW",
+        rate: 1300,
+        source: "api",
+      })
+      .onConflictDoUpdate({
+        target: [exchangeRates.date, exchangeRates.base, exchangeRates.quote],
+        set: { rate: 1300, source: "api" },
+      });
+    await db.update(sections).set({ baseCurrency: "KRW" }).where(eq(sections.id, section.id));
+
+    await page.goto("/");
+    const form = createForm(page);
+    await pickAccount(form, 0, "달러예금");
+    // Picking a foreign-currency account should auto-switch to detailed
+    // mode and pre-fill the rate from the cached exchange rate above.
+    const rateInput = form.locator('input[name="rate"][type="number"]');
+    await expect(rateInput).toHaveValue("1300");
+
+    await form.locator('input[name="amount"]').nth(0).fill("100");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[name="amount"]').nth(1).fill("130000");
+    await expect(form.getByText("일치")).toBeVisible();
+    await form.getByRole("button", { name: "저장" }).click();
+
+    // Scoped to the list: "달러예금" is also an <option> in the filter form.
+    await expect(page.locator("main li").first().getByText("달러예금")).toBeVisible();
+  });
+
+  test("the list shows a running balance, and the caption says whose", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+
+    // Two card expenses. With no assets on the books, net worth is just
+    // the debt, so the running balance is easy to read off by hand.
+    //
+    // On two different days, deliberately. `created_at` is
+    // `unixepoch()` — whole seconds — so two transactions saved on the
+    // same date within the same second fall through to `id` as the
+    // tiebreak, and that is a random UUID. The list and the running-sum
+    // window agree either way, but *which* one is "earlier" becomes a
+    // coin flip, and this test has to know. Dating them apart is what a
+    // running balance is actually about anyway.
+    for (const [date, title, amount] of [
+      ["2026-08-04", "점심", "12000"],
+      ["2026-08-05", "저녁", "20000"],
+    ] as const) {
+      await pickAccount(form, 0, "식비");
+      await pickAccount(form, 1, "신용카드");
+      await form.locator('input[name="date"]').fill(date);
+      await form.locator('input[type="number"]').first().fill(amount);
+      await form.locator('input[name="title"]').fill(title);
+      await form.getByRole("button", { name: "저장" }).click();
+      await expect(page.getByText(title)).toBeVisible();
+    }
+
+    // Newest first: 저녁 carries both expenses, 점심 only the first.
+    // `.first()`: each row's collapsed edit form carries its own <summary>
+    // for the memo field.
+    const rowSummary = (i: number) => page.locator("main li").nth(i).locator("summary").first();
+    await expect(rowSummary(0)).toContainText("-₩32,000");
+    await expect(rowSummary(1)).toContainText("-₩12,000");
+    await expect(page.getByText("잔액 · 순자산")).toBeVisible();
+
+    // Filtering to one account switches both the number and the caption.
+    await page.getByText("검색·필터").click();
+    await page.locator('select[name="accountId"]').selectOption({ label: "신용카드" });
+    await page.getByRole("button", { name: "필터" }).click();
+
+    await expect(page.getByText("잔액 · 신용카드")).toBeVisible();
+    // A liability reads as money owed, so the same history is positive here.
+    await expect(rowSummary(0)).toContainText("₩32,000");
+  });
+
+  test("editing a transaction updates it in place", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("9000");
+    await form.locator('input[name="title"]').fill("원래 제목");
+    await form.getByRole("button", { name: "저장" }).click();
+    await expect(page.getByText("원래 제목")).toBeVisible();
+
+    await page.getByText("원래 제목").click();
+    const row = page.locator("li", { hasText: "원래 제목" });
+    await row.locator('input[name="title"]').fill("수정된 제목");
+    await row.getByRole("button", { name: "저장" }).click();
+
+    await expect(page.getByText("수정된 제목")).toBeVisible();
+    await expect(page.getByText("원래 제목")).not.toBeVisible();
+  });
+
+  test("deleting a transaction removes it from the list", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("7000");
+    await form.locator('input[name="title"]').fill("지울 거래");
+    await form.getByRole("button", { name: "저장" }).click();
+    await expect(page.getByText("지울 거래")).toBeVisible();
+
+    await page.getByText("지울 거래").click();
+    const row = page.locator("li", { hasText: "지울 거래" });
+    await row.getByRole("button", { name: "삭제" }).click();
+
+    await expect(page.getByText("지울 거래")).not.toBeVisible();
+  });
+});

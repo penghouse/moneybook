@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>moneybook</title>
+  <rect width="512" height="512" rx="112" fill="#4338CA"/>
+  <g stroke="#FFFFFF" stroke-linecap="round" fill="none">
+    <path d="M120 176 H392" stroke-width="26"/>
+    <path d="M256 176 V392" stroke-width="26"/>
+    <g stroke-width="20" opacity="0.72">
+      <path d="M156 240 H216"/>
+      <path d="M156 300 H196"/>
+      <path d="M296 240 H356"/>
+    </g>
+  </g>
+</svg>
