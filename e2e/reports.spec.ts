@@ -89,6 +89,22 @@ test.describe("reports", () => {
     await expect(page.getByText(/장부가.*\₩1,380,000/)).toBeVisible();
   });
 
+  test("month arrows step the balance sheet and the income statement", async ({ page }) => {
+    // The balance sheet reads at an instant, so its arrows move that
+    // instant; the income statement reads a period, so its arrows move
+    // to the adjacent whole month. Both are asserted on the URL the
+    // arrow produces, which is the contract each page's query reads.
+    await page.goto("/assets?asOf=2026-08-06");
+    await page.getByRole("link", { name: /이전 달/ }).click();
+    await expect(page).toHaveURL(/asOf=2026-07-06/);
+    await page.getByRole("link", { name: /다음 달/ }).click();
+    await expect(page).toHaveURL(/asOf=2026-08-06/);
+
+    await page.goto("/income?from=2026-08-01&to=2026-08-31");
+    await page.getByRole("link", { name: /이전 달/ }).click();
+    await expect(page).toHaveURL(/from=2026-07-01&to=2026-07-31/);
+  });
+
   test("income page shows this month's income/expense/net and a trend chart", async ({ page }) => {
     const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
     const byName = (name: string) =>

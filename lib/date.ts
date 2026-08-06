@@ -37,6 +37,20 @@ export function addDays(date: string, delta: number): string {
   return shifted.toISOString().slice(0, 10);
 }
 
+/**
+ * Shifts a full date by whole months, keeping the day where the target
+ * month has one. 1월 31일 + 1개월 is 2월 28일, not 3월 3일 — the naive
+ * `setMonth` overflow is what makes month arrows skip a month every time
+ * they pass a short one.
+ */
+export function addMonthsToDate(date: string, delta: number): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const target = addMonths(`${year}-${String(month).padStart(2, "0")}`, delta);
+  const { to } = monthRange(target);
+  const lastDay = Number(to.slice(8));
+  return `${target}-${String(Math.min(day, lastDay)).padStart(2, "0")}`;
+}
+
 export function addMonths(yearMonth: string, delta: number): string {
   const [yearStr, monthStr] = yearMonth.split("-");
   const totalMonths = Number(yearStr) * 12 + (Number(monthStr) - 1) + delta;

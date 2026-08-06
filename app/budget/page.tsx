@@ -1,5 +1,4 @@
 import { and, asc, eq } from "drizzle-orm";
-import Link from "next/link";
 import { db } from "@/db/client";
 import { accounts, budgets } from "@/db/schema";
 import { getTranslations } from "@/i18n";
@@ -9,8 +8,9 @@ import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
 import { getAccountFlows } from "@/lib/ledger";
 import { formatMoney, toMajorUnits } from "@/lib/money";
+import { PeriodNav } from "../_components/period-nav";
 import { SubmitButton } from "../_components/submit-button";
-import { buttonClass, Card, controlClass, EmptyState, PageHeader } from "../_components/ui";
+import { Card, controlClass, EmptyState, PageHeader } from "../_components/ui";
 import { setBudgetAction } from "./actions";
 
 export default async function BudgetPage({
@@ -60,23 +60,13 @@ export default async function BudgetPage({
     <div className="space-y-4">
       <PageHeader title={t("nav.budget")} />
 
-      <Card>
-        <div className="flex items-center px-1 py-1">
-          <Link
-            href={`/budget?yearMonth=${addMonths(yearMonth, -1)}`}
-            className={buttonClass("ghost")}
-          >
-            ← {t("budget.prevMonth")}
-          </Link>
-          <span className="tnum mx-auto font-semibold">{yearMonth}</span>
-          <Link
-            href={`/budget?yearMonth=${addMonths(yearMonth, 1)}`}
-            className={buttonClass("ghost")}
-          >
-            {t("budget.nextMonth")} →
-          </Link>
-        </div>
-      </Card>
+      <PeriodNav
+        prevHref={`/budget?yearMonth=${addMonths(yearMonth, -1)}`}
+        nextHref={`/budget?yearMonth=${addMonths(yearMonth, 1)}`}
+        label={yearMonth}
+        prevLabel={t("budget.prevMonth")}
+        nextLabel={t("budget.nextMonth")}
+      />
 
       <Card>
         {expenseAccounts.length === 0 ? (

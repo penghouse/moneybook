@@ -7,9 +7,10 @@ import { isClosedBy } from "@/lib/accounts";
 import { parseGroupOrder } from "@/lib/account-groups";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
-import { today } from "@/lib/date";
+import { addMonthsToDate, today } from "@/lib/date";
 import { getAccountBalances, getUnrealizedFx } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
+import { PeriodNav } from "../_components/period-nav";
 import { SubmitButton } from "../_components/submit-button";
 import {
   buttonClass,
@@ -189,6 +190,18 @@ export default async function AssetsPage({
           </button>
         </form>
       </PageHeader>
+
+      {/* A balance sheet is read at an instant, so the arrows move that
+          instant by a month rather than stepping through periods. The
+          day is kept where the target month has one, so stepping back
+          from the 31st does not land on the 3rd of the month after. */}
+      <PeriodNav
+        prevHref={`/assets?asOf=${addMonthsToDate(asOf, -1)}`}
+        nextHref={`/assets?asOf=${addMonthsToDate(asOf, 1)}`}
+        label={asOf}
+        prevLabel={t("budget.prevMonth")}
+        nextLabel={t("budget.nextMonth")}
+      />
 
       {revalued === "1" && (
         <p className="bg-positive-soft text-positive rounded-control px-3 py-2 text-sm">

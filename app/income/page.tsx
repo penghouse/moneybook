@@ -4,6 +4,7 @@ import { accounts } from "@/db/schema";
 import { getTranslations } from "@/i18n";
 import { addMonths, monthRange, today, yearMonthOf } from "@/lib/date";
 import { parseGroupOrder } from "@/lib/account-groups";
+import { PeriodNav } from "../_components/period-nav";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
 import { getAccountFlows, getMonthlyTotals } from "@/lib/ledger";
@@ -120,6 +121,16 @@ export default async function IncomePage({
     );
   }
 
+  // The arrows step whole calendar months, which is what the labels say
+  // and what this page defaults to. A hand-typed range that spans several
+  // months therefore snaps to one when they are used — predictable, and
+  // the range is still one 조회 away.
+  const shownMonth = yearMonthOf(from);
+  const monthHref = (delta: number) => {
+    const range = monthRange(addMonths(shownMonth, delta));
+    return `/income?from=${range.from}&to=${range.to}`;
+  };
+
   return (
     <div className="space-y-4">
       <PageHeader title={t("nav.income")}>
@@ -137,6 +148,14 @@ export default async function IncomePage({
           </button>
         </form>
       </PageHeader>
+
+      <PeriodNav
+        prevHref={monthHref(-1)}
+        nextHref={monthHref(1)}
+        label={`${from} ~ ${to}`}
+        prevLabel={t("budget.prevMonth")}
+        nextLabel={t("budget.nextMonth")}
+      />
 
       <Card>
         <div className="px-4 py-4">
