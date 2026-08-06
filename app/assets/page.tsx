@@ -4,11 +4,13 @@ import { db } from "@/db/client";
 import { accounts } from "@/db/schema";
 import { getTranslations, type TranslationKey } from "@/i18n";
 import { isClosedBy } from "@/lib/accounts";
+import { parseGroupOrder } from "@/lib/account-groups";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
 import { today } from "@/lib/date";
 import { getAccountBalances, getUnrealizedFx } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
+import { SubmitButton } from "../_components/submit-button";
 import {
   buttonClass,
   Card,
@@ -165,10 +167,16 @@ export default async function AssetsPage({
     );
   }
 
+  // Assets before liabilities, or the other way round — whichever the
+  // book was set to on /accounts.
+  const groupOrder = parseGroupOrder(section.groupOrder).filter(
+    (g): g is "asset" | "liability" => g === "asset" || g === "liability",
+  );
+
   return (
     <div className="space-y-4">
       <PageHeader title={t("nav.assets")}>
-        <Link href={`/assets/chart?asOf=${asOf}`} className={buttonClass("secondary")}>
+        <Link href={`/assets/chart?to=${asOf}`} className={buttonClass("secondary")}>
           {t("assets.viewCharts")}
         </Link>
         <form className="flex items-end gap-2" action="/assets">
@@ -177,7 +185,7 @@ export default async function AssetsPage({
             <input type="date" name="asOf" defaultValue={asOf} className={`${controlClass} tnum`} />
           </div>
           <button type="submit" className={buttonClass("secondary")}>
-            {t("entry.filterApply")}
+            {t("common.apply")}
           </button>
         </form>
       </PageHeader>
@@ -210,15 +218,21 @@ export default async function AssetsPage({
         </p>
       </Card>
 
-      {renderGroup("asset", visibleAssets)}
-      {renderGroup("liability", visibleLiabilities)}
+      {groupOrder.map((group) =>
+        renderGroup(group, group === "asset" ? visibleAssets : visibleLiabilities),
+      )}
 
       <section className="pt-2">
         <form action={revalueAction}>
           <input type="hidden" name="asOf" value={asOf} />
-          <button type="submit" disabled={!hasUnrealized} className={buttonClass("primary", true)}>
+          <SubmitButton
+            variant="primary"
+            full
+            disabled={!hasUnrealized}
+            pendingLabel={t("common.working")}
+          >
             {t("assets.revalue")}
-          </button>
+          </SubmitButton>
         </form>
         {!hasUnrealized && <Hint>{t("assets.noUnrealized")}</Hint>}
         {rateDates.length > 0 && (

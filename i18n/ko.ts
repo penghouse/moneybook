@@ -41,6 +41,9 @@ const ko = {
   "common.archive": "보관",
   "common.unarchive": "보관 해제",
   "common.viewTable": "표로 보기",
+  "common.apply": "조회",
+  "common.saving": "저장 중…",
+  "common.working": "처리 중…",
 
   "auth.login": "로그인",
   "auth.logout": "로그아웃",
@@ -66,6 +69,9 @@ const ko = {
   "accounts.deleteError": "거래가 있는 계정은 삭제할 수 없습니다. 대신 보관해 주세요.",
   "accounts.empty": "아직 계정이 없습니다.",
   "accounts.showArchived": "지난 계정 보기",
+  "accounts.groupOrder": "분류 순서",
+  "accounts.groupOrderHint":
+    "여기서 정한 순서를 자산현황·기간손익·예산이 그대로 따릅니다. 계정 순서도 마찬가지입니다.",
   "accounts.group": "분류",
   "accounts.category": "상위 그룹",
   "accounts.categoryPlaceholder": "예: 먹는 것",
@@ -161,7 +167,6 @@ const ko = {
   "entry.filterTo": "종료일",
   "entry.filterAccount": "계정",
   "entry.filterSearch": "검색",
-  "entry.filterApply": "필터",
   "entry.filterClear": "초기화",
   "entry.allAccounts": "전체",
   "entry.noTransactions": "거래가 없습니다.",
@@ -191,6 +196,9 @@ const ko = {
   "assets.noHistory": "그릴 거래가 아직 없습니다.",
   "assets.backToList": "목록으로",
   "assets.viewCharts": "그래프 보기",
+  "assets.rangeFrom": "시작",
+  "assets.rangeTo": "끝",
+  "assets.compositionAsOf": "구성은 끝 시점 기준입니다.",
 
   "fx.gainAccountName": "외화환산이익",
   "fx.lossAccountName": "외화환산손실",

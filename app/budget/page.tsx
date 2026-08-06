@@ -9,6 +9,7 @@ import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
 import { getAccountFlows } from "@/lib/ledger";
 import { formatMoney, toMajorUnits } from "@/lib/money";
+import { SubmitButton } from "../_components/submit-button";
 import { buttonClass, Card, controlClass, EmptyState, PageHeader } from "../_components/ui";
 import { setBudgetAction } from "./actions";
 
@@ -178,9 +179,9 @@ export default async function BudgetPage({
                           }
                           className={`${controlClass} tnum text-right`}
                         />
-                        <button type="submit" className={buttonClass("secondary")}>
+                        <SubmitButton variant="primary" pendingLabel={t("common.saving")}>
                           {t("common.save")}
-                        </button>
+                        </SubmitButton>
                       </form>
                     </div>
                   );

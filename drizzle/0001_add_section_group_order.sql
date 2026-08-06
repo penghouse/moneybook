@@ -1,0 +1,1 @@
+ALTER TABLE `sections` ADD `group_order` text DEFAULT 'asset,liability,equity,expense,income' NOT NULL;

@@ -51,6 +51,15 @@ export const sections = sqliteTable("sections", {
   // lib/nav-favorites.ts — so renaming or removing a route can never
   // leave a dead tab behind.
   navFavorites: text("nav_favorites").notNull().default("/,/assets,/income,/budget"),
+  // The order the five account groups are listed in, comma-separated.
+  // Which groups exist is fixed (ACCOUNT_GROUPS); only their order is the
+  // book's to decide, and a ledger's owner has a stronger opinion about
+  // it than the schema does — someone tracking a mortgage wants
+  // liabilities up top, someone tracking spending wants expenses there.
+  //
+  // Validated on read against ACCOUNT_GROUPS — see lib/account-groups.ts
+  // — so a stored value can never hide a group or invent one.
+  groupOrder: text("group_order").notNull().default("asset,liability,equity,expense,income"),
 });
 
 // ---- Domain: accounts ----

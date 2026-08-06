@@ -8,8 +8,8 @@ import { requireUserId } from "@/lib/current-user";
 import { parseFavorites } from "@/lib/nav-favorites";
 import { CURRENCY_OPTIONS, TIMEZONE_OPTIONS } from "@/lib/options";
 import { NAV_ITEMS } from "../_components/nav-items";
+import { SubmitButton } from "../_components/submit-button";
 import {
-  buttonClass,
   Card,
   controlClass,
   EmptyState,
@@ -166,9 +166,14 @@ export default async function SettingsPage({
             <Hint>{t("settings.timezoneHint")}</Hint>
           </div>
 
-          <button type="submit" className={`${buttonClass("primary", true)} md:col-span-2`}>
+          <SubmitButton
+            variant="primary"
+            full
+            className="md:col-span-2"
+            pendingLabel={t("common.saving")}
+          >
             {t("common.save")}
-          </button>
+          </SubmitButton>
         </form>
       </Card>
 
@@ -196,9 +201,9 @@ export default async function SettingsPage({
               ))}
             </ul>
             <Hint>{t("settings.navFavoritesHint")}</Hint>
-            <button type="submit" className={`${buttonClass("secondary", true)} mt-3`}>
+            <SubmitButton variant="primary" full className="mt-3" pendingLabel={t("common.saving")}>
               {t("common.save")}
-            </button>
+            </SubmitButton>
           </form>
         </Card>
       </section>
@@ -247,9 +252,14 @@ export default async function SettingsPage({
                 className={`${controlClass} tnum text-right`}
               />
             </div>
-            <button type="submit" className={`${buttonClass("secondary", true)} self-end`}>
+            <SubmitButton
+              variant="primary"
+              full
+              className="self-end"
+              pendingLabel={t("common.saving")}
+            >
               {t("common.save")}
-            </button>
+            </SubmitButton>
           </form>
         </Card>
 

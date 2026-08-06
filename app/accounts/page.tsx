@@ -1,9 +1,10 @@
 import { asc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db/client";
-import { accounts, ACCOUNT_GROUPS, type Account, type AccountGroup } from "@/db/schema";
+import { accounts, type Account, type AccountGroup } from "@/db/schema";
 import { getTranslations, type TranslationKey } from "@/i18n";
 import { isClosedBy } from "@/lib/accounts";
+import { parseGroupOrder } from "@/lib/account-groups";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
 import { today } from "@/lib/date";
@@ -19,10 +20,12 @@ import {
   PageHeader,
   SectionLabel,
 } from "../_components/ui";
+import { SubmitButton } from "../_components/submit-button";
 import {
   createAccountAction,
   deleteAccountAction,
   moveAccountAction,
+  moveGroupAction,
   toggleArchiveAction,
   updateAccountAction,
 } from "./actions";
@@ -64,8 +67,12 @@ export default async function AccountsPage({
     orderBy: asc(accounts.sortOrder),
   });
 
+  // The constant is the *set* of groups; the order they are listed in
+  // belongs to the book. Every other screen reads the same value.
+  const groupOrder = parseGroupOrder(section.groupOrder);
+
   const byGroup = new Map<AccountGroup, Account[]>();
-  for (const group of ACCOUNT_GROUPS) byGroup.set(group, []);
+  for (const group of groupOrder) byGroup.set(group, []);
   for (const account of allAccounts) {
     // An account whose window has not opened yet stays listed — it was
     // set up deliberately and hiding it would look like the save failed.
@@ -116,7 +123,7 @@ export default async function AccountsPage({
           <div className="min-w-0">
             <Label>{t("accounts.group")}</Label>
             <select name="group" defaultValue="expense" className={controlClass}>
-              {ACCOUNT_GROUPS.map((group) => (
+              {groupOrder.map((group) => (
                 <option key={group} value={group}>
                   {t(GROUP_LABEL_KEY[group])}
                 </option>
@@ -153,9 +160,9 @@ export default async function AccountsPage({
               ))}
             </select>
           </div>
-          <button type="submit" className={buttonClass("primary", true)}>
+          <SubmitButton variant="primary" full pendingLabel={t("common.saving")}>
             {t("common.add")}
-          </button>
+          </SubmitButton>
         </form>
       </Card>
 
@@ -166,11 +173,40 @@ export default async function AccountsPage({
         ))}
       </datalist>
 
-      {ACCOUNT_GROUPS.map((group) => {
+      {groupOrder.map((group, groupIndex) => {
         const list = byGroup.get(group) ?? [];
         return (
           <section key={group}>
-            <SectionLabel>{t(GROUP_LABEL_KEY[group])}</SectionLabel>
+            {/* The heading carries the reorder controls: this order is
+                what /assets, /income and /budget list their groups in,
+                so it is set where the groups themselves are managed. */}
+            <div className="flex items-center justify-between gap-2">
+              <SectionLabel>{t(GROUP_LABEL_KEY[group])}</SectionLabel>
+              <div className="flex gap-1">
+                <form action={moveGroupAction}>
+                  <input type="hidden" name="group" value={group} />
+                  <input type="hidden" name="direction" value="up" />
+                  <SubmitButton
+                    variant="ghost"
+                    disabled={groupIndex === 0}
+                    pendingLabel={t("common.working")}
+                  >
+                    {t("common.moveUp")}
+                  </SubmitButton>
+                </form>
+                <form action={moveGroupAction}>
+                  <input type="hidden" name="group" value={group} />
+                  <input type="hidden" name="direction" value="down" />
+                  <SubmitButton
+                    variant="ghost"
+                    disabled={groupIndex === groupOrder.length - 1}
+                    pendingLabel={t("common.working")}
+                  >
+                    {t("common.moveDown")}
+                  </SubmitButton>
+                </form>
+              </div>
+            </div>
             <Card>
               {list.length === 0 ? (
                 <EmptyState>{t("accounts.empty")}</EmptyState>
@@ -262,9 +298,9 @@ export default async function AccountsPage({
                                       className={`${controlClass} tnum`}
                                     />
                                   </div>
-                                  <button type="submit" className={buttonClass("secondary")}>
+                                  <SubmitButton variant="primary" pendingLabel={t("common.saving")}>
                                     {t("common.save")}
-                                  </button>
+                                  </SubmitButton>
                                 </form>
                                 <Hint>{t("accounts.activeHint")}</Hint>
 
@@ -272,38 +308,39 @@ export default async function AccountsPage({
                                   <form action={moveAccountAction}>
                                     <input type="hidden" name="accountId" value={account.id} />
                                     <input type="hidden" name="direction" value="up" />
-                                    <button
-                                      type="submit"
+                                    <SubmitButton
                                       disabled={i === 0}
-                                      className={buttonClass("secondary")}
+                                      pendingLabel={t("common.working")}
                                     >
                                       {t("common.moveUp")}
-                                    </button>
+                                    </SubmitButton>
                                   </form>
                                   <form action={moveAccountAction}>
                                     <input type="hidden" name="accountId" value={account.id} />
                                     <input type="hidden" name="direction" value="down" />
-                                    <button
-                                      type="submit"
+                                    <SubmitButton
                                       disabled={i === list.length - 1}
-                                      className={buttonClass("secondary")}
+                                      pendingLabel={t("common.working")}
                                     >
                                       {t("common.moveDown")}
-                                    </button>
+                                    </SubmitButton>
                                   </form>
                                   <form action={toggleArchiveAction}>
                                     <input type="hidden" name="accountId" value={account.id} />
-                                    <button type="submit" className={buttonClass("secondary")}>
+                                    <SubmitButton pendingLabel={t("common.working")}>
                                       {account.activeTo === null
                                         ? t("common.archive")
                                         : t("common.unarchive")}
-                                    </button>
+                                    </SubmitButton>
                                   </form>
                                   <form action={deleteAccountAction} className="ml-auto">
                                     <input type="hidden" name="accountId" value={account.id} />
-                                    <button type="submit" className={buttonClass("danger")}>
+                                    <SubmitButton
+                                      variant="danger"
+                                      pendingLabel={t("common.working")}
+                                    >
                                       {t("common.delete")}
-                                    </button>
+                                    </SubmitButton>
                                   </form>
                                 </div>
                               </div>

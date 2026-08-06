@@ -92,7 +92,13 @@ export function buttonClass(variant: ButtonVariant = "secondary", full = false) 
   return [
     "inline-flex items-center justify-center gap-1.5 rounded-control border",
     variant === "primary" ? "min-h-13" : "min-h-12",
-    "px-4 text-sm disabled:opacity-40",
+    // A disabled button used to be the same button at 40% opacity, which
+    // on this page put three shades of grey next to each other — an
+    // active `secondary`, a disabled `secondary`, and the sunken surface
+    // behind them. Unavailable now reads as *unfilled* rather than as
+    // faint, so it cannot be mistaken for a button that simply looks dim.
+    "px-4 text-sm disabled:cursor-not-allowed",
+    "disabled:border-rule-soft disabled:bg-transparent disabled:text-ink-faint",
     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
     buttonVariant[variant],
     full ? "w-full" : "",
