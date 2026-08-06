@@ -11,6 +11,7 @@ import { today } from "@/lib/date";
 import { getRunningBalances } from "@/lib/ledger";
 import { formatMoney, toMajorUnits } from "@/lib/money";
 import { EntryForm, type EntryFormLabels } from "./_components/entry-form";
+import { SubmitButton } from "./_components/submit-button";
 import {
   buttonClass,
   Card,
@@ -218,7 +219,7 @@ export default async function Home({
               </div>
               <div className="col-span-2 grid grid-cols-[1fr_auto] gap-2 md:col-span-4 md:justify-end">
                 <button type="submit" className={buttonClass("secondary", true)}>
-                  {t("entry.filterApply")}
+                  {t("common.apply")}
                 </button>
                 <Link href="/" className={buttonClass("ghost")}>
                   {t("entry.filterClear")}
@@ -295,9 +296,9 @@ export default async function Home({
                         />
                         <form action={deleteTransactionAction}>
                           <input type="hidden" name="transactionId" value={tx.id} />
-                          <button type="submit" className={buttonClass("danger")}>
+                          <SubmitButton variant="danger" pendingLabel={t("common.working")}>
                             {t("common.delete")}
-                          </button>
+                          </SubmitButton>
                         </form>
                       </div>
                     </details>

@@ -4,8 +4,9 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
-import { accounts, ACCOUNT_GROUPS, type AccountGroup } from "@/db/schema";
+import { accounts, ACCOUNT_GROUPS, sections, type AccountGroup } from "@/db/schema";
 import { getTranslations } from "@/i18n";
+import { moveGroup, parseGroupOrder, serializeGroupOrder } from "@/lib/account-groups";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
 import { addDays, today } from "@/lib/date";
@@ -148,6 +149,36 @@ export async function toggleArchiveAction(formData: FormData) {
     .where(eq(accounts.id, accountId));
 
   revalidatePath("/accounts");
+}
+
+/**
+ * Moves one group up or down in the book's own listing order. The set of
+ * groups is fixed; only the order is stored, and it is re-parsed on the
+ * way in so a hand-posted form cannot drop a group or invent one.
+ */
+export async function moveGroupAction(formData: FormData) {
+  const userId = await requireUserId();
+  const { locale } = await getTranslations();
+  const section = await getOrCreateSection(db, { userId, locale });
+
+  const group = formData.get("group");
+  const direction = formData.get("direction");
+  if (typeof group !== "string" || !ACCOUNT_GROUPS.includes(group as AccountGroup)) {
+    throw new Error("Invalid group");
+  }
+  if (direction !== "up" && direction !== "down") {
+    throw new Error("Invalid direction");
+  }
+
+  const next = moveGroup(parseGroupOrder(section.groupOrder), group as AccountGroup, direction);
+  await db
+    .update(sections)
+    .set({ groupOrder: serializeGroupOrder(next) })
+    .where(eq(sections.id, section.id));
+
+  for (const path of ["/", "/accounts", "/assets", "/income", "/budget"]) {
+    revalidatePath(path);
+  }
 }
 
 export async function deleteAccountAction(formData: FormData) {

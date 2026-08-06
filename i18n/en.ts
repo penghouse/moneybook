@@ -43,6 +43,9 @@ const en: Record<keyof typeof ko, string> = {
   "common.archive": "Archive",
   "common.unarchive": "Unarchive",
   "common.viewTable": "View as table",
+  "common.apply": "Show",
+  "common.saving": "Saving…",
+  "common.working": "Working…",
 
   "auth.login": "Sign in",
   "auth.logout": "Sign out",
@@ -68,6 +71,9 @@ const en: Record<keyof typeof ko, string> = {
   "accounts.deleteError": "An account with transactions can't be deleted. Archive it instead.",
   "accounts.empty": "No accounts yet.",
   "accounts.showArchived": "Show closed accounts",
+  "accounts.groupOrder": "Group order",
+  "accounts.groupOrderHint":
+    "The balance sheet, income statement and budget all follow the order set here, and the account order with it.",
   "accounts.group": "Group",
   "accounts.category": "Category",
   "accounts.categoryPlaceholder": "e.g. Eating out",
@@ -165,7 +171,6 @@ const en: Record<keyof typeof ko, string> = {
   "entry.filterTo": "To",
   "entry.filterAccount": "Account",
   "entry.filterSearch": "Search",
-  "entry.filterApply": "Filter",
   "entry.filterClear": "Clear",
   "entry.allAccounts": "All",
   "entry.noTransactions": "No transactions yet.",
@@ -195,6 +200,9 @@ const en: Record<keyof typeof ko, string> = {
   "assets.noHistory": "Nothing to chart yet.",
   "assets.backToList": "Back to list",
   "assets.viewCharts": "View charts",
+  "assets.rangeFrom": "From",
+  "assets.rangeTo": "To",
+  "assets.compositionAsOf": "The mix is as of the end date.",
 
   "fx.gainAccountName": "FX Gain (Unrealized)",
   "fx.lossAccountName": "FX Loss (Unrealized)",

@@ -161,6 +161,30 @@ test.describe("accounts", () => {
     await expect(page.getByText("신용카드")).toBeVisible();
   });
 
+  test("the group order set here is what every other screen lists them in", async ({ page }) => {
+    await page.goto("/accounts");
+
+    // Assets are listed first by default; move liabilities above them.
+    await page
+      .locator("section")
+      .filter({ hasText: "부채" })
+      .first()
+      .getByRole("button", { name: "위로" })
+      .first()
+      .click();
+
+    // The balance sheet follows. Asserted on the rendered order rather
+    // than on the stored value, because the stored value agreeing while
+    // the page ignores it is exactly the bug this guards against.
+    await page.goto("/assets");
+    const order = await page.locator("main section").allInnerTexts();
+    const assetAt = order.findIndex((text) => text.startsWith("자산"));
+    const liabilityAt = order.findIndex((text) => text.startsWith("부채"));
+    expect(liabilityAt).toBeGreaterThanOrEqual(0);
+    expect(assetAt).toBeGreaterThanOrEqual(0);
+    expect(liabilityAt).toBeLessThan(assetAt);
+  });
+
   test("a category groups expense accounts and subtotals them on the income statement", async ({
     page,
   }) => {

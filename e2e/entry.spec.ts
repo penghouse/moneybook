@@ -214,7 +214,7 @@ test.describe("entry", () => {
     // Filtering to one account switches both the number and the caption.
     await page.getByText("검색·필터").click();
     await page.locator('select[name="accountId"]').selectOption({ label: "신용카드" });
-    await page.getByRole("button", { name: "필터" }).click();
+    await page.getByRole("button", { name: "조회" }).click();
 
     await expect(page.getByText("잔액 · 신용카드")).toBeVisible();
     // A liability reads as money owed, so the same history is positive here.

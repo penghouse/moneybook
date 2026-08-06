@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
 import {
   accounts,
   transactionLines,
@@ -131,7 +131,14 @@ async function queryAccountNets(db: Db, conditions: readonly SQL[]): Promise<Acc
     .innerJoin(transactions, eq(transactionLines.transactionId, transactions.id))
     .innerJoin(accounts, eq(transactionLines.accountId, accounts.id))
     .where(and(...conditions))
-    .groupBy(accounts.id, accounts.group, accounts.name, accounts.currency);
+    .groupBy(accounts.id, accounts.group, accounts.name, accounts.currency)
+    // The chart of accounts is ordered by hand on /accounts, and every
+    // screen that lists accounts should read in that same order. Without
+    // this the balance sheet came back in whatever order the group-by
+    // happened to produce, which is stable enough not to look broken and
+    // arbitrary enough never to match the page the user set it on.
+    // Group order is applied by the caller, which knows the section.
+    .orderBy(asc(accounts.sortOrder), asc(accounts.name));
 
   return rows.map((r) => ({
     accountId: r.accountId,

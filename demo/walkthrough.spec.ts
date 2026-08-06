@@ -150,7 +150,7 @@ test("moneybook walkthrough", async ({ page, context }) => {
     .filter({ has: page.locator('select[name="accountId"]') });
   await filterForm.locator('select[name="accountId"]').selectOption({ label: "신용카드" });
   await caption(page, "③ 계정 하나로 좁히면 그 계정의 잔액으로 바뀝니다", 1800);
-  await filterForm.getByRole("button", { name: "필터" }).click();
+  await filterForm.getByRole("button", { name: "조회" }).click();
 
   await expect(main(page).getByText("잔액 · 신용카드")).toBeVisible();
   await expect(rowSummary(0)).toContainText("₩57,000");

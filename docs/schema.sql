@@ -152,6 +152,8 @@ CREATE TABLE `transactions` (
 
 CREATE INDEX `transactions_section_date_idx` ON `transactions` (`section_id`,`date`);
 
+ALTER TABLE `sections` ADD `group_order` text DEFAULT 'asset,liability,equity,expense,income' NOT NULL;
+
 -- Drizzle's bookkeeping. The app never reads it; `drizzle-kit migrate`
 -- does, to know what has already run. Recording the migrations this file
 -- is equivalent to is what stops the next `npm run db:migrate` from
@@ -164,4 +166,5 @@ CREATE TABLE `__drizzle_migrations` (
 );
 
 INSERT INTO `__drizzle_migrations` (`hash`, `created_at`) VALUES
-	('e080edf6f58176c92afda1a1b598c7fe643504fe3557927e846a40f2f54c8879', 1785906516337);
+	('e080edf6f58176c92afda1a1b598c7fe643504fe3557927e846a40f2f54c8879', 1785906516337),
+	('1cf9aeeb26a3a693893dfa2178d42c2788adfbbb31d14c78e42c31217ab5cdb8', 1785991646983);
