@@ -218,11 +218,11 @@ export default async function AssetsPage({
         </p>
       </Card>
 
-      {groupOrder.map((group) =>
-        renderGroup(group, group === "asset" ? visibleAssets : visibleLiabilities),
-      )}
-
-      <section className="pt-2">
+      {/* Directly under the totals, because the card above ends by
+          saying they are book value and to press this — which was true
+          only after scrolling past every account. The FX notes come with
+          it: a rate date explains the number the button would post. */}
+      <section>
         <form action={revalueAction}>
           <input type="hidden" name="asOf" value={asOf} />
           <SubmitButton
@@ -252,6 +252,10 @@ export default async function AssetsPage({
           </p>
         )}
       </section>
+
+      {groupOrder.map((group) =>
+        renderGroup(group, group === "asset" ? visibleAssets : visibleLiabilities),
+      )}
     </div>
   );
 }
