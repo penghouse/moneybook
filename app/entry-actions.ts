@@ -139,6 +139,13 @@ export async function createTransactionAction(formData: FormData) {
   );
 
   revalidatePath("/");
+
+  // A copy is a one-shot. Leaving `?duplicate=` in the URL would re-fill
+  // the form from the transaction that has just been copied, so the next
+  // 저장 would silently add a third identical record. Ordinary entry
+  // must *not* redirect: the form keeps the date and the two accounts
+  // and refocuses the amount, and a navigation would throw that away.
+  if (formData.get("duplicate") === "1") redirect("/");
 }
 
 export async function updateTransactionAction(formData: FormData) {

@@ -155,6 +155,8 @@ const ko = {
   "entry.addLine": "줄 추가",
   "entry.difference": "차액",
   "entry.andMore": "외 {n}",
+  "entry.duplicate": "복제",
+  "entry.duplicateNotice": "복제한 내용입니다. 확인 후 저장하면 새 거래로 추가됩니다.",
   "entry.filters": "검색·필터",
   "entry.details": "세부내역",
   "entry.balance": "잔액",

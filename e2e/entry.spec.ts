@@ -240,6 +240,41 @@ test.describe("entry", () => {
     await expect(page.getByText("원래 제목")).not.toBeVisible();
   });
 
+  test("duplicating fills the entry form and saves a second record", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("8000");
+    await form.locator('input[name="title"]').fill("정기 결제");
+    await form.getByRole("button", { name: "저장" }).click();
+    await expect(page.getByText("정기 결제")).toHaveCount(1);
+
+    await page.getByText("정기 결제").click();
+    await page.locator("li", { hasText: "정기 결제" }).getByRole("link", { name: "복제" }).click();
+
+    // Everything needed to check it before writing anything: the date,
+    // both sides, the amount and the title all arrive filled in.
+    const copy = createForm(page);
+    await expect(copy.locator('input[name="title"]')).toHaveValue("정기 결제");
+    await expect(copy.locator('input[type="number"]').first()).toHaveValue("8000");
+    const names = copy.locator('input[placeholder="계정 검색"]');
+    await expect(names.nth(0)).toHaveValue("식비");
+    await expect(names.nth(1)).toHaveValue("신용카드");
+
+    // Edited before saving, and the original is untouched.
+    await copy.locator('input[name="title"]').fill("정기 결제 2회차");
+    await copy.getByRole("button", { name: "저장" }).click();
+
+    await expect(page.getByText("정기 결제 2회차")).toBeVisible();
+    await expect(page.getByText("정기 결제", { exact: true })).toHaveCount(1);
+
+    // The prefill is gone afterwards, so pressing 저장 again cannot
+    // quietly file a third copy.
+    await expect(page).toHaveURL(/\/$/);
+    await expect(createForm(page).locator('input[name="title"]')).toHaveValue("");
+  });
+
   test("deleting a transaction removes it from the list", async ({ page }) => {
     await page.goto("/");
     const form = createForm(page);

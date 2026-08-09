@@ -159,6 +159,8 @@ const en: Record<keyof typeof ko, string> = {
   "entry.addLine": "Add line",
   "entry.difference": "Difference",
   "entry.andMore": "+{n}",
+  "entry.duplicate": "Duplicate",
+  "entry.duplicateNotice": "A copy. Check it over — saving adds it as a new transaction.",
   "entry.filters": "Search & filter",
   "entry.details": "Details",
   "entry.balance": "Balance",
