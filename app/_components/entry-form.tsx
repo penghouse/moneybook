@@ -197,14 +197,21 @@ export function EntryForm({
       );
     });
 
-  // Blank-form entry only: after a save, clear amount/title but keep date
-  // and the selected accounts, and refocus the amount field for the next
-  // entry (plan: "저장 후 날짜·포커스는 유지, 금액·적요만 비웁니다").
-  // A duplicate is a one-shot — the action navigates away from it.
+  /**
+   * Blank-form entry only: after a save, keep what the next transaction
+   * is likely to share and clear what it cannot.
+   *
+   * The date and the two accounts carry over — that is the whole point
+   * of entering a run of transactions in one sitting. Everything that
+   * describes *this* transaction goes: the amount, the 적요, and both
+   * kinds of memo. A memo left behind attaches itself to the next entry
+   * silently, which is worse than retyping it.
+   */
   useEffect(() => {
     if (!initial && submitCount > lastSubmitCount.current) {
       setTitle("");
-      setLines((prev) => prev.map((l) => ({ ...l, amountStr: "" })));
+      setMemo("");
+      setLines((prev) => prev.map((l) => ({ ...l, amountStr: "", memo: "" })));
       amountInputRef.current?.focus();
     }
     lastSubmitCount.current = submitCount;

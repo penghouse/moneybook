@@ -55,7 +55,9 @@ test.describe("entry", () => {
     await expect(page.getByText(/신용카드.*12,000/)).toBeVisible();
   });
 
-  test("clears amount/title but keeps the date after a save (rapid entry)", async ({ page }) => {
+  test("clears what belongs to the transaction but keeps the date (rapid entry)", async ({
+    page,
+  }) => {
     await page.goto("/");
     const form = createForm(page);
     const dateInput = form.locator('input[type="date"]').first();
@@ -65,12 +67,20 @@ test.describe("entry", () => {
     await pickAccount(form, 1, "신용카드");
     await form.locator('input[type="number"]').first().fill("5000");
     await form.locator('input[name="title"]').fill("커피");
+    await form.locator("summary", { hasText: "메모" }).click();
+    await form.locator('input[name="memo"]').fill("테이크아웃");
     await form.getByRole("button", { name: "저장" }).click();
 
     await expect(page.getByText("커피")).toBeVisible();
+    // The date and both accounts carry over — that is what makes a run of
+    // entries quick.
     await expect(dateInput).toHaveValue(dateBefore);
+    await expect(form.locator('input[placeholder="계정 검색"]').first()).toHaveValue("식비");
+    // Everything describing *that* transaction goes. A memo left behind
+    // attaches itself to the next one without saying so.
     await expect(form.locator('input[name="title"]')).toHaveValue("");
     await expect(form.locator('input[type="number"]').first()).toHaveValue("");
+    await expect(form.locator('input[name="memo"]')).toHaveValue("");
   });
 
   test("rejects a split transaction until debit and credit totals match", async ({ page }) => {
