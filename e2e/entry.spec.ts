@@ -397,6 +397,41 @@ test.describe("entry", () => {
     await expect(rows.filter({ hasText: "충동구매" })).toHaveCount(0);
   });
 
+  test("a recent 적요 suggests itself and fills in both sides", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+
+    // Establish the repeat: 점심 out of 식비, onto 신용카드.
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("11000");
+    await form.locator('input[name="title"]').fill("점심");
+    await form.getByRole("button", { name: "저장" }).click();
+    await expect(page.getByText("점심")).toBeVisible();
+
+    // A fresh form: type the amount first, then reach for the 적요.
+    await page.reload();
+    const next = createForm(page);
+    await next.locator('input[type="number"]').first().fill("13000");
+    await next.locator('input[name="title"]').click();
+    await next.locator('input[name="title"]').fill("점");
+
+    const suggestion = next.getByRole("button", { name: /점심/ });
+    await expect(suggestion).toBeVisible();
+    await suggestion.click();
+
+    // Both sides come back from last time; the amount is the one part
+    // that differs between repeats, so it is left alone.
+    const names = next.locator('input[placeholder="계정 검색"]');
+    await expect(next.locator('input[name="title"]')).toHaveValue("점심");
+    await expect(names.nth(0)).toHaveValue("식비");
+    await expect(names.nth(1)).toHaveValue("신용카드");
+    await expect(next.locator('input[type="number"]').first()).toHaveValue("13000");
+
+    await next.getByRole("button", { name: "저장" }).click();
+    await expect(page.locator("main li").filter({ hasText: "점심" })).toHaveCount(2);
+  });
+
   test("deleting a transaction removes it from the list", async ({ page }) => {
     await page.goto("/");
     const form = createForm(page);

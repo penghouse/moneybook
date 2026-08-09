@@ -21,6 +21,7 @@ import {
   findTaggedTransactionIds,
   getCounterpartyBalances,
   getRunningBalances,
+  getTitleSuggestions,
 } from "@/lib/ledger";
 import { formatMoney, toMajorUnits } from "@/lib/money";
 import { collectTags, normalizeTag } from "@/lib/tags";
@@ -93,6 +94,11 @@ export default async function Home({
     where: eq(accounts.sectionId, section.id),
     orderBy: asc(accounts.sortOrder),
   });
+
+  // Deliberately not narrowed by whatever the list is filtered to: the
+  // suggestions are for what you are about to type, not for what you are
+  // currently looking at.
+  const suggestions = await getTitleSuggestions(db, { sectionId: section.id });
 
   const labels: EntryFormLabels = {
     date: t("common.date"),
@@ -382,6 +388,7 @@ export default async function Home({
             locale={locale}
             labels={labels}
             initial={copy}
+            suggestions={suggestions}
             afterSaveHref={copy ? (withoutDuplicate ? `/?${withoutDuplicate}` : "/") : undefined}
           />
         </div>
@@ -612,6 +619,7 @@ export default async function Home({
                           locale={locale}
                           labels={labels}
                           initial={{ transactionId: tx.id, ...prefillFrom(tx) }}
+                          suggestions={suggestions}
                         />
                         <div className="flex flex-wrap gap-2">
                           {/* 복제 is navigation, not a mutation: it opens the

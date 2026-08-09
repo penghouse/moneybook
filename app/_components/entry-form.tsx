@@ -6,6 +6,7 @@ import { AccountCombobox, type ComboboxAccount } from "./account-combobox";
 import { useDialogClose } from "./dialog";
 import { SubmitButton } from "./submit-button";
 import { buttonClass, controlClass, Label } from "./ui";
+import { matchesQuery } from "@/lib/hangul";
 import { convertMinorUnits, formatMoney, toMinorUnits } from "@/lib/money";
 
 export interface EntryFormLabels {
@@ -42,6 +43,12 @@ interface Line {
 }
 
 export type EntryFormAccount = ComboboxAccount;
+
+export interface TitleSuggestion {
+  title: string;
+  leftAccountId: string | null;
+  rightAccountId: string | null;
+}
 
 let keySeq = 0;
 function newKey() {
@@ -105,6 +112,7 @@ export function EntryForm({
   locale,
   labels,
   initial,
+  suggestions = [],
   afterSaveHref,
 }: {
   action: (formData: FormData) => void | Promise<void>;
@@ -114,6 +122,8 @@ export function EntryForm({
   locale: string;
   labels: EntryFormLabels;
   initial?: EntryFormInitial;
+  /** Recent 적요 with the accounts each was last posted between. */
+  suggestions?: TitleSuggestion[];
   /**
    * Where to go once a save lands. Used by the duplicate flow to drop
    * `?duplicate=` from the URL: left there, the form would re-fill from
@@ -228,6 +238,96 @@ export function EntryForm({
     }
     lastClosedAt.current = submitCount;
   }, [submitCount, initial, closeDialog, afterSaveHref, router]);
+
+  const [titleOpen, setTitleOpen] = useState(false);
+
+  // Empty box: the most recent entries, which is the useful default
+  // rather than nothing. Typing narrows with the same 초성 matcher the
+  // account picker uses, so 「ㅈㅅ」 finds 「점심」.
+  const matchingTitles = suggestions
+    .filter((s) => title.trim() === "" || matchesQuery(s.title, title))
+    .slice(0, 8);
+
+  /**
+   * Fills in what a repeat of this 적요 looked like last time — the two
+   * accounts, and nothing else. The amount is the one part that actually
+   * differs between repeats, so it is left exactly as typed.
+   *
+   * Only when there is one leg per side to fill. A suggestion cannot say
+   * which of a split's four legs it meant, and half-filling a form is
+   * worse than filling none of it.
+   */
+  function applySuggestion(suggestion: TitleSuggestion) {
+    setTitle(suggestion.title);
+    setTitleOpen(false);
+
+    const left = lines.filter((l) => l.side === "left");
+    const right = lines.filter((l) => l.side === "right");
+    if (left.length !== 1 || right.length !== 1) return;
+
+    for (const [line, accountId] of [
+      [left[0], suggestion.leftAccountId],
+      [right[0], suggestion.rightAccountId],
+    ] as const) {
+      // Absent when that account has since closed: it is out of the
+      // picker, so offering it would put a name in the box that cannot
+      // be saved.
+      const account = accounts.find((a) => a.id === accountId);
+      if (account) void handleAccountSelect(line.key, account);
+    }
+  }
+
+  const nameOfAccount = (id: string | null) => accounts.find((a) => a.id === id)?.name;
+
+  /**
+   * The 적요 box and its suggestions. Both layouts render it, so it is
+   * built once here rather than kept in step in two places.
+   */
+  const titleField = (
+    <div className="relative min-w-0">
+      <input
+        type="text"
+        name="title"
+        value={title}
+        onChange={(e) => {
+          setTitle(e.target.value);
+          setTitleOpen(true);
+        }}
+        onFocus={() => setTitleOpen(true)}
+        onBlur={() => setTitleOpen(false)}
+        autoComplete="off"
+        className={controlClass}
+      />
+      {titleOpen && matchingTitles.length > 0 && (
+        <ul className="bg-card rounded-control ring-rule absolute z-20 mt-1 max-h-56 w-max max-w-64 min-w-full overflow-auto shadow-lg ring-1">
+          {matchingTitles.map((suggestion) => {
+            const from = nameOfAccount(suggestion.leftAccountId);
+            const to = nameOfAccount(suggestion.rightAccountId);
+            return (
+              <li key={suggestion.title}>
+                <button
+                  type="button"
+                  // Pressing must not blur the input first, or the list
+                  // closes out from under the finger.
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applySuggestion(suggestion)}
+                  className="hover:bg-sunken flex min-h-12 w-full flex-col justify-center px-3.5 py-1.5 text-left"
+                >
+                  <span className="truncate">{suggestion.title}</span>
+                  {/* What pressing it will fill in, so it is not a surprise. */}
+                  {from && to && (
+                    <span className="text-ink-faint truncate text-xs">
+                      {from} ← {to}
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
 
   function updateLine(key: string, patch: Partial<Line>) {
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -366,13 +466,7 @@ export function EntryForm({
             </div>
             <div className="min-w-0">
               <Label>{labels.title}</Label>
-              <input
-                type="text"
-                name="title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className={controlClass}
-              />
+              {titleField}
             </div>
             <div className="min-w-0">
               <Label>{labels.amount}</Label>
@@ -506,13 +600,7 @@ export function EntryForm({
           </div>
           <div className="min-w-0">
             <Label>{labels.title}</Label>
-            <input
-              type="text"
-              name="title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className={controlClass}
-            />
+            {titleField}
           </div>
           <div className="col-span-2 min-w-0 md:col-span-1">
             <Label>{labels.memo}</Label>
