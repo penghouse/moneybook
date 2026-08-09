@@ -360,6 +360,43 @@ test.describe("entry", () => {
     await expect(row.getByText("출근길에")).toBeVisible();
   });
 
+  test("a #tag in a memo collects its transactions and totals them", async ({ page }) => {
+    const spend = async (title: string, amount: string, memo: string) => {
+      const form = createForm(page);
+      await pickAccount(form, 0, "식비");
+      await pickAccount(form, 1, "신용카드");
+      await form.locator('input[type="number"]').first().fill(amount);
+      await form.locator('input[name="title"]').fill(title);
+      if (!(await form.locator('input[name="memo"]').isVisible())) {
+        await form.locator("summary", { hasText: "메모" }).click();
+      }
+      await form.locator('input[name="memo"]').fill(memo);
+      await form.getByRole("button", { name: "저장" }).click();
+      await expect(page.getByText(title)).toBeVisible();
+    };
+
+    await page.goto("/");
+    await spend("택시", "18000", "급해서 #낭비");
+    await spend("장보기", "42000", "#필수");
+    await spend("배달", "22000", "#낭비 야식");
+    // Not the same tag, and a substring match would wrongly count it.
+    await spend("충동구매", "99000", "#낭비벽 고쳐야");
+
+    // Reached the way it is meant to be: the chip in the filter panel.
+    await page.locator("main details", { hasText: "검색·필터" }).locator("summary").click();
+    await page.getByRole("link", { name: "#낭비", exact: true }).click();
+
+    await expect(page).toHaveURL(/tag=/);
+    await expect(page.getByText("2건")).toBeVisible();
+    // 18,000 + 22,000 — 낭비벽 is a different tag, 필수 is not this one.
+    // Exact: the running-balance column happens to read -₩40,000 here.
+    await expect(page.getByText("₩40,000", { exact: true })).toBeVisible();
+
+    const rows = page.locator("main li");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.filter({ hasText: "충동구매" })).toHaveCount(0);
+  });
+
   test("deleting a transaction removes it from the list", async ({ page }) => {
     await page.goto("/");
     const form = createForm(page);

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, like, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db/client";
 import { accounts, transactionLines, transactions } from "@/db/schema";
@@ -17,8 +17,13 @@ import {
   yearOf,
   yearRange,
 } from "@/lib/date";
-import { getCounterpartyBalances, getRunningBalances } from "@/lib/ledger";
+import {
+  findTaggedTransactionIds,
+  getCounterpartyBalances,
+  getRunningBalances,
+} from "@/lib/ledger";
 import { formatMoney, toMajorUnits } from "@/lib/money";
+import { collectTags, normalizeTag } from "@/lib/tags";
 import { CompositionChart } from "./_components/composition-chart";
 import { DialogActionForm, RowDialog } from "./_components/dialog";
 import { EntryForm, type EntryFormLabels } from "./_components/entry-form";
@@ -54,13 +59,24 @@ export default async function Home({
     to?: string;
     accountId?: string;
     q?: string;
+    tag?: string;
     duplicate?: string;
   }>;
 }) {
   const userId = await requireUserId();
   const { t, locale } = await getTranslations();
   const section = await getOrCreateSection(db, { userId, locale });
-  const { error, name: errorAccountName, from, to, accountId, q, duplicate } = await searchParams;
+  const {
+    error,
+    name: errorAccountName,
+    from,
+    to,
+    accountId,
+    q,
+    tag: tagParam,
+    duplicate,
+  } = await searchParams;
+  const tag = normalizeTag(tagParam);
 
   const allAccounts = await db.query.accounts.findMany({
     // The picker offers what can be posted to *now*; a closed account
@@ -123,6 +139,20 @@ export default async function Home({
       inArray(
         transactions.id,
         matches.map((m) => m.transactionId),
+      ),
+    );
+  }
+
+  // Snapshotted before the tag narrows things: the tag chips are how you
+  // find the other tags, so they are read from the period rather than
+  // from what one of them has already filtered down to.
+  const untaggedConditions = [...conditions];
+
+  if (tag) {
+    conditions.push(
+      inArray(
+        transactions.id,
+        await findTaggedTransactionIds(db, { sectionId: section.id, tag, from, to }),
       ),
     );
   }
@@ -220,7 +250,7 @@ export default async function Home({
 
   /** The current filter, so copying does not throw away the list you found it in. */
   const listParams = new URLSearchParams(
-    Object.entries({ from, to, accountId, q }).filter(([, v]) => v) as [string, string][],
+    Object.entries({ from, to, accountId, q, tag }).filter(([, v]) => v) as [string, string][],
   );
   const withoutDuplicate = listParams.toString();
 
@@ -254,6 +284,49 @@ export default async function Home({
    */
   const memoOf = (tx: (typeof list)[number]) =>
     [tx.memo, ...tx.lines.map((l) => l.memo)].filter((m) => m?.trim()).join(" · ");
+
+  /**
+   * Which tags exist in the period on screen, so the chips can offer
+   * them. Read from `untaggedConditions` — filtered down by a tag, the
+   * list would only ever show the tag already chosen.
+   */
+  const knownTags = await db
+    .select({ memo: transactions.memo, lineMemo: transactionLines.memo })
+    .from(transactions)
+    .innerJoin(transactionLines, eq(transactionLines.transactionId, transactions.id))
+    .where(and(...untaggedConditions))
+    .then((rows) => [...new Set(rows.flatMap((r) => collectTags([r.memo, r.lineMemo])))].sort());
+
+  /**
+   * What the filter adds up to, and how many rows it matched.
+   *
+   * Computed with an aggregate over the same conditions rather than from
+   * `list`, which stops at TRANSACTION_LIMIT — a 합계 that silently
+   * ignored the hundred-and-first transaction would be worse than none.
+   * Each transaction contributes its debit total, the number its own row
+   * shows; for a transfer that is the amount moved, not new spending.
+   */
+  const filterTotal = tag
+    ? (
+        await db
+          .select({
+            total: sql<number>`coalesce(sum(case when ${transactionLines.side} = 'left' then ${transactionLines.baseAmount} else 0 end), 0)`,
+            count: sql<number>`count(distinct ${transactions.id})`,
+          })
+          .from(transactions)
+          .innerJoin(transactionLines, eq(transactionLines.transactionId, transactions.id))
+          .where(and(...conditions))
+      )[0]
+    : null;
+
+  /** The same filter with one parameter changed — used by the tag chips. */
+  const withParam = (key: string, value: string | null) => {
+    const next = new URLSearchParams(listParams);
+    if (value) next.set(key, value);
+    else next.delete(key);
+    const query = next.toString();
+    return query ? `/?${query}` : "/";
+  };
 
   const andMore = (n: number) => t("entry.andMore").replace("{n}", String(n));
   /** "식비 외 1" — the first account plus a count, so a split still reads
@@ -400,6 +473,36 @@ export default async function Home({
                 <Label>{t("entry.filterSearch")}</Label>
                 <input type="text" name="q" defaultValue={q} className={controlClass} />
               </div>
+              <div className="min-w-0">
+                <Label>{t("entry.filterTag")}</Label>
+                <input
+                  type="text"
+                  name="tag"
+                  defaultValue={tag ?? ""}
+                  placeholder={t("entry.tagPlaceholder")}
+                  className={controlClass}
+                />
+              </div>
+              {knownTags.length > 0 && (
+                <div className="col-span-2 flex flex-wrap gap-1.5 md:col-span-4">
+                  {/* The tags on what is currently listed, as one tap each.
+                      Written into memos as free text, so this is the only
+                      place that can say which ones exist. */}
+                  {knownTags.map((known) => (
+                    <Link
+                      key={known}
+                      href={withParam("tag", known === tag ? null : known)}
+                      className={`rounded-full border px-2.5 py-1 text-xs ${
+                        known === tag
+                          ? "border-accent bg-accent text-accent-ink"
+                          : "bg-sunken text-ink-muted hover:bg-rule border-transparent"
+                      }`}
+                    >
+                      #{known}
+                    </Link>
+                  ))}
+                </div>
+              )}
               <div className="col-span-2 grid grid-cols-[1fr_auto] gap-2 md:col-span-4 md:justify-end">
                 <button type="submit" className={buttonClass("secondary", true)}>
                   {t("common.apply")}
@@ -411,6 +514,24 @@ export default async function Home({
             </form>
           </details>
         </Card>
+
+        {filterTotal && (
+          <Card className="mb-3">
+            <KeyValueRow
+              label={
+                <span className="flex items-baseline gap-2">
+                  <span className="font-semibold">#{tag}</span>
+                  <span className="text-ink-faint text-xs">
+                    {interpolate(t("entry.tagCount"), { n: String(filterTotal.count) })}
+                  </span>
+                </span>
+              }
+              value={
+                <Money amount={filterTotal.total} currency={section.baseCurrency} locale={locale} />
+              }
+            />
+          </Card>
+        )}
 
         {isLedger && ledgerUnit !== "custom" && (
           <div className="mb-3">
