@@ -401,13 +401,15 @@ test.describe("entry", () => {
     await page.goto("/");
     const form = createForm(page);
 
-    // Establish the repeat: 점심 out of 식비, onto 신용카드.
+    // Establish the repeat: 점심 out of 식비, onto 신용카드. The bracket
+    // is the part that differs between two of the same thing, so the
+    // suggestion should come back without it.
     await pickAccount(form, 0, "식비");
     await pickAccount(form, 1, "신용카드");
     await form.locator('input[type="number"]').first().fill("11000");
-    await form.locator('input[name="title"]').fill("점심");
+    await form.locator('input[name="title"]').fill("점심 (회사 앞)");
     await form.getByRole("button", { name: "저장" }).click();
-    await expect(page.getByText("점심")).toBeVisible();
+    await expect(page.getByText("점심 (회사 앞)")).toBeVisible();
 
     // A fresh form: type the amount first, then reach for the 적요.
     await page.reload();
@@ -416,7 +418,8 @@ test.describe("entry", () => {
     await next.locator('input[name="title"]').click();
     await next.locator('input[name="title"]').fill("점");
 
-    const suggestion = next.getByRole("button", { name: /점심/ });
+    // Offered as the bare item name, not as the one past occasion.
+    const suggestion = next.getByRole("button", { name: /^점심 식비/ });
     await expect(suggestion).toBeVisible();
     await suggestion.click();
 
@@ -430,6 +433,8 @@ test.describe("entry", () => {
 
     await next.getByRole("button", { name: "저장" }).click();
     await expect(page.locator("main li").filter({ hasText: "점심" })).toHaveCount(2);
+    // The stored 적요 keeps whatever was typed; only the suggestion is bare.
+    await expect(page.getByText("점심 (회사 앞)")).toBeVisible();
   });
 
   test("deleting a transaction removes it from the list", async ({ page }) => {
