@@ -20,6 +20,7 @@ import {
 import { getCounterpartyBalances, getRunningBalances } from "@/lib/ledger";
 import { formatMoney, toMajorUnits } from "@/lib/money";
 import { CompositionChart } from "./_components/composition-chart";
+import { DialogActionForm, RowDialog } from "./_components/dialog";
 import { EntryForm, type EntryFormLabels } from "./_components/entry-form";
 import { PeriodNav } from "./_components/period-nav";
 import { SubmitButton } from "./_components/submit-button";
@@ -246,6 +247,14 @@ export default async function Home({
     return `/?${next}`;
   };
 
+  /**
+   * What this transaction has written on it, transaction memo first and
+   * any line memos after — one line, so the list still reads as a list.
+   * A split's per-line notes are often the only text it carries.
+   */
+  const memoOf = (tx: (typeof list)[number]) =>
+    [tx.memo, ...tx.lines.map((l) => l.memo)].filter((m) => m?.trim()).join(" · ");
+
   const andMore = (n: number) => t("entry.andMore").replace("{n}", String(n));
   /** "식비 외 1" — the first account plus a count, so a split still reads
    *  as one line in the list. */
@@ -300,6 +309,7 @@ export default async function Home({
             locale={locale}
             labels={labels}
             initial={copy}
+            afterSaveHref={copy ? (withoutDuplicate ? `/?${withoutDuplicate}` : "/") : undefined}
           />
         </div>
       )}
@@ -430,33 +440,49 @@ export default async function Home({
 
                 return (
                   <li key={tx.id} className="not-first:border-rule-soft not-first:border-t">
-                    <details className="group">
-                      {/* list-none: the summary holds two block lines, so
-                          the default disclosure triangle would sit on a
-                          line of its own above them. */}
-                      <summary className="cursor-pointer list-none px-4 py-3 [&::-webkit-details-marker]:hidden">
-                        <span className="flex items-baseline gap-2.5">
-                          <span className="text-ink-faint tnum shrink-0 font-mono text-xs">
-                            {tx.date.slice(5)}
+                    <RowDialog
+                      title={tx.title || tx.date}
+                      closeLabel={t("common.close")}
+                      trigger={
+                        <>
+                          <span className="flex items-baseline gap-2.5">
+                            <span className="text-ink-faint tnum shrink-0 font-mono text-xs">
+                              {tx.date.slice(5)}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate font-semibold">
+                              {tx.title}
+                            </span>
+                            <span className="flex shrink-0 flex-col items-end">
+                              <Money
+                                amount={total}
+                                currency={section.baseCurrency}
+                                locale={locale}
+                              />
+                              {balance && (
+                                <span className="tnum text-ink-faint text-xs">
+                                  {formatMoney(balance.amount, balance.currency, locale)}
+                                </span>
+                              )}
+                            </span>
                           </span>
-                          <span className="min-w-0 flex-1 truncate font-semibold">{tx.title}</span>
-                          <span className="flex shrink-0 flex-col items-end">
-                            <Money amount={total} currency={section.baseCurrency} locale={locale} />
-                            {balance && (
-                              <span className="tnum text-ink-faint text-xs">
-                                {formatMoney(balance.amount, balance.currency, locale)}
-                              </span>
-                            )}
+                          <span className="text-ink-muted mt-0.5 flex items-center gap-1.5 text-sm">
+                            <span className="min-w-0 truncate">{namesOf(leftLines)}</span>
+                            <span className="text-ink-faint shrink-0">←</span>
+                            <span className="min-w-0 truncate">{namesOf(rightLines)}</span>
                           </span>
-                        </span>
-                        <span className="text-ink-muted mt-0.5 flex items-center gap-1.5 text-sm">
-                          <span className="min-w-0 truncate">{namesOf(leftLines)}</span>
-                          <span className="text-ink-faint shrink-0">←</span>
-                          <span className="min-w-0 truncate">{namesOf(rightLines)}</span>
-                        </span>
-                      </summary>
-
-                      <div className="border-rule-soft space-y-3 border-t px-4 py-3">
+                          {/* The memo was written on this transaction and
+                              then only ever visible by opening it. A row
+                              that hides what you typed is a row you have
+                              to open to trust. */}
+                          {memoOf(tx) && (
+                            <span className="text-ink-faint mt-0.5 block truncate text-xs">
+                              {memoOf(tx)}
+                            </span>
+                          )}
+                        </>
+                      }
+                    >
+                      <div className="space-y-3">
                         <EntryForm
                           action={updateTransactionAction}
                           accounts={pickerFor(tx.lines)}
@@ -479,15 +505,15 @@ export default async function Home({
                           >
                             {t("entry.duplicate")}
                           </Link>
-                          <form action={deleteTransactionAction} className="ml-auto">
+                          <DialogActionForm action={deleteTransactionAction} className="ml-auto">
                             <input type="hidden" name="transactionId" value={tx.id} />
                             <SubmitButton variant="danger" pendingLabel={t("common.working")}>
                               {t("common.delete")}
                             </SubmitButton>
-                          </form>
+                          </DialogActionForm>
                         </div>
                       </div>
-                    </details>
+                    </RowDialog>
                   </li>
                 );
               })}

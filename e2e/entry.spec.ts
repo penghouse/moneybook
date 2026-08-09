@@ -108,9 +108,9 @@ test.describe("entry", () => {
 
     // The list shows one line per transaction: the first account plus a
     // count, and the debit total.
-    // The row's collapsed <details> still holds an edit form in the DOM,
-    // so assert on the summary rather than the whole list item.
-    const summary = page.locator("main li").first().locator("summary");
+    // The row is the button that opens its dialog; assert on that rather
+    // than the list item, whose dialog is in the DOM too.
+    const summary = page.locator("main li").first().locator("button").first();
     await expect(summary.getByText("식비 외 1")).toBeVisible();
     // Exact: the balance column beneath now reads "-₩45,000" (net worth
     // is negative with only a card debt on the books), which a substring
@@ -204,9 +204,9 @@ test.describe("entry", () => {
     }
 
     // Newest first: 저녁 carries both expenses, 점심 only the first.
-    // `.first()`: each row's collapsed edit form carries its own <summary>
+    // `.first()`: the row button, not anything inside its dialog.
     // for the memo field.
-    const rowSummary = (i: number) => page.locator("main li").nth(i).locator("summary").first();
+    const rowSummary = (i: number) => page.locator("main li").nth(i).locator("button").first();
     await expect(rowSummary(0)).toContainText("-₩32,000");
     await expect(rowSummary(1)).toContainText("-₩12,000");
     await expect(page.getByText("잔액 · 순자산")).toBeVisible();
@@ -232,10 +232,16 @@ test.describe("entry", () => {
     await expect(page.getByText("원래 제목")).toBeVisible();
 
     await page.getByText("원래 제목").click();
-    const row = page.locator("li", { hasText: "원래 제목" });
-    await row.locator('input[name="title"]').fill("수정된 제목");
-    await row.getByRole("button", { name: "저장" }).click();
+    // The edit form opens as a modal rather than unfolding under the row,
+    // so the whole record is on screen instead of wherever the list
+    // happened to push it.
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.locator('input[name="title"]').fill("수정된 제목");
+    await dialog.getByRole("button", { name: "저장" }).click();
 
+    // Saving is what closes it — the dialog's work is done.
+    await expect(dialog).toBeHidden();
     await expect(page.getByText("수정된 제목")).toBeVisible();
     await expect(page.getByText("원래 제목")).not.toBeVisible();
   });
@@ -251,7 +257,7 @@ test.describe("entry", () => {
     await expect(page.getByText("정기 결제")).toHaveCount(1);
 
     await page.getByText("정기 결제").click();
-    await page.locator("li", { hasText: "정기 결제" }).getByRole("link", { name: "복제" }).click();
+    await page.getByRole("dialog").getByRole("link", { name: "복제" }).click();
 
     // Everything needed to check it before writing anything: the date,
     // both sides, the amount and the title all arrive filled in.
@@ -286,7 +292,7 @@ test.describe("entry", () => {
     await expect(page.getByText("원래 제목")).toBeVisible();
 
     await page.getByText("원래 제목").click();
-    const row = page.locator("main li", { hasText: "원래 제목" });
+    const row = page.getByRole("dialog");
     const save = row.getByRole("button", { name: "저장" });
 
     // Nothing has changed yet, so there is nothing to save. Pressing it
@@ -327,6 +333,23 @@ test.describe("entry", () => {
     await expect(page.getByText("같은 거래")).toHaveCount(2);
   });
 
+  test("the list shows what was written on a transaction", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("6000");
+    await form.locator('input[name="title"]').fill("김밥");
+    await form.locator("summary", { hasText: "메모" }).click();
+    await form.locator('input[name="memo"]').fill("출근길에");
+    await form.getByRole("button", { name: "저장" }).click();
+
+    // The memo used to be visible only by opening the row, which makes a
+    // list you have to open to trust.
+    const row = page.locator("main li").filter({ hasText: "김밥" }).first();
+    await expect(row.getByText("출근길에")).toBeVisible();
+  });
+
   test("deleting a transaction removes it from the list", async ({ page }) => {
     await page.goto("/");
     const form = createForm(page);
@@ -338,9 +361,12 @@ test.describe("entry", () => {
     await expect(page.getByText("지울 거래")).toBeVisible();
 
     await page.getByText("지울 거래").click();
-    const row = page.locator("li", { hasText: "지울 거래" });
-    await row.getByRole("button", { name: "삭제" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "삭제" }).click();
 
-    await expect(page.getByText("지울 거래")).not.toBeVisible();
+    // Asserted on the row count: while the dialog is closing, its title
+    // and the row both carry the text, and "not visible" cannot say
+    // anything useful about two elements at once.
+    await expect(page.locator("main li")).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toBeHidden();
   });
 });

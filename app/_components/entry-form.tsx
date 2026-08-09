@@ -1,7 +1,9 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AccountCombobox, type ComboboxAccount } from "./account-combobox";
+import { useDialogClose } from "./dialog";
 import { SubmitButton } from "./submit-button";
 import { buttonClass, controlClass, Label } from "./ui";
 import { convertMinorUnits, formatMoney, toMinorUnits } from "@/lib/money";
@@ -103,6 +105,7 @@ export function EntryForm({
   locale,
   labels,
   initial,
+  afterSaveHref,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   accounts: EntryFormAccount[];
@@ -111,8 +114,17 @@ export function EntryForm({
   locale: string;
   labels: EntryFormLabels;
   initial?: EntryFormInitial;
+  /**
+   * Where to go once a save lands. Used by the duplicate flow to drop
+   * `?duplicate=` from the URL: left there, the form would re-fill from
+   * the transaction just copied and the next 저장 would quietly file a
+   * third one.
+   */
+  afterSaveHref?: string;
 }) {
   const amountInputRef = useRef<HTMLInputElement>(null);
+  const closeDialog = useDialogClose();
+  const router = useRouter();
 
   // Server actions passed straight to `action` give no hook to run code
   // after they resolve, but the plan calls for clearing amount/title
@@ -197,6 +209,18 @@ export function EntryForm({
     }
     lastSubmitCount.current = submitCount;
   }, [submitCount, initial]);
+
+  // Editing inside a dialog: once the save lands the dialog's work is
+  // done, so it closes itself. Null when the form is rendered inline,
+  // which is what lets one component serve both.
+  const lastClosedAt = useRef(0);
+  useEffect(() => {
+    if (submitCount > lastClosedAt.current) {
+      if (initial) closeDialog?.();
+      if (afterSaveHref) router.replace(afterSaveHref);
+    }
+    lastClosedAt.current = submitCount;
+  }, [submitCount, initial, closeDialog, afterSaveHref, router]);
 
   function updateLine(key: string, patch: Partial<Line>) {
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));

@@ -168,8 +168,10 @@ test.describe("csv", () => {
     await expect(row).toHaveCount(1);
     // The list summarises a transaction in one line, so the imported line
     // memo is checked where it is actually carried: that row's edit form.
-    await row.locator("summary").first().click();
-    await expect(row.locator('input[name="lineMemo"]').first()).toHaveValue("델리");
+    await row.locator("button").first().click();
+    await expect(page.getByRole("dialog").locator('input[name="lineMemo"]').first()).toHaveValue(
+      "델리",
+    );
   });
 
   test("a headerless file is rejected instead of silently losing its first row", async ({
