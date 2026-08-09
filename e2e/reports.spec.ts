@@ -535,22 +535,23 @@ test.describe("reports", () => {
         },
       ]);
     };
-    await spend(food.id, 750_000, "장보기");
+    await spend(food.id, 300_000, "장보기");
+    await spend(food.id, 150_000, "장보기(주말)");
+    await spend(food.id, 300_000, "커피");
     await spend(transport.id, 250_000, "교통카드");
 
     await page.goto("/income?from=2026-08-01&to=2026-08-31");
     await page.getByRole("link", { name: /식비/ }).click();
     await expect(page).toHaveURL(/accountId=[^&]+&from=2026-08-01&to=2026-08-31/);
-    await expect(page.getByText("장보기")).toBeVisible();
+    await expect(page.getByText("장보기").first()).toBeVisible();
 
-    // "₩750,000" alone does not say whether that is most of the month or
-    // a rounding error, so the account sits among its peers: 750 of the
-    // million spent is 75%.
-    const share = page.getByRole("list", { name: "비중" });
-    await expect(share.locator("li").filter({ hasText: "식비" })).toContainText("75.0%");
-    await expect(share.locator("li").filter({ hasText: "교통비" })).toContainText("25.0%");
-    // The one being read is picked out of the list.
-    await expect(share.locator('li[aria-current="true"]')).toContainText("식비");
+    // What is *inside* 식비, not how 식비 compares with 교통비 — that is
+    // the statement one screen back. Titles are grouped without their
+    // parentheses, so 장보기 and 장보기(주말) are one line.
+    const share = page.getByRole("list", { name: "적요별 비중" });
+    await expect(share.locator("li").filter({ hasText: "장보기" })).toContainText("60.0%");
+    await expect(share.locator("li").filter({ hasText: "커피" })).toContainText("40.0%");
+    await expect(share.locator("li")).toHaveCount(2);
   });
 
   test("the by-item chart is switched on and off from its legend", async ({ page }) => {

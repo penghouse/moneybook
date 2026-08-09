@@ -275,46 +275,46 @@ export async function getAccountFlows(
   ]);
 }
 
-export interface CounterpartyBalance {
-  /** The transaction's 적요, which on a 거래처관리 account names who the money is with. */
+export interface TitleTotal {
+  /** The 적요, read without its parentheses. */
   name: string;
   /** Signed, in the account's own currency's minor units, normal-balance direction. */
   amount: number;
 }
 
 /**
- * One 거래처관리 account's balance broken down by counterparty, biggest
- * first.
+ * One account's own transactions grouped by 적요, biggest first.
  *
- * The counterparty is the transaction's own 적요 — see the note on
- * `accounts.tracksCounterparties` for why that is not a separate field —
- * read without its parentheses, so 「한석상여」 and 「한석상여(리텐션뱉)」
- * are one person rather than two half-balances. Untitled transactions
- * collect under one bucket named by the caller rather than vanishing,
- * since their money is in the account either way.
+ * Two screens ask this, and they are the same question over different
+ * dates:
  *
- * Deliberately **not** bounded by any period the screen happens to be
- * showing. "받을돈 중 맥북에어 몫이 얼마" is a level, and answering it
- * for August alone would report someone as settled up because they
- * happened not to pay this month. `from` exists only to honour an
- * account's own start date.
+ * - **거래처별 잔액** — who the money is still with. A level, so the
+ *   dates are the account's own start to today, never the period the
+ *   screen happens to show: answering it for August alone would report
+ *   someone as settled up because they did not pay this month.
+ * - **적요별 비중** — what the period's spending on this account went
+ *   on. A flow, so the dates *are* the period being read.
  *
- * Zero balances are dropped: a counterparty who has settled up
- * contributes nothing to the total, so removing the row cannot move it —
- * the same test the balance sheet applies to retired accounts.
+ * The 적요 is read without its parentheses (see `bareTitle`), so
+ * 「점심」 and 「점심(회사 앞)」 are one line rather than two halves of
+ * one. Untitled transactions collect under one bucket named by the
+ * caller rather than vanishing, since their money is in the account
+ * either way.
+ *
+ * Zero nets are dropped: a 적요 that comes to nothing contributes
+ * nothing to the total, so removing its row cannot move one.
  */
-export async function getCounterpartyBalances(
+export async function getTitleTotals(
   db: Db,
   params: {
     sectionId: string;
     accountId: string;
     group: AccountGroup;
-    /** The account's start date, when it has one. */
     from?: string | null;
-    asOf: string;
+    to: string;
     untitledLabel: string;
   },
-): Promise<CounterpartyBalance[]> {
+): Promise<TitleTotal[]> {
   const net = sql<number>`sum(case when ${transactionLines.side} = 'left' then ${transactionLines.amount} else -${transactionLines.amount} end)`;
 
   const rows = await db
@@ -326,7 +326,7 @@ export async function getCounterpartyBalances(
         eq(transactions.sectionId, params.sectionId),
         eq(transactionLines.accountId, params.accountId),
         ...(params.from ? [gte(transactions.date, params.from)] : []),
-        lte(transactions.date, params.asOf),
+        lte(transactions.date, params.to),
       ),
     )
     .groupBy(transactions.title);

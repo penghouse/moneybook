@@ -296,8 +296,10 @@ test.describe("budget", () => {
 
     await expect(page).toHaveURL(new RegExp(`accountId=.*from=${month}-01`));
     await expect(page.getByRole("heading", { name: "식비" })).toBeVisible();
-    await expect(page.getByText("점심")).toBeVisible();
-    await expect(page.getByText("저녁")).toBeVisible();
+    // Scoped to the list: the 적요별 비중 card names them too.
+    const ledger = page.getByRole("list").filter({ hasText: "점심" }).first();
+    await expect(ledger.getByText("점심")).toBeVisible();
+    await expect(page.getByText("저녁").first()).toBeVisible();
     await expect(page.getByText("오래된 밥")).toHaveCount(0);
 
     // 식비 has no balance, only a period total — and the total is this

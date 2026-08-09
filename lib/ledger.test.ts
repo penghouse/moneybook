@@ -16,7 +16,7 @@ import {
   assertBalanced,
   getAccountBalances,
   getAccountFlows,
-  getCounterpartyBalances,
+  getTitleTotals,
   getMonthlyBalanceSheet,
   getTitleSuggestions,
   getPeriodTotals,
@@ -859,7 +859,7 @@ describe("getMonthlyBalanceSheet", () => {
   });
 });
 
-describe("getCounterpartyBalances", () => {
+describe("getTitleTotals (거래처별 잔액)", () => {
   let db: Db;
   let ids: Record<string, string>;
 
@@ -889,12 +889,12 @@ describe("getCounterpartyBalances", () => {
     });
 
   const balances = (params: { from?: string | null; asOf?: string } = {}) =>
-    getCounterpartyBalances(db, {
+    getTitleTotals(db, {
       sectionId: SECTION_ID,
       accountId: ids.receivable,
       group: "asset",
       from: params.from,
-      asOf: params.asOf ?? "2026-12-31",
+      to: params.asOf ?? "2026-12-31",
       untitledLabel: "미분류",
     });
 
@@ -967,11 +967,11 @@ describe("getCounterpartyBalances", () => {
       lines: [line("left", ids.food, "KRW", 70_000, 1), line("right", ids.card, "KRW", 70_000, 1)],
     });
 
-    const owed = await getCounterpartyBalances(db, {
+    const owed = await getTitleTotals(db, {
       sectionId: SECTION_ID,
       accountId: ids.card,
       group: "liability",
-      asOf: "2026-12-31",
+      to: "2026-12-31",
       untitledLabel: "미분류",
     });
     expect(owed).toEqual([{ name: "형", amount: 70_000 }]);

@@ -19,8 +19,7 @@ import {
 } from "@/lib/date";
 import {
   findTaggedTransactionIds,
-  getAccountFlows,
-  getCounterpartyBalances,
+  getTitleTotals,
   getRunningBalances,
   getTitleSuggestions,
 } from "@/lib/ledger";
@@ -200,16 +199,16 @@ export default async function Home({
   const balanceCaption = `${isFlow ? t("entry.runningTotal") : t("entry.balance")} · ${filtered ? filtered.name : t("assets.netWorth")}`;
 
   // 거래처관리 계정을 보고 있을 때만. Not bounded by the from/to filter
-  // above it on purpose — see getCounterpartyBalances: who still owes
+  // above it on purpose — see getTitleTotals: who still owes
   // what is a level, and reading it for August alone would report
   // someone as settled up because they happened not to pay this month.
   const counterparties = filtered?.tracksCounterparties
-    ? await getCounterpartyBalances(db, {
+    ? await getTitleTotals(db, {
         sectionId: section.id,
         accountId: filtered.id,
         group: filtered.group,
         from: filtered.activeFrom,
-        asOf: today(section.timezone),
+        to: today(section.timezone),
         untitledLabel: t("accounts.uncategorized"),
       })
     : [];
@@ -333,24 +332,28 @@ export default async function Home({
     : null;
 
   /**
-   * Where the account on screen sits among its peers for this period.
+   * What the period's money on this account went on, by 적요.
    *
-   * "식비 ₩420,000" answers how much; it does not answer whether that is
-   * most of the month's spending or a rounding error next to rent. The
-   * share is only defined against a like-for-like total, so the
-   * comparison is the account's own group over the same dates — expenses
-   * against expenses, never against income or against a transfer.
+   * Not "how does 식비 compare with 교통비" — that is the income
+   * statement, one screen back, and repeating it here would be the same
+   * answer twice. The question this screen can answer and that one
+   * cannot is what is *inside* the figure: 장보기 was two thirds of
+   * August's 식비, 커피 was a tenth.
    *
-   * Only for flow accounts, and only over a real period: a balance is a
-   * level, and 「은행이 자산의 40%」 has nothing to do with the dates in
-   * the filter above it.
+   * Grouped without parentheses, exactly like the 거래처별 잔액 above —
+   * 「점심」 and 「점심(회사 앞)」 are one line, or the biggest thing in
+   * the account arrives split into halves that each look small.
    */
-  const shares =
-    isFlow && from && to
-      ? (await getAccountFlows(db, { sectionId: section.id, from, to }))
-          .filter((f) => f.group === filtered!.group && f.baseAmount > 0)
-          .sort((a, b) => b.baseAmount - a.baseAmount)
-          .map((f) => ({ id: f.accountId, name: f.name, amount: f.baseAmount }))
+  const titleShares =
+    filtered && from && to
+      ? await getTitleTotals(db, {
+          sectionId: section.id,
+          accountId: filtered.id,
+          group: filtered.group,
+          from,
+          to,
+          untitledLabel: t("accounts.uncategorized"),
+        })
       : [];
 
   /** The same filter with one parameter changed — used by the tag chips. */
@@ -568,16 +571,18 @@ export default async function Home({
           </Card>
         )}
 
-        {shares.length > 1 && (
+        {/* A share is only defined over same-signed amounts, so a month
+            with a refund in it falls back to the list of figures rather
+            than drawing a bar whose length lies. */}
+        {titleShares.length > 1 && titleShares.every((s) => s.amount > 0) && (
           <section className="mb-3">
             <SectionLabel>{t("entry.share")}</SectionLabel>
             <Card>
               <CompositionChart
-                slices={shares}
-                currency={section.baseCurrency}
+                slices={titleShares.map((s) => ({ id: s.name, name: s.name, amount: s.amount }))}
+                currency={filtered!.currency}
                 locale={locale}
-                shareLabel={t("assets.share")}
-                highlightId={filtered!.id}
+                shareLabel={t("entry.share")}
               />
             </Card>
           </section>

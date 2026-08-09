@@ -66,29 +66,35 @@ export default async function AssetsPage({
   const { from: periodFrom, to: periodTo } =
     step === "year" ? yearRange(yearOf(asOf)) : monthRange(yearMonthOf(asOf));
 
-  const balances = await getAccountBalances(db, {
-    sectionId: section.id,
-    asOf,
-  });
-
-  // Windows only — the balances themselves come from the ledger and are
-  // never filtered by the catalog.
-  const sectionAccounts = await db.query.accounts.findMany({
-    where: eq(accounts.sectionId, section.id),
-    columns: { id: true, activeFrom: true, activeTo: true },
-  });
-  const windowOf = new Map(sectionAccounts.map((a) => [a.id, a]));
-
   /**
-   * Name, group and 상위 그룹 for every account, in the book's order.
-   * Read by the 상위 그룹 bands below and by the 계산식 menu, which have
-   * to agree about which account is filed where.
+   * Four independent reads, issued together.
+   *
+   * Awaited one after another they were four round trips to a database
+   * that is not in this process — on a deployment that is four times the
+   * latency for no reason, since none of them needs another's answer.
+   * The catalog covers both the 상위 그룹 bands and the 계산식 menu,
+   * which have to agree about which account is filed where.
    */
-  const catalog = await db.query.accounts.findMany({
-    where: eq(accounts.sectionId, section.id),
-    orderBy: asc(accounts.sortOrder),
-    columns: { id: true, name: true, group: true, category: true },
-  });
+  const [balances, sectionAccounts, catalog, fx] = await Promise.all([
+    getAccountBalances(db, { sectionId: section.id, asOf }),
+    // Windows only — the balances themselves come from the ledger and
+    // are never filtered by the catalog.
+    db.query.accounts.findMany({
+      where: eq(accounts.sectionId, section.id),
+      columns: { id: true, activeFrom: true, activeTo: true },
+    }),
+    db.query.accounts.findMany({
+      where: eq(accounts.sectionId, section.id),
+      orderBy: asc(accounts.sortOrder),
+      columns: { id: true, name: true, group: true, category: true, tracksCounterparties: true },
+    }),
+    getUnrealizedFx(db, {
+      sectionId: section.id,
+      baseCurrency: section.baseCurrency,
+      asOf,
+    }),
+  ]);
+  const windowOf = new Map(sectionAccounts.map((a) => [a.id, a]));
 
   /**
    * Retired accounts that have been emptied out, folded away.
@@ -123,11 +129,6 @@ export default async function AssetsPage({
   const visibleAssets = assets.filter((a) => !retired(a));
   const visibleLiabilities = liabilities.filter((a) => !retired(a));
 
-  const fx = await getUnrealizedFx(db, {
-    sectionId: section.id,
-    baseCurrency: section.baseCurrency,
-    asOf,
-  });
   const fxByAccountId = new Map(fx.map((f) => [f.accountId, f]));
   const hasUnrealized = fx.some((f) => !f.rateUnavailable && f.unrealized !== 0);
 
@@ -160,6 +161,9 @@ export default async function AssetsPage({
    * organised into 유동성자금 / 투자 / 묶인돈 showed those groupings
    * everywhere except the screen they matter most on.
    */
+  const tracksCounterparties = new Set(
+    catalog.filter((a) => a.tracksCounterparties).map((a) => a.id),
+  );
   const categoryOf = new Map(catalog.map((a) => [a.id, a.category ?? null] as const));
   const hasCategories = catalog.some((a) => a.category);
 
@@ -193,7 +197,31 @@ export default async function AssetsPage({
           // while the list is one period — the link answers what
           // moved it lately, not how it got to where it is.
           href={`/?accountId=${a.accountId}&from=${periodFrom}&to=${periodTo}`}
-          label={a.name}
+          label={
+            tracksCounterparties.has(a.accountId) ? (
+              <span className="inline-flex items-center gap-1.5">
+                {a.name}
+                {/* Two figures: this account's balance is money that
+                    belongs to a *someone*, and opening it splits the
+                    figure by who. A mark rather than a word — the row's
+                    job is the name and the number, and 「거래처 관리」
+                    spelled out beside every one would crowd both. */}
+                <svg
+                  viewBox="0 0 16 16"
+                  className="fill-ink-faint size-3.5 shrink-0"
+                  role="img"
+                  aria-label={t("accounts.tracksCounterparties")}
+                >
+                  <circle cx="5.5" cy="5" r="2.5" />
+                  <circle cx="11.5" cy="5.5" r="2" />
+                  <path d="M1 14c0-2.5 2-4.2 4.5-4.2S10 11.5 10 14z" />
+                  <path d="M11 9.5c2.2 0 4 1.5 4 3.6v.9h-3.6c0-1.7-.5-3.3-1.4-4.4z" />
+                </svg>
+              </span>
+            ) : (
+              a.name
+            )
+          }
           value={<Money amount={a.amount} currency={a.currency} locale={locale} />}
           // Only foreign-currency accounts carry a book/current
           // split; for base-currency accounts the two are the same

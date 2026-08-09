@@ -180,7 +180,7 @@ const en: Record<keyof typeof ko, string> = {
   "entry.noCounterparties": "No counterparty has an outstanding balance.",
   "entry.filters": "Search & filter",
   "entry.details": "Details",
-  "entry.share": "Share of the period",
+  "entry.share": "By title",
   "entry.balance": "Balance",
   "entry.runningTotal": "Running total",
   "entry.rate": "Rate",
