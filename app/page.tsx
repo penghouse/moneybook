@@ -95,9 +95,9 @@ export default async function Home({
     orderBy: asc(accounts.sortOrder),
   });
 
-  // Deliberately not narrowed by whatever the list is filtered to: the
-  // suggestions are for what you are about to type, not for what you are
-  // currently looking at.
+  // Deliberately not narrowed by whatever the list is filtered to, nor
+  // by how far back it reaches: the suggestions are for what you are
+  // about to type, not for what you are looking at.
   const suggestions = await getTitleSuggestions(db, { sectionId: section.id });
 
   const labels: EntryFormLabels = {

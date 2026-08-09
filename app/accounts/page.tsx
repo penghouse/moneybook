@@ -1,7 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db/client";
-import { accounts, type Account, type AccountGroup } from "@/db/schema";
+import { accounts, ACCOUNT_GROUPS, type Account, type AccountGroup } from "@/db/schema";
 import { getTranslations, type TranslationKey } from "@/i18n";
 import { canTrackCounterparties, isClosedBy } from "@/lib/accounts";
 import { parseGroupOrder } from "@/lib/account-groups";
@@ -22,6 +22,7 @@ import {
   SectionLabel,
 } from "../_components/ui";
 import { SubmitButton } from "../_components/submit-button";
+import { NewAccountFields } from "./new-account-fields";
 import {
   createAccountAction,
   deleteAccountAction,
@@ -92,10 +93,30 @@ export default async function AccountsPage({
   // Suggestions for the category field. Free text is what makes a typo
   // able to split "먹는 것" in two, and offering what already exists is
   // the cheapest thing that stops it.
-  const knownCategories = [
-    ...new Set(allAccounts.map((a) => a.category).filter((c): c is string => !!c)),
-  ].sort();
-  const categoryListId = "account-categories";
+  // Per 분류, not per book. A 상위 그룹 groups accounts *within* a
+  // 분류 — 「먹는 것」 is a way of arranging 비용 and means nothing under
+  // 자산 — so offering every book-wide value here was noise on the good
+  // days and, on a mistyped one, a 상위 그룹 straddling two 분류.
+  const categoriesByGroup = new Map<AccountGroup, string[]>(
+    groupOrder.map((group) => [
+      group,
+      [
+        ...new Set(
+          allAccounts
+            .filter((a) => a.group === group)
+            .map((a) => a.category)
+            .filter((c): c is string => !!c),
+        ),
+      ].sort(),
+    ]),
+  );
+  const CATEGORY_LIST_PREFIX = "account-categories-";
+  const categoryListId = (group: AccountGroup) => `${CATEGORY_LIST_PREFIX}${group}`;
+
+  // The dictionary lives on the server, so the labels travel as values.
+  const groupLabels = Object.fromEntries(
+    ACCOUNT_GROUPS.map((group) => [group, t(GROUP_LABEL_KEY[group])]),
+  ) as Record<AccountGroup, string>;
 
   return (
     <div className="space-y-4">
@@ -115,33 +136,20 @@ export default async function AccountsPage({
           action={createAccountAction}
           className="grid gap-3 px-4 py-3 md:grid-cols-[8rem_1fr_1fr_6rem_auto] md:items-end"
         >
-          <div className="min-w-0">
-            <Label>{t("accounts.group")}</Label>
-            <select name="group" defaultValue="expense" className={controlClass}>
-              {groupOrder.map((group) => (
-                <option key={group} value={group}>
-                  {t(GROUP_LABEL_KEY[group])}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="min-w-0">
+          <NewAccountFields
+            groups={groupOrder}
+            groupLabels={groupLabels}
+            categoryListPrefix={CATEGORY_LIST_PREFIX}
+            labels={{ group: t("accounts.group"), category: t("accounts.category") }}
+            placeholder={t("accounts.categoryPlaceholder")}
+          />
+          <div className="min-w-0 md:order-[-1]">
             <Label>{t("common.name")}</Label>
             <input
               type="text"
               name="name"
               required
               placeholder={t("accounts.namePlaceholder")}
-              className={controlClass}
-            />
-          </div>
-          <div className="min-w-0">
-            <Label>{t("accounts.category")}</Label>
-            <input
-              type="text"
-              name="category"
-              list={categoryListId}
-              placeholder={t("accounts.categoryPlaceholder")}
               className={controlClass}
             />
           </div>
@@ -161,12 +169,14 @@ export default async function AccountsPage({
         </form>
       </Card>
 
-      {/* One list for every category field on the page. */}
-      <datalist id={categoryListId}>
-        {knownCategories.map((category) => (
-          <option key={category} value={category} />
-        ))}
-      </datalist>
+      {/* One list per 분류; the fields above point at whichever applies. */}
+      {[...categoriesByGroup].map(([group, categories]) => (
+        <datalist key={group} id={categoryListId(group)}>
+          {categories.map((category) => (
+            <option key={category} value={category} />
+          ))}
+        </datalist>
+      ))}
 
       {groupOrder.map((group, groupIndex) => {
         const list = byGroup.get(group) ?? [];
@@ -211,7 +221,7 @@ export default async function AccountsPage({
                     <div key={category ?? "\u0000uncategorized"}>
                       {/* Only worth a heading once something is filed —
                         a lone "미분류" band over every account is noise. */}
-                      {knownCategories.length > 0 && (
+                      {(categoriesByGroup.get(group)?.length ?? 0) > 0 && (
                         <h3 className="bg-sunken border-rule-soft flex items-center gap-2 border-t px-4 py-1.5 first:border-t-0">
                           <span className="text-ink-muted min-w-0 truncate text-xs font-semibold">
                             {category ?? t("accounts.uncategorized")}
@@ -341,7 +351,7 @@ export default async function AccountsPage({
                                       <input
                                         type="text"
                                         name="category"
-                                        list={categoryListId}
+                                        list={categoryListId(account.group)}
                                         defaultValue={account.category ?? ""}
                                         placeholder={t("accounts.categoryPlaceholder")}
                                         className={controlClass}

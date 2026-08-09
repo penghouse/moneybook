@@ -1,16 +1,4 @@
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  gte,
-  inArray,
-  like as like_,
-  lte,
-  or,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+import { and, asc, eq, gte, inArray, like as like_, lte, or, sql, type SQL } from "drizzle-orm";
 import {
   accounts,
   transactionLines,
@@ -24,6 +12,7 @@ import { monthRange, yearRange } from "./date";
 import { getOrFetchRate, RateUnavailableError } from "./exchange-rates";
 import { convertMinorUnits } from "./money";
 import { hasTag, normalizeTag } from "./tags";
+import { bareTitle } from "./titles";
 
 const CREDIT_NORMAL_GROUPS: ReadonlySet<AccountGroup> = new Set(["liability", "equity", "income"]);
 
@@ -643,19 +632,25 @@ export interface TitleSuggestion {
 }
 
 /**
- * Distinct 적요 from recent transactions, most recent first, each
- * carrying the pair of accounts it was last posted between.
+ * Distinct 적요 from across the book's whole history, most recently used
+ * first, each carrying the pair of accounts it was last posted between.
  *
  * Most entries are repeats — 「점심」 out of 식비 and onto 신용카드 for
  * the hundredth time — so the 적요 is enough to know the rest. Picking
  * one fills the two sides and leaves the amount alone, which is the only
  * part that actually differs.
  *
- * Reduced in JS over a window of recent transactions rather than by a
- * GROUP BY: "the accounts of the *latest* transaction with this title"
- * is a per-group argmax, which SQLite can only express with a
- * correlated subquery or a window function, and the window here is small
- * enough that reading it is cheaper than either.
+ * All of history, not a window of recent rows: a 적요 used twice a year
+ * is exactly the one worth being reminded of, and it is the one a
+ * "last N transactions" scan loses first. The window function picks each
+ * title's latest transaction in the database rather than making the
+ * caller read every row to find them, so the cost does not grow with how
+ * far back the book goes — only with how many distinct 적요 it holds.
+ *
+ * Titles are offered without their parentheses (see `bareTitle`), which
+ * also folds 「커피 (스벅)」 and 「커피 (투썸)」 into one suggestion —
+ * the bracket is what differs between two of the same thing, so keeping
+ * it would fill the list with near-duplicates.
  *
  * Splits contribute their 적요 but no accounts — a suggestion cannot say
  * which of four legs to fill, and half-filling a form is worse than
@@ -663,29 +658,69 @@ export interface TitleSuggestion {
  */
 export async function getTitleSuggestions(
   db: Db,
-  params: { sectionId: string; scan?: number; limit?: number },
+  params: { sectionId: string; limit?: number },
 ): Promise<TitleSuggestion[]> {
-  const rows = await db.query.transactions.findMany({
-    where: eq(transactions.sectionId, params.sectionId),
-    orderBy: [desc(transactions.date), desc(transactions.createdAt), desc(transactions.id)],
-    limit: params.scan ?? 300,
-    columns: { title: true },
-    with: { lines: { columns: { side: true, accountId: true } } },
-  });
+  const limit = params.limit ?? 50;
+
+  // Deduped on the stored title in SQL, then again on the bare one in JS
+  // — SQL cannot strip the brackets, so it is asked for more rows than
+  // are wanted and the second pass closes the gap.
+  const latest = await db.all<{ id: string; title: string }>(sql`
+    SELECT id, title FROM (
+      SELECT
+        ${transactions.id} AS id,
+        ${transactions.title} AS title,
+        ${transactions.date} AS date,
+        ${transactions.createdAt} AS created_at,
+        ROW_NUMBER() OVER (
+          PARTITION BY ${transactions.title}
+          ORDER BY ${transactions.date} DESC, ${transactions.createdAt} DESC, ${transactions.id} DESC
+        ) AS rn
+      FROM ${transactions}
+      WHERE ${transactions.sectionId} = ${params.sectionId} AND trim(${transactions.title}) <> ''
+    )
+    WHERE rn = 1
+    ORDER BY date DESC, created_at DESC
+    LIMIT ${limit * 4}
+  `);
+  if (latest.length === 0) return [];
+
+  const lines = await db
+    .select({
+      transactionId: transactionLines.transactionId,
+      side: transactionLines.side,
+      accountId: transactionLines.accountId,
+    })
+    .from(transactionLines)
+    .where(
+      inArray(
+        transactionLines.transactionId,
+        latest.map((row) => row.id),
+      ),
+    );
+
+  const linesById = new Map<string, { side: LineSide; accountId: string }[]>();
+  for (const line of lines) {
+    const bucket = linesById.get(line.transactionId) ?? [];
+    bucket.push(line);
+    linesById.set(line.transactionId, bucket);
+  }
 
   const byTitle = new Map<string, TitleSuggestion>();
-  for (const row of rows) {
-    const title = row.title.trim();
+  for (const row of latest) {
+    const title = bareTitle(row.title);
     if (!title || byTitle.has(title)) continue;
-    const left = row.lines.filter((l) => l.side === "left");
-    const right = row.lines.filter((l) => l.side === "right");
+
+    const rowLines = linesById.get(row.id) ?? [];
+    const left = rowLines.filter((l) => l.side === "left");
+    const right = rowLines.filter((l) => l.side === "right");
     const simple = left.length === 1 && right.length === 1;
     byTitle.set(title, {
       title,
       leftAccountId: simple ? left[0].accountId : null,
       rightAccountId: simple ? right[0].accountId : null,
     });
-    if (byTitle.size >= (params.limit ?? 50)) break;
+    if (byTitle.size >= limit) break;
   }
   return [...byTitle.values()];
 }

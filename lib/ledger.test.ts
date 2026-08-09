@@ -18,6 +18,7 @@ import {
   getAccountFlows,
   getCounterpartyBalances,
   getMonthlyBalanceSheet,
+  getTitleSuggestions,
   getPeriodTotals,
   getRunningBalances,
   getUnrealizedFx,
@@ -916,5 +917,83 @@ describe("getCounterpartyBalances", () => {
       untitledLabel: "미분류",
     });
     expect(owed).toEqual([{ name: "형", amount: 70_000 }]);
+  });
+});
+
+describe("getTitleSuggestions", () => {
+  let db: Db;
+  let ids: Record<string, string>;
+
+  beforeEach(async () => {
+    db = await createTestDb();
+    ids = await seedSection(db);
+  });
+
+  const spend = (date: string, title: string, expense = "food") =>
+    postTransaction(db, {
+      date,
+      title,
+      lines: [
+        line("left", ids[expense], "KRW", 10_000, 1),
+        line("right", ids.card, "KRW", 10_000, 1),
+      ],
+    });
+
+  it("offers each 적요 once, most recently used first, with its last pair of accounts", async () => {
+    await spend("2026-01-05", "점심");
+    await spend("2026-02-05", "택시", "supplies");
+    await spend("2026-03-05", "점심");
+
+    expect(await getTitleSuggestions(db, { sectionId: SECTION_ID })).toEqual([
+      { title: "점심", leftAccountId: ids.food, rightAccountId: ids.card },
+      { title: "택시", leftAccountId: ids.supplies, rightAccountId: ids.card },
+    ]);
+  });
+
+  // The whole point of reaching for the latest row per title in SQL: a
+  // 적요 used twice a year is exactly the one worth being reminded of,
+  // and it is the first thing a "last N transactions" scan loses.
+  it("still offers a 적요 buried under a hundred newer transactions", async () => {
+    await spend("2020-01-01", "명절 선물", "supplies");
+    for (let i = 0; i < 120; i++) {
+      await spend(`2026-01-${String((i % 28) + 1).padStart(2, "0")}`, `잡비 ${i}`);
+    }
+
+    const titles = (await getTitleSuggestions(db, { sectionId: SECTION_ID, limit: 500 })).map(
+      (s) => s.title,
+    );
+    expect(titles).toContain("명절 선물");
+    expect(titles.at(-1)).toBe("명절 선물");
+  });
+
+  it("folds bracketed variants into one and drops the bracket", async () => {
+    await spend("2026-01-05", "커피 (스벅)");
+    await spend("2026-02-05", "커피 (투썸)");
+
+    expect(await getTitleSuggestions(db, { sectionId: SECTION_ID })).toEqual([
+      { title: "커피", leftAccountId: ids.food, rightAccountId: ids.card },
+    ]);
+  });
+
+  it("offers a split's 적요 but no accounts to fill from it", async () => {
+    await postTransaction(db, {
+      date: "2026-01-05",
+      title: "장보기",
+      lines: [
+        line("left", ids.food, "KRW", 30_000, 1),
+        line("left", ids.supplies, "KRW", 15_000, 1),
+        line("right", ids.card, "KRW", 45_000, 1),
+      ],
+    });
+
+    expect(await getTitleSuggestions(db, { sectionId: SECTION_ID })).toEqual([
+      { title: "장보기", leftAccountId: null, rightAccountId: null },
+    ]);
+  });
+
+  it("skips untitled transactions and returns nothing for an empty book", async () => {
+    expect(await getTitleSuggestions(db, { sectionId: SECTION_ID })).toEqual([]);
+    await spend("2026-01-05", "   ");
+    expect(await getTitleSuggestions(db, { sectionId: SECTION_ID })).toEqual([]);
   });
 });
