@@ -89,6 +89,9 @@ const en: Record<keyof typeof ko, string> = {
   "accounts.activeHint":
     "Leave blank for no bound. An end date takes the account out of the entry form and the budget, and folds it away on the balance sheet once its balance is zero. Past transactions and balances are untouched.",
   "accounts.activeRangeError": "The end date is before the start date.",
+  "accounts.tracksCounterparties": "Track counterparties",
+  "accounts.tracksCounterpartiesHint":
+    "Turn this on for accounts where who the money is with matters, like receivables and payables. Opening the account then breaks its balance down by counterparty, taking each transaction's title as the name.",
 
   "settings.sectionName": "Book name",
   "settings.baseCurrency": "Base currency",
@@ -167,6 +170,10 @@ const en: Record<keyof typeof ko, string> = {
   "entry.andMore": "+{n}",
   "entry.duplicate": "Duplicate",
   "entry.duplicateNotice": "A copy. Check it over — saving adds it as a new transaction.",
+  "entry.counterparties": "By counterparty",
+  "entry.counterpartiesHint":
+    "Balances from the account's start date to today, whatever period is filtered above.",
+  "entry.noCounterparties": "No counterparty has an outstanding balance.",
   "entry.filters": "Search & filter",
   "entry.details": "Details",
   "entry.balance": "Balance",

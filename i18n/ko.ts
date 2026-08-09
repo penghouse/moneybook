@@ -87,6 +87,9 @@ const ko = {
   "accounts.activeHint":
     "비워 두면 제한 없음. 사용 끝을 넣으면 입력 폼과 예산에서 빠지고, 잔액이 0이면 자산현황에서도 접힙니다. 지난 거래와 잔액은 그대로 남습니다.",
   "accounts.activeRangeError": "사용 끝이 사용 시작보다 빠릅니다.",
+  "accounts.tracksCounterparties": "거래처 관리",
+  "accounts.tracksCounterpartiesHint":
+    "받을돈·줄돈처럼 누구와의 돈인지가 중요한 계정에 켜세요. 이 계정을 열면 적요를 거래처로 삼아 잔액을 나눠 보여줍니다.",
 
   "settings.sectionName": "가계부 이름",
   "settings.baseCurrency": "기준통화",
@@ -163,6 +166,9 @@ const ko = {
   "entry.andMore": "외 {n}",
   "entry.duplicate": "복제",
   "entry.duplicateNotice": "복제한 내용입니다. 확인 후 저장하면 새 거래로 추가됩니다.",
+  "entry.counterparties": "거래처별 잔액",
+  "entry.counterpartiesHint": "조회 기간과 무관하게 계정 시작일부터 오늘까지의 잔액입니다.",
+  "entry.noCounterparties": "남은 잔액이 있는 거래처가 없습니다.",
   "entry.filters": "검색·필터",
   "entry.details": "세부내역",
   "entry.balance": "잔액",

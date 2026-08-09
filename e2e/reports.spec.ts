@@ -171,6 +171,79 @@ test.describe("reports", () => {
     await expect(page.getByText("잔액 · 신용카드")).toBeVisible();
   });
 
+  test("a 거래처관리 account breaks its balance down by counterparty", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const [receivable] = await db
+      .insert(accounts)
+      .values({
+        sectionId: section.id,
+        group: "asset",
+        name: "받을돈",
+        currency: "KRW",
+        sortOrder: 200,
+        tracksCounterparties: true,
+      })
+      .returning();
+    const bank = await db.query.accounts.findFirst({
+      where: and(eq(accounts.sectionId, section.id), eq(accounts.name, "은행")),
+    });
+
+    const lend = async (date: string, who: string, amount: number, back = false) => {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date, title: who })
+        .returning();
+      const [to, from] = back ? [bank!.id, receivable.id] : [receivable.id, bank!.id];
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: to,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: from,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+      ]);
+    };
+
+    await lend("2026-03-01", "맥북에어", 500_000);
+    await lend("2026-04-01", "가람미용기기", 800_000);
+    await lend("2026-05-01", "가람미용기기", 300_000, true);
+    await lend("2026-06-01", "한석핸드폰", 200_000);
+
+    // Reached the way the user reaches it: the balance sheet row.
+    await page.goto("/assets?asOf=2026-08-06");
+    await page.getByRole("link", { name: /받을돈/ }).click();
+
+    // Asserted row by row: two counterparties legitimately land on the
+    // same amount here, so a page-wide text match would be ambiguous —
+    // and that 800,000 minus 300,000 nets to the same 500,000 as the
+    // untouched 맥북에어 is the point of the test.
+    const row = (who: string) =>
+      page.getByRole("list", { name: "거래처별 잔액" }).locator("li").filter({ hasText: who });
+    await expect(row("맥북에어")).toContainText("₩500,000");
+    await expect(row("가람미용기기")).toContainText("₩500,000");
+    await expect(row("한석핸드폰")).toContainText("₩200,000");
+    // Netted, not listed twice.
+    await expect(row("가람미용기기")).toHaveCount(1);
+    await expect(row("가람미용기기")).not.toContainText("₩800,000");
+
+    // August alone contains none of these transactions, and the
+    // breakdown must not be narrowed by it — that would report everyone
+    // as settled up.
+    await expect(page.getByText("거래가 없습니다.")).toBeVisible();
+  });
+
   test("income page shows this month's income/expense/net and a trend chart", async ({ page }) => {
     const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
     const byName = (name: string) =>

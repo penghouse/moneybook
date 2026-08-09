@@ -147,6 +147,7 @@ describe("accounts csv round trip", () => {
       activeTo: "",
       memo: "",
       category: "먹는 것",
+      tracksCounterparties: "",
     },
     {
       group: "asset",
@@ -156,6 +157,7 @@ describe("accounts csv round trip", () => {
       activeTo: "2024-03-15",
       memo: "환전용",
       category: "",
+      tracksCounterparties: "1",
     },
   ];
 

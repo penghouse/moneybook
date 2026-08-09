@@ -8,8 +8,9 @@ import { activeOn } from "@/lib/accounts";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
 import { today } from "@/lib/date";
-import { getRunningBalances } from "@/lib/ledger";
+import { getCounterpartyBalances, getRunningBalances } from "@/lib/ledger";
 import { formatMoney, toMajorUnits } from "@/lib/money";
+import { CompositionChart } from "./_components/composition-chart";
 import { EntryForm, type EntryFormLabels } from "./_components/entry-form";
 import { SubmitButton } from "./_components/submit-button";
 import {
@@ -17,6 +18,8 @@ import {
   Card,
   controlClass,
   EmptyState,
+  Hint,
+  KeyValueRow,
   Label,
   Money,
   PageHeader,
@@ -141,6 +144,23 @@ export default async function Home({
   const balanceByTransactionId = new Map(runningBalances.map((b) => [b.transactionId, b] as const));
   const balanceCaption = `${t("entry.balance")} · ${filtered ? filtered.name : t("assets.netWorth")}`;
 
+  // 거래처관리 계정을 보고 있을 때만. Not bounded by the from/to filter
+  // above it on purpose — see getCounterpartyBalances: who still owes
+  // what is a level, and reading it for August alone would report
+  // someone as settled up because they happened not to pay this month.
+  const counterparties = filtered?.tracksCounterparties
+    ? await getCounterpartyBalances(db, {
+        sectionId: section.id,
+        accountId: filtered.id,
+        group: filtered.group,
+        from: filtered.activeFrom,
+        asOf: today(section.timezone),
+        untitledLabel: t("accounts.uncategorized"),
+      })
+    : [];
+  const counterpartyTotal = counterparties.reduce((sum, c) => sum + c.amount, 0);
+  const showShares = counterpartyTotal > 0 && counterparties.every((c) => c.amount > 0);
+
   /**
    * The entry form's picker offers what can be posted to *today*, but a
    * form prefilled from an old transaction must still be able to show
@@ -247,6 +267,44 @@ export default async function Home({
           initial={copy}
         />
       </div>
+
+      {filtered?.tracksCounterparties && (
+        <section>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+            <SectionLabel>{t("entry.counterparties")}</SectionLabel>
+            <span className="tnum text-ink-faint text-xs">
+              {formatMoney(counterpartyTotal, filtered.currency, locale)}
+            </span>
+          </div>
+          <Card>
+            {counterparties.length === 0 ? (
+              <EmptyState>{t("entry.noCounterparties")}</EmptyState>
+            ) : showShares ? (
+              <CompositionChart
+                slices={counterparties.map((c) => ({ id: c.name, name: c.name, amount: c.amount }))}
+                currency={filtered.currency}
+                locale={locale}
+                shareLabel={t("entry.counterparties")}
+              />
+            ) : (
+              // A share is only defined over same-signed amounts, and a
+              // counterparty *can* sit the other way round — an
+              // overpayment on a receivable. Rather than draw a bar whose
+              // length lies, those fall back to a plain list: every
+              // counterparty is still there with its balance, which is
+              // what was asked for.
+              counterparties.map((c) => (
+                <KeyValueRow
+                  key={c.name}
+                  label={c.name}
+                  value={<Money amount={c.amount} currency={filtered.currency} locale={locale} />}
+                />
+              ))
+            )}
+          </Card>
+          <Hint>{t("entry.counterpartiesHint")}</Hint>
+        </section>
+      )}
 
       <section>
         {/* The balance column is a bare number without this — the reader

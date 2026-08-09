@@ -177,6 +177,75 @@ export async function getAccountFlows(
   ]);
 }
 
+export interface CounterpartyBalance {
+  /** The transaction's 적요, which on a 거래처관리 account names who the money is with. */
+  name: string;
+  /** Signed, in the account's own currency's minor units, normal-balance direction. */
+  amount: number;
+}
+
+/**
+ * One 거래처관리 account's balance broken down by counterparty, biggest
+ * first.
+ *
+ * The counterparty is the transaction's own 적요 — see the note on
+ * `accounts.tracksCounterparties` for why that is not a separate field.
+ * Untitled transactions collect under one bucket named by the caller
+ * rather than vanishing, since their money is in the account either way.
+ *
+ * Deliberately **not** bounded by any period the screen happens to be
+ * showing. "받을돈 중 맥북에어 몫이 얼마" is a level, and answering it
+ * for August alone would report someone as settled up because they
+ * happened not to pay this month. `from` exists only to honour an
+ * account's own start date.
+ *
+ * Zero balances are dropped: a counterparty who has settled up
+ * contributes nothing to the total, so removing the row cannot move it —
+ * the same test the balance sheet applies to retired accounts.
+ */
+export async function getCounterpartyBalances(
+  db: Db,
+  params: {
+    sectionId: string;
+    accountId: string;
+    group: AccountGroup;
+    /** The account's start date, when it has one. */
+    from?: string | null;
+    asOf: string;
+    untitledLabel: string;
+  },
+): Promise<CounterpartyBalance[]> {
+  const net = sql<number>`sum(case when ${transactionLines.side} = 'left' then ${transactionLines.amount} else -${transactionLines.amount} end)`;
+
+  const rows = await db
+    .select({ title: transactions.title, net })
+    .from(transactionLines)
+    .innerJoin(transactions, eq(transactionLines.transactionId, transactions.id))
+    .where(
+      and(
+        eq(transactions.sectionId, params.sectionId),
+        eq(transactionLines.accountId, params.accountId),
+        ...(params.from ? [gte(transactions.date, params.from)] : []),
+        lte(transactions.date, params.asOf),
+      ),
+    )
+    .groupBy(transactions.title);
+
+  // Merged after the query rather than in it: an empty title and a title
+  // of whitespace are the same counterparty to a reader, and SQL would
+  // group them apart.
+  const byName = new Map<string, number>();
+  for (const row of rows) {
+    const name = row.title.trim() || params.untitledLabel;
+    byName.set(name, (byName.get(name) ?? 0) + normalBalance(params.group, row.net));
+  }
+
+  return [...byName.entries()]
+    .map(([name, amount]) => ({ name, amount }))
+    .filter((b) => b.amount !== 0)
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+}
+
 export interface PeriodTotal {
   /** '2026-08' or '2026', matching what was asked for. */
   period: string;

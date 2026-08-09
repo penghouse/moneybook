@@ -3,7 +3,7 @@ import Link from "next/link";
 import { db } from "@/db/client";
 import { accounts, type Account, type AccountGroup } from "@/db/schema";
 import { getTranslations, type TranslationKey } from "@/i18n";
-import { isClosedBy } from "@/lib/accounts";
+import { canTrackCounterparties, isClosedBy } from "@/lib/accounts";
 import { parseGroupOrder } from "@/lib/account-groups";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
@@ -340,11 +340,33 @@ export default async function AccountsPage({
                                       className={`${controlClass} tnum`}
                                     />
                                   </div>
+                                  {/* Asset and liability only: a
+                                      counterparty balance is money still
+                                      outstanding, and an expense account
+                                      has no balance to break down. */}
+                                  {canTrackCounterparties(account.group) && (
+                                    <label
+                                      data-control
+                                      className="col-span-full flex min-h-11 items-center gap-2 text-sm"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        name="tracksCounterparties"
+                                        value="1"
+                                        defaultChecked={account.tracksCounterparties}
+                                        className="accent-accent size-5"
+                                      />
+                                      {t("accounts.tracksCounterparties")}
+                                    </label>
+                                  )}
                                   <SubmitButton variant="primary" pendingLabel={t("common.saving")}>
                                     {t("common.save")}
                                   </SubmitButton>
                                 </form>
                                 <Hint>{t("accounts.activeHint")}</Hint>
+                                {canTrackCounterparties(account.group) && (
+                                  <Hint>{t("accounts.tracksCounterpartiesHint")}</Hint>
+                                )}
 
                                 <div className="flex flex-wrap gap-2">
                                   <form action={toggleArchiveAction}>

@@ -35,6 +35,7 @@ export async function GET() {
       a.activeTo ?? "",
       a.memo ?? "",
       a.category ?? "",
+      a.tracksCounterparties ? "1" : "",
     ],
   });
 }

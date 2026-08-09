@@ -6,6 +6,7 @@ import {
   type RateSource,
   type TransactionKind,
 } from "@/db/schema";
+import { canTrackCounterparties } from "./accounts";
 import { parseBudgetPeriod, type BudgetPeriodRef } from "./budgets";
 import { assertBalanced, type BalanceLineInput } from "./ledger";
 import { minorUnitDigits, toMinorUnits } from "./money";
@@ -63,6 +64,7 @@ export interface AccountRowCheck {
   /** Both null unless the row carried a window; blank means unbounded. */
   activeFrom?: string | null;
   activeTo?: string | null;
+  tracksCounterparties?: boolean;
 }
 
 /** Blank is a legitimate value here (unbounded), so only a malformed one is an error. */
@@ -115,6 +117,11 @@ export function checkAccountRow(
     status: existingNames.has(name) ? "existing" : "new",
     activeFrom: from.date,
     activeTo: to.date,
+    // Anything truthy in the cell means on, but only where the group can
+    // carry it — the flag is a property of asset and liability accounts,
+    // and a hand-edited file must not be able to set it on a 식비.
+    tracksCounterparties:
+      row.tracksCounterparties.trim() !== "" && canTrackCounterparties(row.group as AccountGroup),
   };
 }
 

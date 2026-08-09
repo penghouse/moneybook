@@ -160,6 +160,7 @@ describe("checkAccountRow", () => {
       activeTo: "",
       memo: "",
       category: "",
+      tracksCounterparties: "",
       ...overrides,
     };
   }

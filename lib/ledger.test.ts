@@ -16,6 +16,7 @@ import {
   assertBalanced,
   getAccountBalances,
   getAccountFlows,
+  getCounterpartyBalances,
   getMonthlyBalanceSheet,
   getPeriodTotals,
   getRunningBalances,
@@ -41,6 +42,7 @@ async function seedSection(db: Db) {
 
   const chart: { key: string; group: AccountGroup; name: string; currency: string }[] = [
     { key: "bank", group: "asset", name: "국민은행", currency: "KRW" },
+    { key: "receivable", group: "asset", name: "받을돈", currency: "KRW" },
     { key: "usd", group: "asset", name: "달러예금", currency: "USD" },
     { key: "card", group: "liability", name: "신용카드", currency: "KRW" },
     { key: "opening", group: "equity", name: "기초자본", currency: "KRW" },
@@ -814,5 +816,105 @@ describe("getMonthlyBalanceSheet", () => {
 
   it("returns nothing for an empty month list", async () => {
     expect(await getMonthlyBalanceSheet(db, { sectionId: SECTION_ID, months: [] })).toEqual([]);
+  });
+});
+
+describe("getCounterpartyBalances", () => {
+  let db: Db;
+  let ids: Record<string, string>;
+
+  beforeEach(async () => {
+    db = await createTestDb();
+    ids = await seedSection(db);
+  });
+
+  const lend = (date: string, who: string, amount: number) =>
+    postTransaction(db, {
+      date,
+      title: who,
+      lines: [
+        line("left", ids.receivable, "KRW", amount, 1),
+        line("right", ids.bank, "KRW", amount, 1),
+      ],
+    });
+
+  const repaid = (date: string, who: string, amount: number) =>
+    postTransaction(db, {
+      date,
+      title: who,
+      lines: [
+        line("left", ids.bank, "KRW", amount, 1),
+        line("right", ids.receivable, "KRW", amount, 1),
+      ],
+    });
+
+  const balances = (params: { from?: string | null; asOf?: string } = {}) =>
+    getCounterpartyBalances(db, {
+      sectionId: SECTION_ID,
+      accountId: ids.receivable,
+      group: "asset",
+      from: params.from,
+      asOf: params.asOf ?? "2026-12-31",
+      untitledLabel: "미분류",
+    });
+
+  it("nets each counterparty's transactions and sorts by size", async () => {
+    await lend("2026-03-01", "맥북에어", 500_000);
+    await lend("2026-04-01", "가람미용기기", 800_000);
+    await repaid("2026-05-01", "가람미용기기", 300_000);
+    await lend("2026-06-01", "한석핸드폰", 200_000);
+
+    expect(await balances()).toEqual([
+      { name: "가람미용기기", amount: 500_000 },
+      { name: "맥북에어", amount: 500_000 },
+      { name: "한석핸드폰", amount: 200_000 },
+    ]);
+  });
+
+  // The whole reason this is not filtered by the screen's period: asking
+  // "who still owes me" for May alone would answer that 맥북에어 is
+  // settled up, when they simply did not pay that month.
+  it("is not narrowed by any period, only by the account's own start", async () => {
+    await lend("2026-03-01", "맥북에어", 500_000);
+    await lend("2026-05-01", "한석핸드폰", 200_000);
+
+    expect(await balances({ from: "2026-04-01" })).toEqual([
+      { name: "한석핸드폰", amount: 200_000 },
+    ]);
+    expect(await balances({ asOf: "2026-04-30" })).toEqual([{ name: "맥북에어", amount: 500_000 }]);
+  });
+
+  it("drops a counterparty who has settled up, since zero cannot move the total", async () => {
+    await lend("2026-03-01", "맥북에어", 500_000);
+    await repaid("2026-04-01", "맥북에어", 500_000);
+    await lend("2026-04-02", "한석핸드폰", 200_000);
+
+    expect(await balances()).toEqual([{ name: "한석핸드폰", amount: 200_000 }]);
+  });
+
+  it("collects untitled transactions under one named bucket rather than losing them", async () => {
+    await lend("2026-03-01", "", 100_000);
+    await lend("2026-03-02", "   ", 50_000);
+
+    expect(await balances()).toEqual([{ name: "미분류", amount: 150_000 }]);
+  });
+
+  // A liability is credit-normal, so 줄돈 has to come back positive the
+  // same way the balance sheet reports it.
+  it("reports a liability account in its normal-balance direction", async () => {
+    await postTransaction(db, {
+      date: "2026-03-01",
+      title: "형",
+      lines: [line("left", ids.food, "KRW", 70_000, 1), line("right", ids.card, "KRW", 70_000, 1)],
+    });
+
+    const owed = await getCounterpartyBalances(db, {
+      sectionId: SECTION_ID,
+      accountId: ids.card,
+      group: "liability",
+      asOf: "2026-12-31",
+      untitledLabel: "미분류",
+    });
+    expect(owed).toEqual([{ name: "형", amount: 70_000 }]);
   });
 });

@@ -112,6 +112,7 @@ export async function importAccountsAction(
       activeTo: check.activeTo ?? null,
       memo: row.memo.trim() || null,
       category: row.category.trim() || null,
+      tracksCounterparties: check.tracksCounterparties,
     });
   }
 

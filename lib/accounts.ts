@@ -1,5 +1,5 @@
 import { and, gte, isNull, lte, or, type SQL } from "drizzle-orm";
-import { accounts } from "@/db/schema";
+import { accounts, type AccountGroup } from "@/db/schema";
 
 /**
  * When an account counts as in use.
@@ -67,4 +67,21 @@ export function activeDuring(from: string, to: string): SQL {
     or(isNull(accounts.activeFrom), lte(accounts.activeFrom, to)),
     or(isNull(accounts.activeTo), gte(accounts.activeTo, from)),
   )!;
+}
+
+/**
+ * Which groups can keep a counterparty breakdown.
+ *
+ * A counterparty balance is money still outstanding with someone — a
+ * level, which only asset and liability accounts have. Income and
+ * expense accounts carry flows, and "지금까지 식비 거래처별 잔액" is not a
+ * question with an answer.
+ *
+ * This would be a CHECK if SQLite could attach one to a column added by
+ * ALTER TABLE. It cannot, and the table rebuild that would be needed
+ * instead has to drop `accounts` while two tables reference it — so the
+ * rule lives here, and both write paths call it.
+ */
+export function canTrackCounterparties(group: AccountGroup): boolean {
+  return group === "asset" || group === "liability";
 }

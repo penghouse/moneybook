@@ -168,6 +168,10 @@ export function parseTransactionsCsv(text: string): TransactionCsvRow[] {
 // used, and a backup that rounds a date down to true/false loses the
 // answer for good. Blank on either end means unbounded.
 //
+// `tracksCounterparties` is '1' or ''. It is a setting the user made,
+// not something derivable from the ledger, so a restore without it
+// would come back with the counterparty breakdown silently switched off.
+//
 // Changing these columns invalidates accounts.csv files exported before
 // it, since parseTable rejects the whole file on a header mismatch. That
 // cost is paid deliberately, as it was for `category`: silently dropping
@@ -180,6 +184,7 @@ export const ACCOUNT_CSV_COLUMNS = [
   "activeTo",
   "memo",
   "category",
+  "tracksCounterparties",
 ] as const;
 
 export type AccountCsvRow = Record<(typeof ACCOUNT_CSV_COLUMNS)[number], string>;

@@ -97,6 +97,29 @@ export const accounts = sqliteTable(
     // table buys is rename-in-one-place, and the entry forms offer the
     // existing values through a <datalist> so typos rarely split a group.
     category: text("category"),
+    // A 거래처관리 account — 받을돈, 줄돈 and the like — whose balance is
+    // only half the answer. What matters is *whose* it is, so its screen
+    // breaks the balance down by counterparty.
+    //
+    // The counterparty is the transaction's own 적요, not a new field:
+    // on an account like this the 적요 already names who the money is
+    // with, and a second field would have to be kept in step with it by
+    // hand on every entry. So this flag changes only how the account is
+    // *read* — nothing about how a transaction is written, and no column
+    // that can drift out of agreement with the one beside it.
+    //
+    // Only meaningful on asset and liability accounts: a counterparty
+    // balance is money outstanding, which is a level, and income/expense
+    // accounts have no balance to break down — only flows. That rule is
+    // enforced in the write paths rather than by a CHECK here, because
+    // SQLite cannot attach one to a column added by ALTER TABLE, and the
+    // rebuild that would be needed instead has to drop `accounts` while
+    // transaction_lines and budgets reference it. The two write paths
+    // (the accounts form and the CSV import) both check it; see
+    // lib/accounts.ts.
+    tracksCounterparties: integer("tracks_counterparties", { mode: "boolean" })
+      .notNull()
+      .default(false),
   },
   (t) => [
     unique("accounts_section_name_unique").on(t.sectionId, t.name),
