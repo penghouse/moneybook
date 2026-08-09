@@ -707,6 +707,45 @@ describe("getRunningBalances", () => {
     expect(byId.get(ordered[1])).toBe(1_000_000 - 3_000);
   });
 
+  // What 예산 links to: 식비's running column has to add up to that
+  // month's spend, not to everything ever eaten.
+  it("starts a flow account's running total at `from` rather than at the book's beginning", async () => {
+    const eat = (date: string, amount: number) =>
+      postTransaction(db, {
+        date,
+        title: "식사",
+        lines: [
+          line("left", ids.food, "KRW", amount, 1),
+          line("right", ids.card, "KRW", amount, 1),
+        ],
+      });
+    await eat("2026-01-20", 40_000);
+    const first = await eat("2026-02-03", 12_000);
+    const second = await eat("2026-02-10", 20_000);
+
+    const food = { id: ids.food, group: "expense" as const, currency: "KRW" };
+    const bounded = await getRunningBalances(db, {
+      sectionId: SECTION_ID,
+      baseCurrency: BASE_CURRENCY,
+      transactionIds: [first, second],
+      account: food,
+      from: "2026-02-01",
+    });
+    const byId = new Map(bounded.map((r) => [r.transactionId, r.amount]));
+    expect(byId.get(first)).toBe(12_000);
+    expect(byId.get(second)).toBe(32_000);
+
+    // Without the bound, January is still in the sum — which is why a
+    // level and a flow cannot share one default.
+    const unbounded = await getRunningBalances(db, {
+      sectionId: SECTION_ID,
+      baseCurrency: BASE_CURRENCY,
+      transactionIds: [first],
+      account: food,
+    });
+    expect(unbounded[0].amount).toBe(52_000);
+  });
+
   it("returns nothing for an empty id list without touching the database", async () => {
     expect(await netWorth([])).toEqual([]);
   });
@@ -891,6 +930,25 @@ describe("getCounterpartyBalances", () => {
     await lend("2026-04-02", "한석핸드폰", 200_000);
 
     expect(await balances()).toEqual([{ name: "한석핸드폰", amount: 200_000 }]);
+  });
+
+  // 「한석상여」 and 「한석상여(리텐션뱉)」 are one person: the
+  // parenthesis says what the transfer was for, not who it was with.
+  // Split apart, they would report two live half-balances for someone who
+  // is in fact square.
+  it("reads a counterparty without their parentheses, so a settled one still nets to zero", async () => {
+    await lend("2026-03-01", "한석상여", 500_000);
+    await repaid("2026-04-01", "한석상여(리텐션뱉)", 500_000);
+    await lend("2026-04-02", "맥북에어", 200_000);
+
+    expect(await balances()).toEqual([{ name: "맥북에어", amount: 200_000 }]);
+  });
+
+  it("sums the variants under the bare name, not under whichever one was posted", async () => {
+    await lend("2026-03-01", "가람미용기기 (2차)", 800_000);
+    await lend("2026-04-01", "가람미용기기", 200_000);
+
+    expect(await balances()).toEqual([{ name: "가람미용기기", amount: 1_000_000 }]);
   });
 
   it("collects untitled transactions under one named bucket rather than losing them", async () => {

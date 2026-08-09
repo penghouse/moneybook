@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { and, asc, eq, like } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, budgets } from "@/db/schema";
@@ -92,18 +93,20 @@ export default async function BudgetPage({
     { label: t("common.unitYear"), href: `/budget?period=${year}`, active: isYear },
   ];
 
-  // Only meaningful on the year screen, where the whole point is whether
-  // the totals fit inside the yearly caps.
   const totalBudget = expenseAccounts.reduce(
     (sum, a) => sum + (budgetByAccountId.get(a.id) ?? 0),
     0,
   );
+  // Only meaningful on the year screen, where the whole point is whether
+  // the monthly plans fit inside the yearly caps.
   const totalMonthly = expenseAccounts.reduce(
     (sum, a) => sum + (monthlyByAccountId.get(a.id) ?? 0),
     0,
   );
   const totalSpent = expenseAccounts.reduce((sum, a) => sum + (spentByAccountId.get(a.id) ?? 0), 0);
   const hasAnyBudget = periodBudgets.length > 0;
+  const percentAll = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : null;
+  const overAll = hasAnyBudget && totalSpent > totalBudget;
 
   // Same shape as the income statement: rows under their category, with
   // the period's budget and spend summed on the heading.
@@ -127,40 +130,59 @@ export default async function BudgetPage({
         units={units}
       />
 
-      {isYear && expenseAccounts.length > 0 && (
+      {expenseAccounts.length > 0 && (
         <Card>
-          <KeyValueRow
-            label={t("budget.yearTotal")}
-            value={<span className="tnum font-semibold">{base(totalBudget)}</span>}
-          />
-          <KeyValueRow
-            label={t("budget.monthlySum")}
-            value={<span className="tnum font-semibold">{base(totalMonthly)}</span>}
-            sub={
-              hasAnyBudget && totalMonthly > totalBudget ? (
-                <Chip tone="warning">
-                  {t("budget.monthlySumOver")} {base(totalMonthly - totalBudget)}
-                </Chip>
-              ) : undefined
-            }
-          />
-          <KeyValueRow
-            label={t("budget.spent")}
-            value={<span className="tnum font-semibold">{base(totalSpent)}</span>}
-            sub={
-              hasAnyBudget ? (
-                totalSpent > totalBudget ? (
+          {/* 전체: the same shape as a 상위 항목 band and an account row,
+              one level further up — largest name, thickest bar, and its
+              own card above the list. Three levels of the same reading,
+              each told from the next by weight rather than by wording. */}
+          <div data-testid="budget-total" className="px-4 py-3">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="text-base font-bold">{t("budget.grandTotal")}</span>
+              {hasAnyBudget &&
+                (overAll ? (
                   <Chip tone="negative">
                     {t("budget.over")} {base(totalSpent - totalBudget)}
                   </Chip>
                 ) : (
-                  <Chip>
-                    {t("budget.remaining")} {base(totalBudget - totalSpent)}
+                  percentAll !== null && <Chip>{percentAll}%</Chip>
+                ))}
+              <span className="tnum ml-auto font-semibold">
+                {/* Paired with a budget, `지출 / 예산` reads off the bar
+                    below it. Standing alone the figure has nothing to be
+                    read against, so it says what it is. */}
+                {!hasAnyBudget && <span className="font-normal">{t("budget.spent")} </span>}
+                {base(totalSpent)}
+                {hasAnyBudget && ` / ${base(totalBudget)}`}
+              </span>
+            </div>
+            {hasAnyBudget && (
+              <div className="bg-rule-soft mt-2 h-2.5 overflow-hidden rounded-full">
+                <div
+                  className={`h-full rounded-full ${overAll ? "bg-negative" : "bg-accent"}`}
+                  style={{
+                    width: `${overAll ? 100 : Math.max(0, Math.min(100, percentAll ?? 0))}%`,
+                  }}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Year only, and the one figure the band cannot carry: what the
+              twelve monthly plans add up to, against the cap above. */}
+          {isYear && (
+            <KeyValueRow
+              label={t("budget.monthlySum")}
+              value={<span className="tnum font-semibold">{base(totalMonthly)}</span>}
+              sub={
+                hasAnyBudget && totalMonthly > totalBudget ? (
+                  <Chip tone="warning">
+                    {t("budget.monthlySumOver")} {base(totalMonthly - totalBudget)}
                   </Chip>
-                )
-              ) : undefined
-            }
-          />
+                ) : undefined
+              }
+            />
+          )}
         </Card>
       )}
 
@@ -178,16 +200,58 @@ export default async function BudgetPage({
               (sum, a) => sum + (spentByAccountId.get(a.id) ?? 0),
               0,
             );
+            // A category with no budget anywhere under it has no share to
+            // report — the same distinction an account row draws between
+            // "no budget" and "a budget of zero", applied to a sum.
+            const anyBudgetHere = inCategory.some((a) => budgetByAccountId.has(a.id));
+            const percentHere = budgeted > 0 ? Math.round((spentHere / budgeted) * 100) : null;
+            const overHere = anyBudgetHere && spentHere > budgeted;
+
             return (
               <div key={category ?? " uncategorized"}>
                 {hasCategories && (
-                  <div className="bg-sunken border-rule-soft flex items-baseline gap-3 border-t px-4 py-1.5 first:border-t-0">
-                    <span className="text-ink-muted min-w-0 truncate text-xs font-semibold">
-                      {category ?? t("accounts.uncategorized")}
-                    </span>
-                    <span className="tnum text-ink-muted ml-auto text-xs font-semibold">
-                      {base(spentHere)} / {base(budgeted)}
-                    </span>
+                  // The 상위 항목 band: the same figures its accounts show,
+                  // one level up. Told apart from the rows it covers by the
+                  // filled background, the heavier name, and those rows
+                  // being indented under it — one signal could be read as
+                  // decoration, three cannot.
+                  <div
+                    data-testid="budget-category"
+                    className="bg-sunken border-rule-soft border-t px-4 py-2 first:border-t-0"
+                  >
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                      <span className="min-w-0 truncate text-sm font-bold">
+                        {category ?? t("accounts.uncategorized")}
+                      </span>
+                      {anyBudgetHere &&
+                        (overHere ? (
+                          <Chip tone="negative">
+                            {t("budget.over")} {base(spentHere - budgeted)}
+                          </Chip>
+                        ) : (
+                          percentHere !== null && <Chip>{percentHere}%</Chip>
+                        ))}
+                      <span className="tnum text-ink-muted ml-auto text-xs font-semibold">
+                        {!anyBudgetHere && (
+                          <span className="font-normal">{t("budget.spent")} </span>
+                        )}
+                        {base(spentHere)}
+                        {anyBudgetHere && ` / ${base(budgeted)}`}
+                      </span>
+                    </div>
+                    {anyBudgetHere && (
+                      // Thinner than an account's bar: this one summarises
+                      // those, and a heavier bar would read as the more
+                      // important number.
+                      <div className="bg-rule-soft mt-1.5 h-1 overflow-hidden rounded-full">
+                        <div
+                          className={`h-full rounded-full ${overHere ? "bg-negative" : "bg-accent"}`}
+                          style={{
+                            width: `${overHere ? 100 : Math.max(0, Math.min(100, percentHere ?? 0))}%`,
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
                 {inCategory.map((account) => {
@@ -207,14 +271,30 @@ export default async function BudgetPage({
                     <div
                       key={account.id}
                       data-testid="budget-row"
-                      className="not-first:border-rule-soft px-4 py-3 not-first:border-t"
+                      className={`not-first:border-rule-soft py-3 not-first:border-t ${
+                        // Indented under its 상위 항목, with a rule down the
+                        // margin: the band above is a heading, not another
+                        // row of the same list.
+                        hasCategories ? "border-rule-soft mx-4 border-l pl-3" : "px-4"
+                      }`}
                     >
-                      <div className="flex items-baseline gap-2">
-                        <span className="min-w-0 truncate font-semibold">{account.name}</span>
-                        <span className="tnum text-ink-muted ml-auto text-sm">
-                          {t("budget.spent")} {base(spent)}
+                      {/* "이 지출이 뭐였지" is answered by the transactions
+                          behind it, so the name and the figure together open
+                          the period on screen filtered to this account. The
+                          whole line rather than the name alone: a name is a
+                          24px target on a page tapped with a thumb, and the
+                          amount is the half people reach for. */}
+                      <Link
+                        href={`/?accountId=${account.id}&from=${from}&to=${to}`}
+                        className="hover:bg-sunken rounded-control -mx-2 flex min-h-11 items-center px-2"
+                      >
+                        <span className="flex w-full items-baseline gap-2">
+                          <span className="min-w-0 truncate font-semibold">{account.name}</span>
+                          <span className="tnum text-ink-muted ml-auto text-sm">
+                            {t("budget.spent")} {base(spent)}
+                          </span>
                         </span>
-                      </div>
+                      </Link>
 
                       {budget !== undefined && (
                         <>

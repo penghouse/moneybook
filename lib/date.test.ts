@@ -5,11 +5,13 @@ import {
   addMonthsToDate,
   addYears,
   monthRange,
+  monthsBetween,
   rangeUnit,
   today,
   yearMonthOf,
   yearOf,
   yearRange,
+  yearsBetween,
 } from "./date";
 
 describe("today", () => {
@@ -139,5 +141,50 @@ describe("rangeUnit", () => {
     // keeps a full year from being reported as January.
     expect(rangeUnit("2026-01-01", "2026-12-31")).toBe("year");
     expect(rangeUnit("2026-01-01", "2026-01-31")).toBe("month");
+  });
+});
+
+describe("monthsBetween", () => {
+  it("includes both ends and every month across a year boundary", () => {
+    expect(monthsBetween("2025-11-14", "2026-02-03")).toEqual([
+      "2025-11",
+      "2025-12",
+      "2026-01",
+      "2026-02",
+    ]);
+  });
+
+  it("returns the one month a range inside a single month touches", () => {
+    expect(monthsBetween("2026-08-05", "2026-08-06")).toEqual(["2026-08"]);
+  });
+
+  // A hand-typed query string does not go through the form, and a
+  // reversed range used to spin until the request died.
+  it("returns nothing for a reversed range instead of looping", () => {
+    expect(monthsBetween("2026-08-01", "2026-01-31")).toEqual([]);
+  });
+
+  it("stops at the cap rather than building a list nobody can read", () => {
+    expect(monthsBetween("1900-01-01", "2999-12-31")).toHaveLength(600);
+  });
+});
+
+describe("yearsBetween", () => {
+  it("includes both ends", () => {
+    expect(yearsBetween("2022-06-01", "2026-02-03")).toEqual([
+      "2022",
+      "2023",
+      "2024",
+      "2025",
+      "2026",
+    ]);
+  });
+
+  it("returns the single year a range inside one year touches", () => {
+    expect(yearsBetween("2026-01-01", "2026-12-31")).toEqual(["2026"]);
+  });
+
+  it("returns nothing for a reversed range", () => {
+    expect(yearsBetween("2026-01-01", "2020-12-31")).toEqual([]);
   });
 });

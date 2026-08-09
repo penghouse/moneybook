@@ -21,6 +21,35 @@ export interface PeriodUnitOption {
   active: boolean;
 }
 
+/**
+ * The 월간/연간 switch on its own, for a screen that has no arrows to
+ * hang it under — the income charts pick their period with a date range
+ * instead, but the control that says what a bar *means* should be the
+ * same control everywhere.
+ */
+export function PeriodUnits({
+  units,
+  className = "",
+}: {
+  units: readonly PeriodUnitOption[];
+  className?: string;
+}) {
+  return (
+    <div role="group" className={`flex gap-1 px-1 py-1 ${className}`} data-testid="period-units">
+      {units.map((unit) => (
+        <Link
+          key={unit.label}
+          href={unit.href}
+          aria-current={unit.active ? "page" : undefined}
+          className={`${buttonClass(unit.active ? "primary" : "ghost")} flex-1 justify-center`}
+        >
+          {unit.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 export function PeriodNav({
   prevHref,
   nextHref,
@@ -54,22 +83,7 @@ export function PeriodNav({
         // 360px the arrows already fill the width, and a control that
         // changes what the numbers *mean* should not be the one that
         // gets truncated.
-        <div
-          role="group"
-          className="border-rule-soft flex gap-1 border-t px-1 py-1"
-          data-testid="period-units"
-        >
-          {units.map((unit) => (
-            <Link
-              key={unit.label}
-              href={unit.href}
-              aria-current={unit.active ? "page" : undefined}
-              className={`${buttonClass(unit.active ? "primary" : "ghost")} flex-1 justify-center`}
-            >
-              {unit.label}
-            </Link>
-          ))}
-        </div>
+        <PeriodUnits units={units} className="border-rule-soft border-t" />
       )}
     </Card>
   );

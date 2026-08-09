@@ -11,7 +11,16 @@ import { SESSION_COOKIE_NAME, seedSession } from "./auth-helper";
  * them up; the desktop project skips them.
  */
 
-const PAGES = ["/", "/assets", "/assets/chart", "/income", "/budget", "/accounts", "/settings"];
+const PAGES = [
+  "/",
+  "/assets",
+  "/assets/chart",
+  "/income",
+  "/income/chart",
+  "/budget",
+  "/accounts",
+  "/settings",
+];
 
 test.beforeEach(async ({ context }, testInfo) => {
   const { token } = await seedSession(`mobile-${testInfo.testId}@example.com`);

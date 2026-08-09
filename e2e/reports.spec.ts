@@ -113,7 +113,6 @@ test.describe("reports", () => {
     await expect(page).toHaveURL(/from=2026-01-01&to=2026-12-31/);
     await page.getByRole("link", { name: /이전 해/ }).click();
     await expect(page).toHaveURL(/from=2025-01-01&to=2025-12-31/);
-    await expect(page.getByText("최근 5년 추이")).toBeVisible();
 
     // A date cannot say which unit it belongs to, so the balance sheet
     // carries the step in the URL. Switching to years snaps to the
@@ -232,8 +231,12 @@ test.describe("reports", () => {
 
     await lend("2026-03-01", "맥북에어", 500_000);
     await lend("2026-04-01", "가람미용기기", 800_000);
-    await lend("2026-05-01", "가람미용기기", 300_000, true);
+    // Paid back under a 적요 that notes what the payment was — the
+    // parenthesis describes the transaction, not a different person.
+    await lend("2026-05-01", "가람미용기기 (일부 상환)", 300_000, true);
     await lend("2026-06-01", "한석핸드폰", 200_000);
+    await lend("2026-06-02", "한석상여", 400_000);
+    await lend("2026-07-01", "한석상여(리텐션뱉)", 400_000, true);
 
     // Reached the way the user reaches it: the balance sheet row.
     await page.goto("/assets?asOf=2026-08-06");
@@ -248,9 +251,14 @@ test.describe("reports", () => {
     await expect(row("맥북에어")).toContainText("₩500,000");
     await expect(row("가람미용기기")).toContainText("₩500,000");
     await expect(row("한석핸드폰")).toContainText("₩200,000");
-    // Netted, not listed twice.
+    // Netted, not listed twice — and under the bare name, with the
+    // repayment's parenthetical nowhere in the list.
     await expect(row("가람미용기기")).toHaveCount(1);
     await expect(row("가람미용기기")).not.toContainText("₩800,000");
+    await expect(row("일부 상환")).toHaveCount(0);
+    // 한석상여 borrowed and paid back the same amount under two spellings
+    // of one name, so they are square and off the list entirely.
+    await expect(row("한석상여")).toHaveCount(0);
 
     // August alone contains none of these transactions, and the
     // breakdown must not be narrowed by it — that would report everyone
@@ -258,7 +266,9 @@ test.describe("reports", () => {
     await expect(page.getByText("거래가 없습니다.")).toBeVisible();
   });
 
-  test("income page shows this month's income/expense/net and a trend chart", async ({ page }) => {
+  test("income page shows this month's income/expense/net, and links to its charts", async ({
+    page,
+  }) => {
     const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
     const byName = (name: string) =>
       db.query.accounts.findFirst({
@@ -324,7 +334,97 @@ test.describe("reports", () => {
     await expect(page.getByText(/순이익.*\₩2,980,000/)).toBeVisible();
     await expect(page.getByText("급여")).toBeVisible();
     await expect(page.getByText("식비")).toBeVisible();
-    await expect(page.locator("svg[role='group']")).toBeVisible();
+    // The trend moved to its own page; the statement is a list now.
+    await expect(page.locator("svg[role='group']")).toHaveCount(0);
+
+    // And it is one press away, on the month being read.
+    await page.getByRole("link", { name: "그래프 보기" }).click();
+    await expect(page).toHaveURL(/\/income\/chart/);
+    await expect(page.getByRole("heading", { name: "기간손익 그래프" })).toBeVisible();
+  });
+
+  test("the income chart hovers a bar for its numbers, and switches month/year", async ({
+    page,
+  }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const salary = await byName("급여");
+    const food = await byName("식비");
+    const bank = await byName("은행");
+
+    const post = async (date: string, title: string, from: string, to: string, amount: number) => {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date, title })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: from,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: to,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+      ]);
+    };
+    // Two months apart so hovering one bar cannot pick up the other's
+    // numbers, and one of them a loss so the sign is exercised.
+    await post("2026-07-25", "급여", bank.id, salary.id, 2_000_000);
+    await post("2026-07-26", "식비", food.id, bank.id, 300_000);
+    await post("2026-08-10", "식비", food.id, bank.id, 500_000);
+
+    await page.goto("/income/chart?from=2026-07-01&to=2026-08-31&unit=month");
+    const chart = page.locator("svg[role='group']");
+    await expect(chart).toBeVisible();
+
+    // Nothing is hovered yet, so nothing is being read out.
+    await expect(page.getByTestId("chart-tooltip")).toHaveCount(0);
+
+    // Hover the first bar — July: 2,000,000 in, 300,000 out.
+    const bars = page.getByTestId("chart-bar-hit");
+    await expect(bars).toHaveCount(2);
+    await bars.nth(0).hover();
+    const tip = page.getByTestId("chart-tooltip");
+    await expect(tip).toContainText("2026-07");
+    await expect(tip).toContainText("₩2,000,000");
+    await expect(tip).toContainText("₩300,000");
+    await expect(tip).toContainText("₩1,700,000");
+
+    // The second bar reads its own month, not the first one's.
+    await bars.nth(1).hover();
+    await expect(tip).toContainText("2026-08");
+    await expect(tip).toContainText("-₩500,000");
+
+    // Keyboard gets the same readout — the numbers are not hover-only.
+    await bars.nth(0).focus();
+    await expect(tip).toContainText("2026-07");
+
+    // Years redraw the same range as one bar per year.
+    await page.getByRole("link", { name: "연간" }).click();
+    await expect(page).toHaveURL(/unit=year/);
+    await expect(page.getByTestId("chart-bar-hit")).toHaveCount(1);
+    await expect(page.getByRole("heading", { name: "연도별 추이" })).toBeVisible();
+
+    // And every number the readout shows is in the table too.
+    await page.getByText("표로 보기").click();
+    const row = page.getByRole("row").filter({ hasText: "2026" });
+    await expect(row).toContainText("₩2,000,000");
+    await expect(row).toContainText("₩800,000");
+    await expect(row).toContainText("₩1,200,000");
   });
 
   test("the chart page draws all three charts, each with its numbers in a table", async ({

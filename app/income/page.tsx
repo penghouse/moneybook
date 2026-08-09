@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts } from "@/db/schema";
@@ -16,9 +17,8 @@ import { parseGroupOrder } from "@/lib/account-groups";
 import { PeriodNav } from "../_components/period-nav";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
-import { getAccountFlows, getPeriodTotals } from "@/lib/ledger";
+import { getAccountFlows } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
-import { NetIncomeChart } from "../_components/net-income-chart";
 import {
   buttonClass,
   Card,
@@ -61,24 +61,7 @@ export default async function IncomePage({
   const totalExpense = expense.reduce((s, f) => s + f.baseAmount, 0);
   const netIncome = totalIncome - totalExpense;
 
-  // The trend follows the unit on screen — twelve months, or five years
-  // — and ends at the period being read rather than at today. Paging
-  // back to March used to leave the chart showing the twelve months up
-  // to now, so the numbers above it and the bars below it were about
-  // different periods.
   const shownYear = yearOf(from);
-  const periods =
-    unit === "year"
-      ? Array.from({ length: 5 }, (_, i) => addYears(shownYear, i - 4))
-      : Array.from({ length: 12 }, (_, i) => addMonths(yearMonthOf(from), i - 11));
-  const totals = await getPeriodTotals(db, { sectionId: section.id, periods });
-  const chartPoints = totals.map((p) => ({
-    label: p.period,
-    // '2026-08' → '08', '2026' → '26'. Two characters is what the tick
-    // has room for at twelve bars across a phone.
-    tick: unit === "year" ? p.period.slice(2) : p.period.slice(5),
-    net: p.income - p.expense,
-  }));
 
   const base = (minor: number) => formatMoney(minor, section.baseCurrency, locale);
 
@@ -168,11 +151,12 @@ export default async function IncomePage({
     { label: t("common.unitYear"), href: href(yearRange(shownYear)), active: unit === "year" },
   ];
 
-  const trendLabel = unit === "year" ? t("income.trendYears") : t("income.trend");
-
   return (
     <div className="space-y-4">
       <PageHeader title={t("nav.income")}>
+        <Link href={`/income/chart?to=${to}`} className={buttonClass("secondary")}>
+          {t("assets.viewCharts")}
+        </Link>
         <form className="flex flex-wrap items-end gap-2" action="/income">
           <div>
             <Label>{t("entry.filterFrom")}</Label>
@@ -232,21 +216,6 @@ export default async function IncomePage({
             ? renderList(t("group.income"), income)
             : renderList(t("group.expense"), expense),
         )}
-
-      <section>
-        <SectionLabel>{trendLabel}</SectionLabel>
-        <Card>
-          <div className="px-2 py-3 md:px-4">
-            <NetIncomeChart
-              points={chartPoints}
-              currency={section.baseCurrency}
-              locale={locale}
-              tableCaption={trendLabel}
-              tableLabel={t("common.viewTable")}
-            />
-          </div>
-        </Card>
-      </section>
     </div>
   );
 }

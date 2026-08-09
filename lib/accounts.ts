@@ -70,6 +70,19 @@ export function activeDuring(from: string, to: string): SQL {
 }
 
 /**
+ * Whether the group carries flows rather than levels.
+ *
+ * 식비 has no balance — it has a total, and only ever within some period.
+ * Assets and liabilities are the other way round: their balance carries
+ * forward and a period cannot bound it. Screens that report "the number
+ * standing for this account" have to ask which of the two they are
+ * looking at.
+ */
+export function isFlowGroup(group: AccountGroup): boolean {
+  return group === "income" || group === "expense";
+}
+
+/**
  * Which groups can keep a counterparty breakdown.
  *
  * A counterparty balance is money still outstanding with someone — a
@@ -83,5 +96,5 @@ export function activeDuring(from: string, to: string): SQL {
  * rule lives here, and both write paths call it.
  */
 export function canTrackCounterparties(group: AccountGroup): boolean {
-  return group === "asset" || group === "liability";
+  return !isFlowGroup(group);
 }
