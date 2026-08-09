@@ -16,6 +16,7 @@ const PAGES = [
   "/income",
   "/income/chart",
   "/budget",
+  "/formulas",
   "/accounts",
   "/settings",
 ];
@@ -84,7 +85,7 @@ test("drawer opens, lists every destination, and navigates", async ({ page }) =>
   expect(scrim.x).toBe(0);
   expect(scrim.x + scrim.width).toBeLessThanOrEqual(box!.x);
 
-  for (const label of ["입력", "자산현황", "기간손익", "예산", "계정과목", "설정"]) {
+  for (const label of ["입력", "자산현황", "기간손익", "예산", "계산식", "계정과목", "설정"]) {
     const link = drawer.getByRole("link", { name: label, exact: true });
     await expect(link).toBeVisible();
     const linkBox = await link.boundingBox();

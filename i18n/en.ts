@@ -10,6 +10,7 @@ const en: Record<keyof typeof ko, string> = {
   "nav.income": "Income Statement",
   "nav.incomeChart": "Income Charts",
   "nav.budget": "Budget",
+  "nav.formulas": "Formulas",
   "nav.accounts": "Accounts",
   "nav.settings": "Settings",
   "nav.menu": "Menu",

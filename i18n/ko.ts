@@ -8,6 +8,7 @@ const ko = {
   "nav.income": "기간손익",
   "nav.incomeChart": "기간손익 그래프",
   "nav.budget": "예산",
+  "nav.formulas": "계산식",
   "nav.accounts": "계정과목",
   "nav.settings": "설정",
   "nav.menu": "메뉴",
