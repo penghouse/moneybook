@@ -167,6 +167,102 @@ export async function getAccountBalances(
   ]);
 }
 
+/**
+ * Every account's figure at every month in `months`, for a chart that
+ * draws several series over time.
+ *
+ * One query for the whole window rather than one per month: twelve
+ * months of a dozen categories is otherwise twelve round trips to say
+ * something the database can say once.
+ *
+ * `mode` is the same level/flow distinction the reports draw. A balance
+ * carries forward, so it is accumulated from the beginning of the book
+ * — a month with no transactions still holds last month's money. A flow
+ * is the month's own total and starts from zero each time.
+ */
+export async function getMonthlyAccountAmounts(
+  db: Db,
+  params: {
+    sectionId: string;
+    /** 'YYYY-MM', oldest first. */
+    months: readonly string[];
+    mode: "balance" | "flow";
+  },
+): Promise<Map<string, Map<string, number>>> {
+  const byMonth = new Map<string, Map<string, number>>();
+  for (const month of params.months) byMonth.set(month, new Map());
+  if (params.months.length === 0) return byMonth;
+
+  const last = params.months[params.months.length - 1];
+  const lastDay = `${last}-31`;
+  const net = sql<number>`sum(case when ${transactionLines.side} = 'left' then ${transactionLines.baseAmount} else -${transactionLines.baseAmount} end)`;
+  const month = sql<string>`substr(${transactions.date}, 1, 7)`;
+
+  const rows = await db
+    .select({
+      accountId: transactionLines.accountId,
+      group: accounts.group,
+      month,
+      net,
+    })
+    .from(transactionLines)
+    .innerJoin(transactions, eq(transactionLines.transactionId, transactions.id))
+    .innerJoin(accounts, eq(transactionLines.accountId, accounts.id))
+    .where(
+      and(
+        eq(transactions.sectionId, params.sectionId),
+        lte(transactions.date, lastDay),
+        // A flow only needs the window; a balance needs everything
+        // before it too, or the first month would open at zero.
+        ...(params.mode === "flow" ? [gte(transactions.date, `${params.months[0]}-01`)] : []),
+      ),
+    )
+    .groupBy(transactionLines.accountId, accounts.group, month);
+
+  // Signed the way the reports print it, then folded into the months.
+  const deltas = new Map<string, Map<string, number>>();
+  const groupOf = new Map<string, AccountGroup>();
+  for (const row of rows) {
+    groupOf.set(row.accountId, row.group);
+    if (!deltas.has(row.month)) deltas.set(row.month, new Map());
+    const inMonth = deltas.get(row.month)!;
+    inMonth.set(row.accountId, (inMonth.get(row.accountId) ?? 0) + Number(row.net));
+  }
+
+  const running = new Map<string, number>();
+  const wanted = new Set(params.months);
+  // Every month the data touches, in order — including ones before the
+  // window, which a balance has to walk through to carry forward.
+  for (const m of [...deltas.keys()].sort()) {
+    for (const [accountId, delta] of deltas.get(m)!) {
+      running.set(
+        accountId,
+        (params.mode === "balance" ? (running.get(accountId) ?? 0) : 0) + delta,
+      );
+    }
+    if (!wanted.has(m)) continue;
+    const out = byMonth.get(m)!;
+    for (const [accountId, value] of running) {
+      out.set(accountId, normalBalance(groupOf.get(accountId)!, value));
+    }
+  }
+
+  // A balance carries into months with no transactions of their own.
+  if (params.mode === "balance") {
+    let carried = new Map<string, number>();
+    for (const m of params.months) {
+      const out = byMonth.get(m)!;
+      if (out.size === 0) {
+        for (const [id, v] of carried) out.set(id, v);
+      } else {
+        carried = new Map(out);
+      }
+    }
+  }
+
+  return byMonth;
+}
+
 /** Same shape as getAccountBalances, but net activity within [from, to] inclusive. */
 export async function getAccountFlows(
   db: Db,

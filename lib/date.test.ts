@@ -7,6 +7,7 @@ import {
   monthRange,
   monthsBetween,
   rangeUnit,
+  shiftWindow,
   today,
   yearMonthOf,
   yearOf,
@@ -186,5 +187,59 @@ describe("yearsBetween", () => {
 
   it("returns nothing for a reversed range", () => {
     expect(yearsBetween("2026-01-01", "2020-12-31")).toEqual([]);
+  });
+});
+
+describe("shiftWindow", () => {
+  // Stepping a twelve-month window by 365 days lands on the 2nd and
+  // stays a day off for ever; by twelve months it lands exactly.
+  it("steps whole months by months, not by days", () => {
+    expect(shiftWindow("2026-01-01", "2026-12-31", -1)).toEqual({
+      from: "2025-01-01",
+      to: "2025-12-31",
+    });
+    expect(shiftWindow("2026-01-01", "2026-12-31", 1)).toEqual({
+      from: "2027-01-01",
+      to: "2027-12-31",
+    });
+  });
+
+  it("lands on the right month end, including February", () => {
+    expect(shiftWindow("2026-03-01", "2026-03-31", -1)).toEqual({
+      from: "2026-02-01",
+      to: "2026-02-28",
+    });
+    // ...and out of a short month into a long one.
+    expect(shiftWindow("2026-02-01", "2026-02-28", 1)).toEqual({
+      from: "2026-03-01",
+      to: "2026-03-31",
+    });
+  });
+
+  it("steps a hand-typed range by its own length in days, without gap or overlap", () => {
+    // 2026-08-06 ~ 2026-08-10 is five days inclusive.
+    expect(shiftWindow("2026-08-06", "2026-08-10", -1)).toEqual({
+      from: "2026-08-01",
+      to: "2026-08-05",
+    });
+    expect(shiftWindow("2026-08-06", "2026-08-10", 1)).toEqual({
+      from: "2026-08-11",
+      to: "2026-08-15",
+    });
+  });
+
+  it("steps a single day", () => {
+    expect(shiftWindow("2026-08-06", "2026-08-06", -1)).toEqual({
+      from: "2026-08-05",
+      to: "2026-08-05",
+    });
+  });
+
+  it("comes back to where it started", () => {
+    const there = shiftWindow("2026-01-01", "2026-06-30", -1);
+    expect(shiftWindow(there.from, there.to, 1)).toEqual({
+      from: "2026-01-01",
+      to: "2026-06-30",
+    });
   });
 });

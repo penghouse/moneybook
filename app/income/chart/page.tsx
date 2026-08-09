@@ -1,18 +1,33 @@
 import Link from "next/link";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
+import { accounts, formulas } from "@/db/schema";
 import { getTranslations } from "@/i18n";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
-import { addMonths, monthRange, monthsBetween, today, yearMonthOf, yearsBetween } from "@/lib/date";
+import {
+  addMonths,
+  monthRange,
+  monthsBetween,
+  shiftWindow,
+  today,
+  yearMonthOf,
+  yearsBetween,
+} from "@/lib/date";
+import { parseGroupOrder } from "@/lib/account-groups";
 import { getPeriodTotals } from "@/lib/ledger";
+import { buildReportSeries } from "@/lib/report-series";
 import { formatMoney } from "@/lib/money";
+import { formulaTotalLabels } from "../../_components/formula-section";
 import { NetIncomeChart } from "../../_components/net-income-chart";
-import { PeriodUnits } from "../../_components/period-nav";
+import { SeriesChart } from "../../_components/series-chart";
+import { PeriodNav } from "../../_components/period-nav";
 import {
   buttonClass,
   Card,
   controlClass,
   EmptyState,
+  Hint,
   Label,
   PageHeader,
   SectionLabel,
@@ -61,6 +76,39 @@ export default async function IncomeChartPage({
   const unitHref = (next: "month" | "year") => `/income/chart?from=${from}&to=${to}&unit=${next}`;
   const trendLabel = byYear ? t("income.trendByYear") : t("income.trendByMonth");
 
+  const catalog = await db.query.accounts.findMany({
+    where: eq(accounts.sectionId, section.id),
+    orderBy: asc(accounts.sortOrder),
+    columns: { id: true, name: true, group: true, category: true },
+  });
+  const formulaRows = await db.query.formulas.findMany({
+    where: and(eq(formulas.sectionId, section.id), eq(formulas.scope, "income")),
+    orderBy: asc(formulas.sortOrder),
+  });
+  // Always by month, whatever the bars above are set to: a line per
+  // year over a five-year window is four segments, which is a table
+  // wearing a chart's clothes.
+  const seriesMonths = monthsBetween(start, to);
+  const reportSeries = await buildReportSeries(db, {
+    sectionId: section.id,
+    scope: "income",
+    months: seriesMonths,
+    baseCurrency: section.baseCurrency,
+    groupOrder: parseGroupOrder(section.groupOrder),
+    accounts: catalog,
+    formulas: formulaRows,
+    totalLabels: formulaTotalLabels("income", t),
+  });
+
+  // The window moves by its own length, so paging back from twelve
+  // months lands on the twelve before — the comparison the chart is for.
+  // A fixed month step would leave eleven of the twelve on screen and
+  // make every press look like nothing happened.
+  const stepHref = (delta: number) => {
+    const next = shiftWindow(start, to, delta);
+    return `/income/chart?from=${next.from}&to=${next.to}&unit=${byYear ? "year" : "month"}`;
+  };
+
   return (
     <div className="space-y-4">
       <PageHeader title={t("nav.incomeChart")}>
@@ -105,17 +153,21 @@ export default async function IncomeChartPage({
         </div>
       </Card>
 
-      {/* The same switch the three period screens carry, so 월간/연간
-          means one thing across the app — here it sets the width of a
-          bar rather than the range, which the heading below says. */}
-      <Card>
-        <PeriodUnits
-          units={[
-            { label: t("common.unitMonth"), href: unitHref("month"), active: !byYear },
-            { label: t("common.unitYear"), href: unitHref("year"), active: byYear },
-          ]}
-        />
-      </Card>
+      {/* The arrows move the whole window; the switch below them sets
+          how wide a bar is, not how long the range is. Both live in the
+          bar the period screens use, so the controls are where the hand
+          already goes. */}
+      <PeriodNav
+        prevHref={stepHref(-1)}
+        nextHref={stepHref(1)}
+        label={`${start} ~ ${to}`}
+        prevLabel={t("common.prevWindow")}
+        nextLabel={t("common.nextWindow")}
+        units={[
+          { label: t("common.unitMonth"), href: unitHref("month"), active: !byYear },
+          { label: t("common.unitYear"), href: unitHref("year"), active: byYear },
+        ]}
+      />
 
       <section>
         <SectionLabel>{trendLabel}</SectionLabel>
@@ -140,6 +192,34 @@ export default async function IncomeChartPage({
             <EmptyState>{t("assets.noHistory")}</EmptyState>
           )}
         </Card>
+      </section>
+
+      <section>
+        <SectionLabel>{t("series.section")}</SectionLabel>
+        <Card>
+          {reportSeries.length === 0 ? (
+            <EmptyState>{t("series.none")}</EmptyState>
+          ) : (
+            <div className="px-2 py-3 md:px-4">
+              <SeriesChart
+                periods={seriesMonths}
+                ticks={seriesMonths.map((m) => m.slice(2).replace("-", "."))}
+                series={reportSeries}
+                initial={reportSeries.slice(0, 2).map((s) => s.key)}
+                currency={section.baseCurrency}
+                locale={locale}
+                caption={t("series.section")}
+                labels={{
+                  table: t("common.viewTable"),
+                  period: t("income.period"),
+                  empty: t("series.noneOn"),
+                  capped: t("series.capped"),
+                }}
+              />
+            </div>
+          )}
+        </Card>
+        <Hint>{t("series.hint")}</Hint>
       </section>
 
       {/* Back to the statement for the month the range ends in, not for

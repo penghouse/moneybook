@@ -124,6 +124,60 @@ test.describe("reports", () => {
     await expect(page).toHaveURL(/asOf=2024-12-31&step=year/);
   });
 
+  test("the balance sheet groups its accounts under their 상위 그룹, with a subtotal", async ({
+    page,
+  }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const bank = await byName("은행");
+    const cash = await byName("현금");
+    const opening = await byName("기초자본");
+
+    for (const account of [bank, cash]) {
+      await db.update(accounts).set({ category: "유동성자금" }).where(eq(accounts.id, account.id));
+    }
+    for (const [account, amount] of [
+      [bank, 3_000_000],
+      [cash, 500_000],
+    ] as const) {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date: "2026-08-01", title: "기초" })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: account.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: opening.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+      ]);
+    }
+
+    // 기간손익 and 예산 both grouped by 상위 그룹; the balance sheet was
+    // the one report that did not, so a book organised into 유동성자금
+    // showed that grouping everywhere except here.
+    await page.goto("/assets?asOf=2026-08-06");
+    const band = page.locator("section").filter({ hasText: "자산" }).getByText("유동성자금");
+    await expect(band.first()).toBeVisible();
+    await expect(page.getByText(/유동성자금[\s\S]*₩3,500,000/).first()).toBeVisible();
+  });
+
   test("a balance sheet row opens that period's transactions for the account", async ({ page }) => {
     const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
     const byName = (name: string) =>
@@ -343,6 +397,22 @@ test.describe("reports", () => {
     await expect(page.getByRole("heading", { name: "기간손익 그래프" })).toBeVisible();
   });
 
+  test("both chart screens page by the window's own length", async ({ page }) => {
+    // Twelve whole months, so the arrows must land on the twelve before
+    // and after — not eleven of the same twelve.
+    await page.goto("/assets/chart?from=2026-01-01&to=2026-12-31");
+    await page.getByRole("link", { name: /이전 기간/ }).click();
+    await expect(page).toHaveURL(/from=2025-01-01&to=2025-12-31/);
+    await page.getByRole("link", { name: /다음 기간/ }).click();
+    await expect(page).toHaveURL(/from=2026-01-01&to=2026-12-31/);
+
+    await page.goto("/income/chart?from=2026-07-01&to=2026-09-30&unit=month");
+    await page.getByRole("link", { name: /이전 기간/ }).click();
+    await expect(page).toHaveURL(/from=2026-04-01&to=2026-06-30/);
+    // The bar width travels with the window rather than resetting.
+    await expect(page).toHaveURL(/unit=month/);
+  });
+
   test("the income chart hovers a bar for its numbers, and switches month/year", async ({
     page,
   }) => {
@@ -425,6 +495,79 @@ test.describe("reports", () => {
     await expect(row).toContainText("₩2,000,000");
     await expect(row).toContainText("₩800,000");
     await expect(row).toContainText("₩1,200,000");
+  });
+
+  test("the by-item chart is switched on and off from its legend", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const bank = await byName("은행");
+    const cash = await byName("현금");
+    const opening = await byName("기초자본");
+
+    await db.update(accounts).set({ category: "유동성자금" }).where(eq(accounts.id, bank.id));
+    await db.update(accounts).set({ category: "현금성" }).where(eq(accounts.id, cash.id));
+
+    const post = async (date: string, account: string, amount: number) => {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date, title: "기초" })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: account,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: opening.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+      ]);
+    };
+    await post("2026-01-15", bank.id, 1_000_000);
+    await post("2026-02-15", bank.id, 500_000);
+    await post("2026-01-15", cash.id, 200_000);
+
+    await page.goto("/assets/chart?from=2026-01-01&to=2026-03-31");
+    const legend = page.getByTestId("series-legend");
+    await expect(legend.getByRole("button", { name: "유동성자금" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    // A balance carries forward: March has no transactions of its own
+    // and still holds February's money.
+    await page.getByTestId("series-hit").nth(2).hover();
+    const tip = page.getByTestId("series-tooltip");
+    await expect(tip).toContainText("2026-03");
+    await expect(tip).toContainText("₩1,500,000");
+
+    // The legend is the switch — turning one off takes its line and its
+    // row out of the readout.
+    await legend.getByRole("button", { name: "유동성자금" }).click();
+    await expect(legend.getByRole("button", { name: "유동성자금" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    await page.getByTestId("series-hit").nth(2).hover();
+    await expect(page.getByTestId("series-tooltip")).not.toContainText("유동성자금");
+
+    // ...and back on, without disturbing the one that stayed.
+    await legend.getByRole("button", { name: "유동성자금" }).click();
+    await page.getByTestId("series-hit").nth(2).hover();
+    await expect(page.getByTestId("series-tooltip")).toContainText("유동성자금");
   });
 
   test("the chart page draws all three charts, each with its numbers in a table", async ({
