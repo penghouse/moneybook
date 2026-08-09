@@ -177,6 +177,7 @@ const en: Record<keyof typeof ko, string> = {
   "entry.filters": "Search & filter",
   "entry.details": "Details",
   "entry.balance": "Balance",
+  "entry.runningTotal": "Running total",
   "entry.rate": "Rate",
   "entry.balanced": "matches",
   "entry.unbalanced": "doesn't match",

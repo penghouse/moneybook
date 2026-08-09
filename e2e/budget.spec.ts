@@ -173,6 +173,67 @@ test.describe("budget", () => {
     expect(rowBox.x).toBeGreaterThan(bandBox.x);
   });
 
+  test("a budget row opens that month's transactions for the account", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = (name: string) =>
+      db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      });
+    const food = await byName("식비");
+    const card = await byName("신용카드");
+    const month = today(section.timezone).slice(0, 7);
+
+    // One in the month on screen and one the month before, so the screen
+    // has to be reached with the period attached rather than by account
+    // alone — and so the 누계 column has something it could wrongly
+    // include.
+    for (const [date, title, amount] of [
+      [`${month}-05`, "점심", 12_000],
+      [`${month}-06`, "저녁", 20_000],
+      ["2020-01-05", "오래된 밥", 99_000],
+    ] as const) {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date, title })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: food!.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: card!.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+      ]);
+    }
+
+    await page.goto(`/budget?period=${month}`);
+    await page.getByTestId("budget-row").filter({ hasText: "식비" }).getByRole("link").click();
+
+    await expect(page).toHaveURL(new RegExp(`accountId=.*from=${month}-01`));
+    await expect(page.getByRole("heading", { name: "식비" })).toBeVisible();
+    await expect(page.getByText("점심")).toBeVisible();
+    await expect(page.getByText("저녁")).toBeVisible();
+    await expect(page.getByText("오래된 밥")).toHaveCount(0);
+
+    // 식비 has no balance, only a period total — and the total is this
+    // month's ₩32,000, not every meal since 2020.
+    await expect(page.getByText(/누계.*식비/)).toBeVisible();
+    await expect(page.getByText("₩32,000").first()).toBeVisible();
+    await expect(page.getByText("₩131,000")).toHaveCount(0);
+  });
+
   test("month navigation keeps the selected month in the URL", async ({ page }) => {
     await page.goto("/budget");
     await page.getByRole("link", { name: /다음 달/ }).click();

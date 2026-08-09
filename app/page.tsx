@@ -4,7 +4,7 @@ import { db } from "@/db/client";
 import { accounts, transactionLines, transactions } from "@/db/schema";
 import { getTranslations } from "@/i18n";
 import { interpolate } from "@/i18n/format";
-import { activeOn } from "@/lib/accounts";
+import { activeOn, isFlowGroup } from "@/lib/accounts";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
 import {
@@ -181,6 +181,11 @@ export default async function Home({
   // Filtering to one account changes what "the balance" means: that
   // account's own balance, in its own currency, instead of net worth.
   const filtered = accountId ? filterAccounts.find((a) => a.id === accountId) : undefined;
+  // 식비 has no balance, only a period total — so on a flow account the
+  // column is a running total *of the period on screen*, and it is
+  // captioned as one. Read from the book's beginning it would be the
+  // lifetime sum, a number arriving from 예산 nobody could use.
+  const isFlow = !!filtered && isFlowGroup(filtered.group);
   const runningBalances = await getRunningBalances(db, {
     sectionId: section.id,
     baseCurrency: section.baseCurrency,
@@ -188,9 +193,10 @@ export default async function Home({
     account: filtered
       ? { id: filtered.id, group: filtered.group, currency: filtered.currency }
       : undefined,
+    from: isFlow && from ? from : undefined,
   });
   const balanceByTransactionId = new Map(runningBalances.map((b) => [b.transactionId, b] as const));
-  const balanceCaption = `${t("entry.balance")} · ${filtered ? filtered.name : t("assets.netWorth")}`;
+  const balanceCaption = `${isFlow ? t("entry.runningTotal") : t("entry.balance")} · ${filtered ? filtered.name : t("assets.netWorth")}`;
 
   // 거래처관리 계정을 보고 있을 때만. Not bounded by the from/to filter
   // above it on purpose — see getCounterpartyBalances: who still owes

@@ -518,6 +518,13 @@ export interface RunningBalance {
  *   bank balance is the money in that account, not its base-currency
  *   valuation.
  *
+ * `from` bounds where the running sum starts. Omit it for a level — a
+ * bank balance is what carries forward, and starting it at the top of
+ * the month would report the month's movement as the balance. Pass it
+ * for a flow account, where the opposite holds: 식비's running sum only
+ * means something inside a period, and "since the book began" is a
+ * number nobody has a use for.
+ *
  * Net worth needs no per-group sign flip. `normalBalance` negates
  * credit-normal groups, so assets carry `left − right` and liabilities
  * carry `−(left − right)`; net worth is `assets − liabilities`, and the
@@ -540,6 +547,8 @@ export async function getRunningBalances(
     transactionIds: readonly string[];
     /** Omit for net worth across the whole book. */
     account?: { id: string; group: AccountGroup; currency: string };
+    /** Earliest date the running sum counts from; omit to run over all history. */
+    from?: string;
   },
 ): Promise<RunningBalance[]> {
   if (params.transactionIds.length === 0) return [];
@@ -551,6 +560,7 @@ export async function getRunningBalances(
   const scope = account
     ? sql`${transactionLines.accountId} = ${account.id}`
     : sql`${accounts.group} in ('asset', 'liability')`;
+  const since = params.from ? sql` and ${transactions.date} >= ${params.from}` : sql``;
 
   const rows = await db.all<{ id: string; running: number }>(sql`
     with tx_delta as (
@@ -561,7 +571,7 @@ export async function getRunningBalances(
       from ${transactionLines}
       inner join ${transactions} on ${transactionLines.transactionId} = ${transactions.id}
       inner join ${accounts} on ${transactionLines.accountId} = ${accounts.id}
-      where ${transactions.sectionId} = ${params.sectionId} and ${scope}
+      where ${transactions.sectionId} = ${params.sectionId} and ${scope}${since}
       group by ${transactions.id}
     ),
     accumulated as (

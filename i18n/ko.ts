@@ -172,6 +172,7 @@ const ko = {
   "entry.filters": "검색·필터",
   "entry.details": "세부내역",
   "entry.balance": "잔액",
+  "entry.runningTotal": "누계",
   "entry.rate": "환율",
   "entry.balanced": "일치",
   "entry.unbalanced": "불일치",

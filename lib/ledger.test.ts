@@ -707,6 +707,45 @@ describe("getRunningBalances", () => {
     expect(byId.get(ordered[1])).toBe(1_000_000 - 3_000);
   });
 
+  // What 예산 links to: 식비's running column has to add up to that
+  // month's spend, not to everything ever eaten.
+  it("starts a flow account's running total at `from` rather than at the book's beginning", async () => {
+    const eat = (date: string, amount: number) =>
+      postTransaction(db, {
+        date,
+        title: "식사",
+        lines: [
+          line("left", ids.food, "KRW", amount, 1),
+          line("right", ids.card, "KRW", amount, 1),
+        ],
+      });
+    await eat("2026-01-20", 40_000);
+    const first = await eat("2026-02-03", 12_000);
+    const second = await eat("2026-02-10", 20_000);
+
+    const food = { id: ids.food, group: "expense" as const, currency: "KRW" };
+    const bounded = await getRunningBalances(db, {
+      sectionId: SECTION_ID,
+      baseCurrency: BASE_CURRENCY,
+      transactionIds: [first, second],
+      account: food,
+      from: "2026-02-01",
+    });
+    const byId = new Map(bounded.map((r) => [r.transactionId, r.amount]));
+    expect(byId.get(first)).toBe(12_000);
+    expect(byId.get(second)).toBe(32_000);
+
+    // Without the bound, January is still in the sum — which is why a
+    // level and a flow cannot share one default.
+    const unbounded = await getRunningBalances(db, {
+      sectionId: SECTION_ID,
+      baseCurrency: BASE_CURRENCY,
+      transactionIds: [first],
+      account: food,
+    });
+    expect(unbounded[0].amount).toBe(52_000);
+  });
+
   it("returns nothing for an empty id list without touching the database", async () => {
     expect(await netWorth([])).toEqual([]);
   });

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { and, asc, eq, like } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, budgets } from "@/db/schema";
@@ -253,12 +254,23 @@ export default async function BudgetPage({
                         hasCategories ? "border-rule-soft mx-4 border-l pl-3" : "px-4"
                       }`}
                     >
-                      <div className="flex items-baseline gap-2">
-                        <span className="min-w-0 truncate font-semibold">{account.name}</span>
-                        <span className="tnum text-ink-muted ml-auto text-sm">
-                          {t("budget.spent")} {base(spent)}
+                      {/* "이 지출이 뭐였지" is answered by the transactions
+                          behind it, so the name and the figure together open
+                          the period on screen filtered to this account. The
+                          whole line rather than the name alone: a name is a
+                          24px target on a page tapped with a thumb, and the
+                          amount is the half people reach for. */}
+                      <Link
+                        href={`/?accountId=${account.id}&from=${from}&to=${to}`}
+                        className="hover:bg-sunken rounded-control -mx-2 flex min-h-11 items-center px-2"
+                      >
+                        <span className="flex w-full items-baseline gap-2">
+                          <span className="min-w-0 truncate font-semibold">{account.name}</span>
+                          <span className="tnum text-ink-muted ml-auto text-sm">
+                            {t("budget.spent")} {base(spent)}
+                          </span>
                         </span>
-                      </div>
+                      </Link>
 
                       {budget !== undefined && (
                         <>

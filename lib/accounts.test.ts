@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { isActiveDuring, isActiveOn, isClosedBy, type ActiveWindow } from "./accounts";
+import {
+  canTrackCounterparties,
+  isActiveDuring,
+  isActiveOn,
+  isClosedBy,
+  isFlowGroup,
+  type ActiveWindow,
+} from "./accounts";
 
 const open: ActiveWindow = { activeFrom: null, activeTo: null };
 const window = (activeFrom: string | null, activeTo: string | null): ActiveWindow => ({
@@ -72,5 +79,22 @@ describe("isClosedBy", () => {
   it("does not count the closing day itself as already closed", () => {
     expect(isClosedBy(window(null, "2024-03-31"), "2024-03-31")).toBe(false);
     expect(isClosedBy(window(null, "2024-03-31"), "2024-04-01")).toBe(true);
+  });
+});
+
+describe("isFlowGroup", () => {
+  it("splits the four groups into flows and levels", () => {
+    expect(isFlowGroup("income")).toBe(true);
+    expect(isFlowGroup("expense")).toBe(true);
+    expect(isFlowGroup("asset")).toBe(false);
+    expect(isFlowGroup("liability")).toBe(false);
+  });
+
+  // Two screens ask this question — the running-balance column and the
+  // counterparty breakdown — and they must not answer it differently.
+  it("is exactly the groups that cannot keep a counterparty breakdown", () => {
+    for (const group of ["income", "expense", "asset", "liability"] as const) {
+      expect(canTrackCounterparties(group)).toBe(!isFlowGroup(group));
+    }
   });
 });
