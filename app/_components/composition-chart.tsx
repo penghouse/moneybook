@@ -24,11 +24,20 @@ export function CompositionChart({
   currency,
   locale,
   shareLabel,
+  highlightId,
 }: {
   slices: CompositionSlice[];
   currency: string;
   locale: string;
   shareLabel: string;
+  /**
+   * One slice to pick out of the list — the account whose transactions
+   * are on screen. Weight and a filled ground, not a second hue: the
+   * rule above is that these bars are one colour because length already
+   * carries the magnitude, and "the one you are looking at" is not a
+   * category of its own.
+   */
+  highlightId?: string;
 }) {
   const total = slices.reduce((sum, s) => sum + s.amount, 0);
   if (slices.length === 0 || total <= 0) return null;
@@ -37,10 +46,19 @@ export function CompositionChart({
     <ul aria-label={shareLabel}>
       {slices.map((slice) => {
         const percent = (slice.amount / total) * 100;
+        const isHere = slice.id === highlightId;
         return (
-          <li key={slice.id} className="not-first:border-rule-soft px-4 py-3 not-first:border-t">
+          <li
+            key={slice.id}
+            aria-current={isHere ? "true" : undefined}
+            className={`not-first:border-rule-soft px-4 py-3 not-first:border-t ${
+              isHere ? "bg-sunken" : ""
+            }`}
+          >
             <div className="flex items-baseline gap-3">
-              <span className="min-w-0 flex-1 truncate text-sm">{slice.name}</span>
+              <span className={`min-w-0 flex-1 truncate text-sm ${isHere ? "font-bold" : ""}`}>
+                {slice.name}
+              </span>
               <span className="tnum shrink-0 text-sm font-semibold">
                 {formatMoney(slice.amount, currency, locale)}
               </span>

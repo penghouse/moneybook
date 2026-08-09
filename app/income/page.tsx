@@ -130,6 +130,10 @@ export default async function IncomePage({
                 {rows.map((f) => (
                   <KeyValueRow
                     key={f.accountId}
+                    // The same move the budget rows make: "왜 이만큼이지"
+                    // is answered by the transactions behind the figure,
+                    // over exactly the period this statement is reading.
+                    href={`/?accountId=${f.accountId}&from=${from}&to=${to}`}
                     label={f.name}
                     value={
                       <Money

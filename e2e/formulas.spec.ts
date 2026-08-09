@@ -195,6 +195,47 @@ test.describe("formulas", () => {
     await expect(page.getByTestId("formula-result")).toHaveCount(0);
   });
 
+  test("the picker lights up as you press it, and only offers accounts in use today", async ({
+    page,
+  }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    await db.insert(accounts).values({
+      sectionId: section.id,
+      group: "asset",
+      name: "닫은통장",
+      currency: "KRW",
+      sortOrder: 900,
+      activeTo: "2020-12-31",
+    });
+
+    await page.goto("/formulas?scope=assets&new=1");
+
+    // The control is styled from the live :checked state, not from what
+    // was saved — pressing + used to change the radio and nothing else,
+    // which read as a control that did not work at all.
+    const row = item(page, "은행");
+    const plus = row.getByRole("radio", { name: /더하기/ });
+    await expect(plus).not.toBeChecked();
+    await plus.check();
+    await expect(plus).toBeChecked();
+    // Whichever cell is checked is the one wearing the colour — asserted
+    // on the rendered background, since a class name cannot show that the
+    // page reacted to the press.
+    await expect(row.locator("label:has(input:checked)")).toHaveCSS(
+      "background-color",
+      /rgb\(15, 122, 61\)|rgb\(85, 214, 138\)/,
+    );
+
+    // An account nobody uses any more is not something to build a new
+    // formula out of.
+    await expect(item(page, "닫은통장")).toHaveCount(0);
+    await expect(item(page, "은행")).toHaveCount(1);
+
+    // And the balances are gone from the picker: it is for choosing
+    // items, and a column of today's figures is a different screen.
+    await expect(page.getByTestId("formula-item").first()).not.toContainText("₩");
+  });
+
   test("an item the book no longer has drops out, and the rest still adds up", async ({ page }) => {
     const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
     const [scratch] = await db

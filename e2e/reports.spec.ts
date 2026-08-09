@@ -497,6 +497,62 @@ test.describe("reports", () => {
     await expect(row).toContainText("₩1,200,000");
   });
 
+  test("an income statement row opens its transactions, with its share of the period", async ({
+    page,
+  }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const food = await byName("식비");
+    const transport = await byName("교통비");
+    const card = await byName("신용카드");
+
+    const spend = async (account: string, amount: number, title: string) => {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date: "2026-08-10", title })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: account,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: card.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+      ]);
+    };
+    await spend(food.id, 750_000, "장보기");
+    await spend(transport.id, 250_000, "교통카드");
+
+    await page.goto("/income?from=2026-08-01&to=2026-08-31");
+    await page.getByRole("link", { name: /식비/ }).click();
+    await expect(page).toHaveURL(/accountId=[^&]+&from=2026-08-01&to=2026-08-31/);
+    await expect(page.getByText("장보기")).toBeVisible();
+
+    // "₩750,000" alone does not say whether that is most of the month or
+    // a rounding error, so the account sits among its peers: 750 of the
+    // million spent is 75%.
+    const share = page.getByRole("list", { name: "비중" });
+    await expect(share.locator("li").filter({ hasText: "식비" })).toContainText("75.0%");
+    await expect(share.locator("li").filter({ hasText: "교통비" })).toContainText("25.0%");
+    // The one being read is picked out of the list.
+    await expect(share.locator('li[aria-current="true"]')).toContainText("식비");
+  });
+
   test("the by-item chart is switched on and off from its legend", async ({ page }) => {
     const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
     const byName = async (name: string) =>

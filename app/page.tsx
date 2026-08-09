@@ -19,6 +19,7 @@ import {
 } from "@/lib/date";
 import {
   findTaggedTransactionIds,
+  getAccountFlows,
   getCounterpartyBalances,
   getRunningBalances,
   getTitleSuggestions,
@@ -331,6 +332,27 @@ export default async function Home({
       )[0]
     : null;
 
+  /**
+   * Where the account on screen sits among its peers for this period.
+   *
+   * "식비 ₩420,000" answers how much; it does not answer whether that is
+   * most of the month's spending or a rounding error next to rent. The
+   * share is only defined against a like-for-like total, so the
+   * comparison is the account's own group over the same dates — expenses
+   * against expenses, never against income or against a transfer.
+   *
+   * Only for flow accounts, and only over a real period: a balance is a
+   * level, and 「은행이 자산의 40%」 has nothing to do with the dates in
+   * the filter above it.
+   */
+  const shares =
+    isFlow && from && to
+      ? (await getAccountFlows(db, { sectionId: section.id, from, to }))
+          .filter((f) => f.group === filtered!.group && f.baseAmount > 0)
+          .sort((a, b) => b.baseAmount - a.baseAmount)
+          .map((f) => ({ id: f.accountId, name: f.name, amount: f.baseAmount }))
+      : [];
+
   /** The same filter with one parameter changed — used by the tag chips. */
   const withParam = (key: string, value: string | null) => {
     const next = new URLSearchParams(listParams);
@@ -544,6 +566,21 @@ export default async function Home({
               }
             />
           </Card>
+        )}
+
+        {shares.length > 1 && (
+          <section className="mb-3">
+            <SectionLabel>{t("entry.share")}</SectionLabel>
+            <Card>
+              <CompositionChart
+                slices={shares}
+                currency={section.baseCurrency}
+                locale={locale}
+                shareLabel={t("assets.share")}
+                highlightId={filtered!.id}
+              />
+            </Card>
+          </section>
         )}
 
         {isLedger && ledgerUnit !== "custom" && (

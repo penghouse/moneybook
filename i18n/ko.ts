@@ -175,6 +175,7 @@ const ko = {
   "entry.noCounterparties": "남은 잔액이 있는 거래처가 없습니다.",
   "entry.filters": "검색·필터",
   "entry.details": "세부내역",
+  "entry.share": "기간 내 비중",
   "entry.balance": "잔액",
   "entry.runningTotal": "누계",
   "entry.rate": "환율",
