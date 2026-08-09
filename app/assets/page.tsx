@@ -7,7 +7,15 @@ import { isClosedBy } from "@/lib/accounts";
 import { parseGroupOrder } from "@/lib/account-groups";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
-import { addMonthsToDate, today } from "@/lib/date";
+import {
+  addMonthsToDate,
+  addYearsToDate,
+  monthRange,
+  today,
+  yearMonthOf,
+  yearOf,
+  yearRange,
+} from "@/lib/date";
 import { getAccountBalances, getUnrealizedFx } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
 import { PeriodNav } from "../_components/period-nav";
@@ -35,13 +43,26 @@ const GROUP_LABEL_KEY: Record<"asset" | "liability", TranslationKey> = {
 export default async function AssetsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ asOf?: string; revalued?: string }>;
+  searchParams: Promise<{ asOf?: string; revalued?: string; step?: string }>;
 }) {
   const userId = await requireUserId();
   const { t, locale } = await getTranslations();
   const section = await getOrCreateSection(db, { userId, locale });
-  const { asOf: asOfParam, revalued } = await searchParams;
-  const asOf = asOfParam ?? today(section.timezone);
+  const { asOf: asOfParam, revalued, step: stepParam } = await searchParams;
+  const now = today(section.timezone);
+  const asOf = asOfParam ?? now;
+
+  /**
+   * A balance sheet is read at an instant, and an instant cannot say
+   * what unit it belongs to — 12월 31일 is a month end and a year end
+   * at once. So unlike the income statement, whose unit is derived from
+   * its range, this one has to be told, and it is carried in the URL so
+   * a bookmark or a back-button press keeps the arrows stepping the way
+   * they were.
+   */
+  const step = stepParam === "year" ? "year" : "month";
+  const { from: periodFrom, to: periodTo } =
+    step === "year" ? yearRange(yearOf(asOf)) : monthRange(yearMonthOf(asOf));
 
   const balances = await getAccountBalances(db, {
     sectionId: section.id,
@@ -130,6 +151,12 @@ export default async function AssetsPage({
               return (
                 <KeyValueRow
                   key={a.accountId}
+                  // "왜 이 숫자지" is answered by the transactions behind
+                  // it, so the row opens the period on screen filtered to
+                  // this account. The balance is cumulative to 기준일
+                  // while the list is one period — the link answers what
+                  // moved it lately, not how it got to where it is.
+                  href={`/?accountId=${a.accountId}&from=${periodFrom}&to=${periodTo}`}
                   label={a.name}
                   value={<Money amount={a.amount} currency={a.currency} locale={locale} />}
                   // Only foreign-currency accounts carry a book/current
@@ -174,6 +201,24 @@ export default async function AssetsPage({
     (g): g is "asset" | "liability" => g === "asset" || g === "liability",
   );
 
+  const assetsHref = (date: string, unit: "month" | "year") => `/assets?asOf=${date}&step=${unit}`;
+  const stepHref = (delta: number) =>
+    assetsHref(step === "year" ? addYearsToDate(asOf, delta) : addMonthsToDate(asOf, delta), step);
+
+  // Switching to years snaps to that year's end, because "as of some day
+  // in August" is not the question anyone asks a yearly balance sheet —
+  // capped at today, so the current year lands on today rather than on a
+  // 12월 31일 that has not happened. Switching back to months keeps the
+  // date, which is where the reader already is.
+  const units = [
+    { label: t("common.unitMonth"), href: assetsHref(asOf, "month"), active: step === "month" },
+    {
+      label: t("common.unitYear"),
+      href: assetsHref(yearRange(yearOf(asOf)).to > now ? now : yearRange(yearOf(asOf)).to, "year"),
+      active: step === "year",
+    },
+  ];
+
   return (
     <div className="space-y-4">
       <PageHeader title={t("nav.assets")}>
@@ -191,16 +236,17 @@ export default async function AssetsPage({
         </form>
       </PageHeader>
 
-      {/* A balance sheet is read at an instant, so the arrows move that
-          instant by a month rather than stepping through periods. The
-          day is kept where the target month has one, so stepping back
-          from the 31st does not land on the 3rd of the month after. */}
+      {/* The arrows move the instant itself rather than stepping through
+          periods. The day is kept where the target month has one, so
+          stepping back from the 31st does not land on the 3rd of the
+          month after. */}
       <PeriodNav
-        prevHref={`/assets?asOf=${addMonthsToDate(asOf, -1)}`}
-        nextHref={`/assets?asOf=${addMonthsToDate(asOf, 1)}`}
+        prevHref={stepHref(-1)}
+        nextHref={stepHref(1)}
         label={asOf}
-        prevLabel={t("budget.prevMonth")}
-        nextLabel={t("budget.nextMonth")}
+        prevLabel={step === "year" ? t("common.prevYear") : t("common.prevMonth")}
+        nextLabel={step === "year" ? t("common.nextYear") : t("common.nextMonth")}
+        units={units}
       />
 
       {revalued === "1" && (

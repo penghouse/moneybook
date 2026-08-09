@@ -17,7 +17,7 @@ import {
   getAccountBalances,
   getAccountFlows,
   getMonthlyBalanceSheet,
-  getMonthlyTotals,
+  getPeriodTotals,
   getRunningBalances,
   getUnrealizedFx,
   UnbalancedTransactionError,
@@ -329,7 +329,7 @@ describe("getAccountBalances / getAccountFlows", () => {
   });
 });
 
-describe("getMonthlyTotals", () => {
+describe("getPeriodTotals", () => {
   let db: Db;
   let ids: Record<string, string>;
 
@@ -361,20 +361,56 @@ describe("getMonthlyTotals", () => {
       ],
     });
 
-    const totals = await getMonthlyTotals(db, {
+    const totals = await getPeriodTotals(db, {
       sectionId: SECTION_ID,
-      months: ["2026-06", "2026-07", "2026-08"],
+      periods: ["2026-06", "2026-07", "2026-08"],
     });
 
     expect(totals).toEqual([
-      { yearMonth: "2026-06", income: 3_000_000, expense: 0 },
-      { yearMonth: "2026-07", income: 3_100_000, expense: 20_000 },
-      { yearMonth: "2026-08", income: 0, expense: 0 },
+      { period: "2026-06", income: 3_000_000, expense: 0 },
+      { period: "2026-07", income: 3_100_000, expense: 20_000 },
+      { period: "2026-08", income: 0, expense: 0 },
     ]);
   });
 
-  it("returns an empty array for an empty months list", async () => {
-    expect(await getMonthlyTotals(db, { sectionId: SECTION_ID, months: [] })).toEqual([]);
+  // Four-character keys mean years, and twelve months roll up into one.
+  it("aggregates by year when the keys are years", async () => {
+    await postTransaction(db, {
+      date: "2025-11-01",
+      title: "작년 급여",
+      lines: [
+        line("left", ids.bank, "KRW", 1_000_000, 1),
+        line("right", ids.salary, "KRW", 1_000_000, 1),
+      ],
+    });
+    await postTransaction(db, {
+      date: "2026-02-10",
+      title: "2월 급여",
+      lines: [
+        line("left", ids.bank, "KRW", 2_000_000, 1),
+        line("right", ids.salary, "KRW", 2_000_000, 1),
+      ],
+    });
+    await postTransaction(db, {
+      date: "2026-09-30",
+      title: "9월 식비",
+      lines: [line("left", ids.food, "KRW", 30_000, 1), line("right", ids.card, "KRW", 30_000, 1)],
+    });
+
+    const totals = await getPeriodTotals(db, {
+      sectionId: SECTION_ID,
+      periods: ["2025", "2026", "2027"],
+    });
+
+    expect(totals).toEqual([
+      { period: "2025", income: 1_000_000, expense: 0 },
+      { period: "2026", income: 2_000_000, expense: 30_000 },
+      { period: "2027", income: 0, expense: 0 },
+    ]);
+  });
+
+  it("returns an empty array for an empty period list", async () => {
+    expect(await getPeriodTotals(db, { sectionId: SECTION_ID, periods: [] })).toEqual([]);
   });
 });
 

@@ -6,7 +6,10 @@ const CHART_HEIGHT = 150;
 const LABEL_HEIGHT = 24;
 
 export interface NetIncomeChartPoint {
-  yearMonth: string;
+  /** The period's full name — '2026-08' or '2026'. Read out and tabulated. */
+  label: string;
+  /** The axis tick, which has room for two or three characters at most. */
+  tick: string;
   net: number;
 }
 
@@ -72,9 +75,9 @@ export function NetIncomeChart({
         />
         {points.map((p, i) => {
           const x = i * (BAR_WIDTH + GAP);
-          const label = `${p.yearMonth}: ${formatMoney(p.net, currency, locale)}`;
+          const label = `${p.label}: ${formatMoney(p.net, currency, locale)}`;
           return (
-            <g key={p.yearMonth}>
+            <g key={p.label}>
               <path
                 d={barPath(x, baseline, p.net, pxPerUnit)}
                 className={p.net >= 0 ? "fill-positive" : "fill-negative"}
@@ -107,7 +110,7 @@ export function NetIncomeChart({
                 textAnchor="middle"
                 className="fill-ink-faint text-[9px]"
               >
-                {p.yearMonth.slice(5)}
+                {p.tick}
               </text>
             </g>
           );
@@ -121,8 +124,8 @@ export function NetIncomeChart({
         <table className="w-full text-sm">
           <tbody>
             {points.map((p) => (
-              <tr key={p.yearMonth} className="border-rule-soft border-t">
-                <td className="tnum py-2">{p.yearMonth}</td>
+              <tr key={p.label} className="border-rule-soft border-t">
+                <td className="tnum py-2">{p.label}</td>
                 <td className="tnum py-2 text-right">{formatMoney(p.net, currency, locale)}</td>
               </tr>
             ))}

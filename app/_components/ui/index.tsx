@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { formatMoney } from "@/lib/money";
 
 /**
@@ -159,21 +160,33 @@ export function KeyValueRow({
   value,
   sub,
   className = "",
+  href,
 }: {
   label: ReactNode;
   value: ReactNode;
   sub?: ReactNode;
   className?: string;
+  /** Makes the whole row the link, rather than just the label — a name
+   *  on its own is a 24px target on a page meant to be read with a thumb. */
+  href?: string;
 }) {
-  return (
-    <div
-      className={`not-first:border-rule-soft flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 not-first:border-t ${className}`}
-    >
+  const shared = `not-first:border-rule-soft flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 not-first:border-t ${className}`;
+  const content = (
+    <>
       <span className="min-w-0 break-keep">{label}</span>
       <span className="ml-auto">{value}</span>
       {sub && <div className="flex w-full flex-wrap gap-x-2 gap-y-1.5 pt-0.5">{sub}</div>}
-    </div>
+    </>
   );
+
+  if (href) {
+    return (
+      <Link href={href} className={`${shared} hover:bg-sunken min-h-12`}>
+        {content}
+      </Link>
+    );
+  }
+  return <div className={shared}>{content}</div>;
 }
 
 export type ChipTone = "default" | "positive" | "negative" | "warning";

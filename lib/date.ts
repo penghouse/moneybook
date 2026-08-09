@@ -51,6 +51,11 @@ export function addMonthsToDate(date: string, delta: number): string {
   return `${target}-${String(Math.min(day, lastDay)).padStart(2, "0")}`;
 }
 
+/** Whole years on a full date, clamping 2월 29일 to 2월 28일. */
+export function addYearsToDate(date: string, delta: number): string {
+  return addMonthsToDate(date, delta * 12);
+}
+
 export function addMonths(yearMonth: string, delta: number): string {
   const [yearStr, monthStr] = yearMonth.split("-");
   const totalMonths = Number(yearStr) * 12 + (Number(monthStr) - 1) + delta;

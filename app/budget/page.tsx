@@ -88,8 +88,8 @@ export default async function BudgetPage({
       : `${year}-01`
     : ref.periodKey;
   const units = [
-    { label: t("budget.unitMonth"), href: `/budget?period=${monthKey}`, active: !isYear },
-    { label: t("budget.unitYear"), href: `/budget?period=${year}`, active: isYear },
+    { label: t("common.unitMonth"), href: `/budget?period=${monthKey}`, active: !isYear },
+    { label: t("common.unitYear"), href: `/budget?period=${year}`, active: isYear },
   ];
 
   // Only meaningful on the year screen, where the whole point is whether
@@ -122,8 +122,8 @@ export default async function BudgetPage({
         prevHref={`/budget?period=${isYear ? addYears(ref.periodKey, -1) : addMonths(ref.periodKey, -1)}`}
         nextHref={`/budget?period=${isYear ? addYears(ref.periodKey, 1) : addMonths(ref.periodKey, 1)}`}
         label={ref.periodKey}
-        prevLabel={isYear ? t("budget.prevYear") : t("budget.prevMonth")}
-        nextLabel={isYear ? t("budget.nextYear") : t("budget.nextMonth")}
+        prevLabel={isYear ? t("common.prevYear") : t("common.prevMonth")}
+        nextLabel={isYear ? t("common.nextYear") : t("common.nextMonth")}
         units={units}
       />
 

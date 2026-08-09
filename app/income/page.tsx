@@ -2,12 +2,21 @@ import { asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts } from "@/db/schema";
 import { getTranslations } from "@/i18n";
-import { addMonths, monthRange, today, yearMonthOf } from "@/lib/date";
+import {
+  addMonths,
+  addYears,
+  monthRange,
+  rangeUnit,
+  today,
+  yearMonthOf,
+  yearOf,
+  yearRange,
+} from "@/lib/date";
 import { parseGroupOrder } from "@/lib/account-groups";
 import { PeriodNav } from "../_components/period-nav";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
-import { getAccountFlows, getMonthlyTotals } from "@/lib/ledger";
+import { getAccountFlows, getPeriodTotals } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
 import { NetIncomeChart } from "../_components/net-income-chart";
 import {
@@ -32,10 +41,14 @@ export default async function IncomePage({
   const section = await getOrCreateSection(db, { userId, locale });
   const { from: fromParam, to: toParam } = await searchParams;
 
-  const currentYearMonth = yearMonthOf(today(section.timezone));
-  const defaultRange = monthRange(currentYearMonth);
+  const now = today(section.timezone);
+  const defaultRange = monthRange(yearMonthOf(now));
   const from = fromParam ?? defaultRange.from;
   const to = toParam ?? defaultRange.to;
+
+  // Month, year, or something hand-typed — read off the range itself, so
+  // the unit on screen can never disagree with the dates it describes.
+  const unit = rangeUnit(from, to);
 
   const allAccounts = await db.query.accounts.findMany({
     where: eq(accounts.sectionId, section.id),
@@ -48,11 +61,23 @@ export default async function IncomePage({
   const totalExpense = expense.reduce((s, f) => s + f.baseAmount, 0);
   const netIncome = totalIncome - totalExpense;
 
-  const months = Array.from({ length: 12 }, (_, i) => addMonths(currentYearMonth, i - 11));
-  const monthly = await getMonthlyTotals(db, { sectionId: section.id, months });
-  const chartPoints = monthly.map((m) => ({
-    yearMonth: m.yearMonth,
-    net: m.income - m.expense,
+  // The trend follows the unit on screen — twelve months, or five years
+  // — and ends at the period being read rather than at today. Paging
+  // back to March used to leave the chart showing the twelve months up
+  // to now, so the numbers above it and the bars below it were about
+  // different periods.
+  const shownYear = yearOf(from);
+  const periods =
+    unit === "year"
+      ? Array.from({ length: 5 }, (_, i) => addYears(shownYear, i - 4))
+      : Array.from({ length: 12 }, (_, i) => addMonths(yearMonthOf(from), i - 11));
+  const totals = await getPeriodTotals(db, { sectionId: section.id, periods });
+  const chartPoints = totals.map((p) => ({
+    label: p.period,
+    // '2026-08' → '08', '2026' → '26'. Two characters is what the tick
+    // has room for at twelve bars across a phone.
+    tick: unit === "year" ? p.period.slice(2) : p.period.slice(5),
+    net: p.income - p.expense,
   }));
 
   const base = (minor: number) => formatMoney(minor, section.baseCurrency, locale);
@@ -121,15 +146,29 @@ export default async function IncomePage({
     );
   }
 
-  // The arrows step whole calendar months, which is what the labels say
-  // and what this page defaults to. A hand-typed range that spans several
-  // months therefore snaps to one when they are used — predictable, and
-  // the range is still one 조회 away.
-  const shownMonth = yearMonthOf(from);
-  const monthHref = (delta: number) => {
-    const range = monthRange(addMonths(shownMonth, delta));
-    return `/income?from=${range.from}&to=${range.to}`;
-  };
+  const href = ({ from, to }: { from: string; to: string }) => `/income?from=${from}&to=${to}`;
+
+  // The arrows step whole periods, which is what the labels say and what
+  // this page defaults to. A hand-typed range that spans several months
+  // therefore snaps to one when they are used — predictable, and the
+  // range is still one 조회 away.
+  const stepHref = (delta: number) =>
+    href(
+      unit === "year"
+        ? yearRange(addYears(shownYear, delta))
+        : monthRange(addMonths(yearMonthOf(from), delta)),
+    );
+
+  const units = [
+    {
+      label: t("common.unitMonth"),
+      href: href(monthRange(yearMonthOf(from))),
+      active: unit === "month",
+    },
+    { label: t("common.unitYear"), href: href(yearRange(shownYear)), active: unit === "year" },
+  ];
+
+  const trendLabel = unit === "year" ? t("income.trendYears") : t("income.trend");
 
   return (
     <div className="space-y-4">
@@ -150,11 +189,17 @@ export default async function IncomePage({
       </PageHeader>
 
       <PeriodNav
-        prevHref={monthHref(-1)}
-        nextHref={monthHref(1)}
-        label={`${from} ~ ${to}`}
-        prevLabel={t("budget.prevMonth")}
-        nextLabel={t("budget.nextMonth")}
+        prevHref={stepHref(-1)}
+        nextHref={stepHref(1)}
+        // The whole range for a custom one; just the period's own name
+        // when it is exactly a month or a year, where "2026-08-01 ~
+        // 2026-08-31" says nothing "2026-08" does not.
+        label={
+          unit === "custom" ? `${from} ~ ${to}` : unit === "year" ? shownYear : yearMonthOf(from)
+        }
+        prevLabel={unit === "year" ? t("common.prevYear") : t("common.prevMonth")}
+        nextLabel={unit === "year" ? t("common.nextYear") : t("common.nextMonth")}
+        units={units}
       />
 
       <Card>
@@ -189,14 +234,14 @@ export default async function IncomePage({
         )}
 
       <section>
-        <SectionLabel>{t("income.trend")}</SectionLabel>
+        <SectionLabel>{trendLabel}</SectionLabel>
         <Card>
           <div className="px-2 py-3 md:px-4">
             <NetIncomeChart
               points={chartPoints}
               currency={section.baseCurrency}
               locale={locale}
-              tableCaption={t("income.trend")}
+              tableCaption={trendLabel}
               tableLabel={t("common.viewTable")}
             />
           </div>

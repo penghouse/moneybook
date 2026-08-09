@@ -105,6 +105,72 @@ test.describe("reports", () => {
     await expect(page).toHaveURL(/from=2026-07-01&to=2026-07-31/);
   });
 
+  test("the year toggle changes what the arrows step, on both reports", async ({ page }) => {
+    // The income statement's unit is derived from its range, so 연간
+    // widens the range and the arrows follow it without being told.
+    await page.goto("/income?from=2026-08-01&to=2026-08-31");
+    await page.getByRole("link", { name: "연간" }).click();
+    await expect(page).toHaveURL(/from=2026-01-01&to=2026-12-31/);
+    await page.getByRole("link", { name: /이전 해/ }).click();
+    await expect(page).toHaveURL(/from=2025-01-01&to=2025-12-31/);
+    await expect(page.getByText("최근 5년 추이")).toBeVisible();
+
+    // A date cannot say which unit it belongs to, so the balance sheet
+    // carries the step in the URL. Switching to years snaps to the
+    // year's end — a past year, so it is not capped at today.
+    await page.goto("/assets?asOf=2025-08-06");
+    await page.getByRole("link", { name: "연간" }).click();
+    await expect(page).toHaveURL(/asOf=2025-12-31&step=year/);
+    await page.getByRole("link", { name: /이전 해/ }).click();
+    await expect(page).toHaveURL(/asOf=2024-12-31&step=year/);
+  });
+
+  test("a balance sheet row opens that period's transactions for the account", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = (name: string) =>
+      db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      });
+    const card = await byName("신용카드");
+    const food = await byName("식비");
+
+    // The sheet lists accounts the ledger has touched, so the row has to
+    // exist before it can be pressed.
+    const [tx] = await db
+      .insert(transactions)
+      .values({ sectionId: section.id, date: "2026-08-03", title: "카드 결제" })
+      .returning();
+    await db.insert(transactionLines).values([
+      {
+        transactionId: tx.id,
+        side: "left",
+        accountId: food!.id,
+        currency: "KRW",
+        amount: 40_000,
+        rate: 1,
+        baseAmount: 40_000,
+      },
+      {
+        transactionId: tx.id,
+        side: "right",
+        accountId: card!.id,
+        currency: "KRW",
+        amount: 40_000,
+        rate: 1,
+        baseAmount: 40_000,
+      },
+    ]);
+
+    await page.goto("/assets?asOf=2026-08-06");
+    await page.getByRole("link", { name: /신용카드/ }).click();
+
+    // The month on screen, filtered to the account whose row was pressed
+    // — and the running-balance caption names it, which is how the list
+    // says it is showing one account rather than net worth.
+    await expect(page).toHaveURL(/accountId=[^&]+&from=2026-08-01&to=2026-08-31/);
+    await expect(page.getByText("잔액 · 신용카드")).toBeVisible();
+  });
+
   test("income page shows this month's income/expense/net and a trend chart", async ({ page }) => {
     const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
     const byName = (name: string) =>
