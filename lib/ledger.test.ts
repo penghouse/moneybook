@@ -893,6 +893,25 @@ describe("getCounterpartyBalances", () => {
     expect(await balances()).toEqual([{ name: "한석핸드폰", amount: 200_000 }]);
   });
 
+  // 「한석상여」 and 「한석상여(리텐션뱉)」 are one person: the
+  // parenthesis says what the transfer was for, not who it was with.
+  // Split apart, they would report two live half-balances for someone who
+  // is in fact square.
+  it("reads a counterparty without their parentheses, so a settled one still nets to zero", async () => {
+    await lend("2026-03-01", "한석상여", 500_000);
+    await repaid("2026-04-01", "한석상여(리텐션뱉)", 500_000);
+    await lend("2026-04-02", "맥북에어", 200_000);
+
+    expect(await balances()).toEqual([{ name: "맥북에어", amount: 200_000 }]);
+  });
+
+  it("sums the variants under the bare name, not under whichever one was posted", async () => {
+    await lend("2026-03-01", "가람미용기기 (2차)", 800_000);
+    await lend("2026-04-01", "가람미용기기", 200_000);
+
+    expect(await balances()).toEqual([{ name: "가람미용기기", amount: 1_000_000 }]);
+  });
+
   it("collects untitled transactions under one named bucket rather than losing them", async () => {
     await lend("2026-03-01", "", 100_000);
     await lend("2026-03-02", "   ", 50_000);

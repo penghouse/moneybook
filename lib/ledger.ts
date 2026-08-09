@@ -191,9 +191,11 @@ export interface CounterpartyBalance {
  * first.
  *
  * The counterparty is the transaction's own 적요 — see the note on
- * `accounts.tracksCounterparties` for why that is not a separate field.
- * Untitled transactions collect under one bucket named by the caller
- * rather than vanishing, since their money is in the account either way.
+ * `accounts.tracksCounterparties` for why that is not a separate field —
+ * read without its parentheses, so 「한석상여」 and 「한석상여(리텐션뱉)」
+ * are one person rather than two half-balances. Untitled transactions
+ * collect under one bucket named by the caller rather than vanishing,
+ * since their money is in the account either way.
  *
  * Deliberately **not** bounded by any period the screen happens to be
  * showing. "받을돈 중 맥북에어 몫이 얼마" is a level, and answering it
@@ -233,12 +235,15 @@ export async function getCounterpartyBalances(
     )
     .groupBy(transactions.title);
 
-  // Merged after the query rather than in it: an empty title and a title
-  // of whitespace are the same counterparty to a reader, and SQL would
-  // group them apart.
+  // Merged after the query rather than in it, because SQL would group
+  // apart several things a reader counts as one counterparty: an empty
+  // title and a title of whitespace, and 「한석상여」 against
+  // 「한석상여(리텐션뱉)」. The parenthesis says what a particular
+  // transaction was for, not who it was with, so it cannot be allowed to
+  // split someone's balance in two — see `bareTitle`.
   const byName = new Map<string, number>();
   for (const row of rows) {
-    const name = row.title.trim() || params.untitledLabel;
+    const name = bareTitle(row.title) || params.untitledLabel;
     byName.set(name, (byName.get(name) ?? 0) + normalBalance(params.group, row.net));
   }
 

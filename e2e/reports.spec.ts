@@ -232,8 +232,12 @@ test.describe("reports", () => {
 
     await lend("2026-03-01", "맥북에어", 500_000);
     await lend("2026-04-01", "가람미용기기", 800_000);
-    await lend("2026-05-01", "가람미용기기", 300_000, true);
+    // Paid back under a 적요 that notes what the payment was — the
+    // parenthesis describes the transaction, not a different person.
+    await lend("2026-05-01", "가람미용기기 (일부 상환)", 300_000, true);
     await lend("2026-06-01", "한석핸드폰", 200_000);
+    await lend("2026-06-02", "한석상여", 400_000);
+    await lend("2026-07-01", "한석상여(리텐션뱉)", 400_000, true);
 
     // Reached the way the user reaches it: the balance sheet row.
     await page.goto("/assets?asOf=2026-08-06");
@@ -248,9 +252,14 @@ test.describe("reports", () => {
     await expect(row("맥북에어")).toContainText("₩500,000");
     await expect(row("가람미용기기")).toContainText("₩500,000");
     await expect(row("한석핸드폰")).toContainText("₩200,000");
-    // Netted, not listed twice.
+    // Netted, not listed twice — and under the bare name, with the
+    // repayment's parenthetical nowhere in the list.
     await expect(row("가람미용기기")).toHaveCount(1);
     await expect(row("가람미용기기")).not.toContainText("₩800,000");
+    await expect(row("일부 상환")).toHaveCount(0);
+    // 한석상여 borrowed and paid back the same amount under two spellings
+    // of one name, so they are square and off the list entirely.
+    await expect(row("한석상여")).toHaveCount(0);
 
     // August alone contains none of these transactions, and the
     // breakdown must not be narrowed by it — that would report everyone
