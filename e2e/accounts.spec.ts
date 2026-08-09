@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, sections, transactionLines, transactions } from "../db/schema";
@@ -8,6 +8,15 @@ import { seedSession, SESSION_COOKIE_NAME } from "./auth-helper";
 
 /** What getOrCreateSection seeds a new section with. */
 const SECTION_TIMEZONE = "Asia/Seoul";
+
+/**
+ * One account's row, found by its own <summary> rather than by page text
+ * — the 거래처 관리 hint names 받을돈 as an example, so prose from one
+ * row can match another.
+ */
+function accountRow(page: Page, name: string) {
+  return page.locator("main li").filter({ has: page.locator("summary").filter({ hasText: name }) });
+}
 
 test.describe("accounts", () => {
   let currentUserId = "";
@@ -255,7 +264,7 @@ test.describe("accounts", () => {
     // No <summary> click first: the arrows are on the row itself. Burying
     // them in the panel is what made ordering look unimplemented, since
     // the group-level pair was visible on the heading right above.
-    const row = page.locator("li").filter({ hasText: "교통비" });
+    const row = accountRow(page, "교통비");
     await expect(row.locator("details")).not.toHaveAttribute("open", "");
     await row.getByRole("button", { name: "위로" }).click();
 
@@ -265,6 +274,88 @@ test.describe("accounts", () => {
     await expect
       .poll(() => nameSpans.allInnerTexts())
       .toEqual(["교통비", "식비", "통신비", "생활용품"]);
+  });
+
+  test("an account moves within its 상위 그룹, past a gap another group left", async ({ page }) => {
+    await page.goto("/accounts");
+
+    // 식비 and 생활용품 filed together, 교통비 left between them in
+    // sort order. This is the shape that made 위로 do nothing: 생활용품's
+    // sortOrder neighbour was 교통비, in another category, so the two
+    // swapped numbers and the screen came back identical.
+    for (const name of ["식비", "생활용품"]) {
+      const row = accountRow(page, name);
+      await row.locator("summary").click();
+      await row.locator('input[name="category"]').fill("먹고사는 것");
+      await row.getByRole("button", { name: "저장" }).click();
+      await expect(page.getByRole("heading", { name: "먹고사는 것" }).first()).toBeVisible();
+    }
+
+    const expenseSection = page.locator("section").filter({ hasText: "비용" }).first();
+    const inCategory = expenseSection
+      .locator("div")
+      .filter({ has: page.getByRole("heading", { name: "먹고사는 것" }) })
+      .last()
+      .locator("li summary span:first-child");
+    await expect.poll(() => inCategory.allInnerTexts()).toEqual(["식비", "생활용품"]);
+
+    await accountRow(page, "생활용품").getByRole("button", { name: "위로" }).click();
+    await expect.poll(() => inCategory.allInnerTexts()).toEqual(["생활용품", "식비"]);
+  });
+
+  test("the ends of a 상위 그룹 cannot be moved out of it", async ({ page }) => {
+    await page.goto("/accounts");
+    for (const name of ["식비", "교통비"]) {
+      const row = accountRow(page, name);
+      await row.locator("summary").click();
+      await row.locator('input[name="category"]').fill("먹고사는 것");
+      await row.getByRole("button", { name: "저장" }).click();
+      await expect(page.getByRole("heading", { name: "먹고사는 것" }).first()).toBeVisible();
+    }
+
+    // First of its block: 위로 is dead. Last of its block: 아래로 is dead,
+    // even though 통신비 sits below it on screen in another category.
+    await expect(accountRow(page, "식비").getByRole("button", { name: "위로" })).toBeDisabled();
+    await expect(accountRow(page, "교통비").getByRole("button", { name: "아래로" })).toBeDisabled();
+    // ...and the ends of the group below it behave the same way.
+    await expect(accountRow(page, "통신비").getByRole("button", { name: "위로" })).toBeDisabled();
+    await expect(
+      accountRow(page, "생활용품").getByRole("button", { name: "아래로" }),
+    ).toBeDisabled();
+  });
+
+  test("a 상위 그룹 moves as a whole, and 미분류 stays last", async ({ page }) => {
+    await page.goto("/accounts");
+    for (const [name, category] of [
+      ["식비", "먹고사는 것"],
+      ["교통비", "타는 것"],
+    ]) {
+      const row = accountRow(page, name);
+      await row.locator("summary").click();
+      await row.locator('input[name="category"]').fill(category);
+      await row.getByRole("button", { name: "저장" }).click();
+      await expect(page.getByRole("heading", { name: category }).first()).toBeVisible();
+    }
+
+    const expenseSection = page.locator("section").filter({ hasText: "비용" }).first();
+    // :first-child is the name; the heading also carries its arrows.
+    const headings = expenseSection.locator("h3 span:first-child");
+    await expect.poll(() => headings.allInnerTexts()).toEqual(["먹고사는 것", "타는 것", "미분류"]);
+
+    // The arrows live in the heading itself, so scope to the <h3> — its
+    // parent block also holds every account row's own pair.
+    const block = (name: string) => expenseSection.locator("h3").filter({ hasText: name });
+    await block("타는 것").getByRole("button", { name: "위로" }).click();
+    await expect.poll(() => headings.allInnerTexts()).toEqual(["타는 것", "먹고사는 것", "미분류"]);
+
+    // Its accounts came with it, and 미분류 is not somewhere a real
+    // category can be pushed below.
+    const names = expenseSection.locator("li summary span:first-child");
+    await expect
+      .poll(() => names.allInnerTexts())
+      .toEqual(["교통비", "식비", "통신비", "생활용품"]);
+    await expect(block("먹고사는 것").getByRole("button", { name: "아래로" })).toBeDisabled();
+    await expect(block("타는 것").getByRole("button", { name: "위로" })).toBeDisabled();
   });
 
   test("settings: timezone is always editable; base currency locks once a transaction exists", async ({

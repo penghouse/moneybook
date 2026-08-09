@@ -169,6 +169,20 @@ test.describe("reports", () => {
     // says it is showing one account rather than net worth.
     await expect(page).toHaveURL(/accountId=[^&]+&from=2026-08-01&to=2026-08-31/);
     await expect(page.getByText("잔액 · 신용카드")).toBeVisible();
+
+    // On one account's ledger the screen is for reading, not typing: the
+    // entry form steps aside, the filter is already open, and the month
+    // has arrows so stepping it is not a trip through a date picker.
+    await expect(page.getByRole("heading", { name: "신용카드" })).toBeVisible();
+    // #entry is the create form's own wrapper; each transaction row still
+    // carries an edit form, pickers and all, so counting pickers page-wide
+    // would never reach zero.
+    await expect(page.locator("#entry")).toHaveCount(0);
+    await expect(page.locator("main details[open] input[name='from']")).toBeVisible();
+
+    await page.getByRole("link", { name: /이전 달/ }).click();
+    await expect(page).toHaveURL(/from=2026-07-01&to=2026-07-31/);
+    await expect(page).toHaveURL(/accountId=/);
   });
 
   test("a 거래처관리 account breaks its balance down by counterparty", async ({ page }) => {

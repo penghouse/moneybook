@@ -275,6 +275,58 @@ test.describe("entry", () => {
     await expect(createForm(page).locator('input[name="title"]')).toHaveValue("");
   });
 
+  test("the save button stays off until something in the transaction changes", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("9000");
+    await form.locator('input[name="title"]').fill("원래 제목");
+    await form.getByRole("button", { name: "저장" }).click();
+    await expect(page.getByText("원래 제목")).toBeVisible();
+
+    await page.getByText("원래 제목").click();
+    const row = page.locator("main li", { hasText: "원래 제목" });
+    const save = row.getByRole("button", { name: "저장" });
+
+    // Nothing has changed yet, so there is nothing to save. Pressing it
+    // would rewrite every line of the transaction for no gain, and the
+    // round trip is what read as the page freezing.
+    await expect(save).toBeDisabled();
+
+    await row.locator('input[name="title"]').fill("수정된 제목");
+    await expect(save).toBeEnabled();
+
+    // Typed back to what it was: off again, so the button tracks the
+    // content rather than merely whether a key was pressed.
+    await row.locator('input[name="title"]').fill("원래 제목");
+    await expect(save).toBeDisabled();
+  });
+
+  test("a copy can be saved unchanged, even though nothing differs", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("4000");
+    await form.locator('input[name="title"]').fill("같은 거래");
+    await form.getByRole("button", { name: "저장" }).click();
+    await expect(page.getByText("같은 거래")).toHaveCount(1);
+
+    await page.getByText("같은 거래").click();
+    await page
+      .locator("main li", { hasText: "같은 거래" })
+      .getByRole("link", { name: "복제" })
+      .click();
+
+    // A duplicate is prefilled identical on purpose — the dirty check
+    // belongs to editing in place, not to this.
+    const copy = createForm(page);
+    await expect(copy.getByRole("button", { name: "저장" })).toBeEnabled();
+    await copy.getByRole("button", { name: "저장" }).click();
+    await expect(page.getByText("같은 거래")).toHaveCount(2);
+  });
+
   test("deleting a transaction removes it from the list", async ({ page }) => {
     await page.goto("/");
     const form = createForm(page);

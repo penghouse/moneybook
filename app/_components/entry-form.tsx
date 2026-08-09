@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { AccountCombobox, type ComboboxAccount } from "./account-combobox";
+import { SubmitButton } from "./submit-button";
 import { buttonClass, controlClass, Label } from "./ui";
 import { convertMinorUnits, formatMoney, toMinorUnits } from "@/lib/money";
 
@@ -21,6 +22,7 @@ export interface EntryFormLabels {
   addLine: string;
   removeLine: string;
   save: string;
+  saving: string;
   balanced: string;
   unbalanced: string;
   difference: string;
@@ -148,6 +150,40 @@ export function EntryForm({
 
   /** Prefilled from an existing transaction, but saving adds a new one. */
   const isDuplicate = !!initial && !initial.transactionId;
+  const isEditing = !!initial?.transactionId;
+
+  /**
+   * Whether anything actually differs from the transaction being edited.
+   *
+   * Saving an unchanged transaction deletes and rewrites every one of
+   * its lines for no gain, and against a hosted database that round trip
+   * is long enough to read as the page having frozen. A button that
+   * cannot be pressed until there is something to save says so before
+   * the press rather than after it.
+   *
+   * Amounts are compared as numbers, not as the strings the inputs hold:
+   * '12000' and '12000.0' are the same amount, and an empty box is the
+   * zero it was rendered from.
+   *
+   * Only editing in place is gated on it. A duplicate is prefilled to be
+   * identical on purpose, and a blank form has nothing to differ from.
+   */
+  const isDirty =
+    !initial ||
+    date !== initial.date ||
+    title !== initial.title ||
+    memo !== initial.memo ||
+    lines.length !== initial.lines.length ||
+    lines.some((l, i) => {
+      const was = initial.lines[i];
+      return (
+        l.side !== was.side ||
+        l.accountId !== was.accountId ||
+        Number(l.amountStr || 0) !== was.amountMajor ||
+        l.rate !== was.rate ||
+        l.memo !== was.memo
+      );
+    });
 
   // Blank-form entry only: after a save, clear amount/title but keep date
   // and the selected accounts, and refocus the amount field for the next
@@ -384,13 +420,14 @@ export function EntryForm({
                 >
                   {labels.split}
                 </button>
-                <button
-                  type="submit"
-                  disabled={!isBalanced}
-                  className={buttonClass("primary", true)}
+                <SubmitButton
+                  variant="primary"
+                  full
+                  disabled={!isBalanced || (isEditing && !isDirty)}
+                  pendingLabel={labels.saving}
                 >
                   {labels.save}
-                </button>
+                </SubmitButton>
               </div>
             </div>
           </div>
@@ -577,9 +614,14 @@ export function EntryForm({
         </div>
       </div>
 
-      <button type="submit" disabled={!isBalanced} className={buttonClass("primary", true)}>
+      <SubmitButton
+        variant="primary"
+        full
+        disabled={!isBalanced || (isEditing && !isDirty)}
+        pendingLabel={labels.saving}
+      >
         {labels.save}
-      </button>
+      </SubmitButton>
     </form>
   );
 }

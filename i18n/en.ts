@@ -84,10 +84,9 @@ const en: Record<keyof typeof ko, string> = {
   "accounts.category": "Category",
   "accounts.categoryPlaceholder": "e.g. Eating out",
   "accounts.uncategorized": "Uncategorized",
-  "accounts.activeFrom": "In use from",
   "accounts.activeTo": "In use until",
   "accounts.activeHint":
-    "Leave blank for no bound. An end date takes the account out of the entry form and the budget, and folds it away on the balance sheet once its balance is zero. Past transactions and balances are untouched.",
+    "Leave blank to keep the account in use. An end date takes it out of the entry form and the budget, and folds it away on the balance sheet once its balance is zero. Past transactions and balances are untouched.",
   "accounts.activeRangeError": "The end date is before the start date.",
   "accounts.tracksCounterparties": "Track counterparties",
   "accounts.tracksCounterpartiesHint":

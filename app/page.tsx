@@ -7,11 +7,21 @@ import { interpolate } from "@/i18n/format";
 import { activeOn } from "@/lib/accounts";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
-import { today } from "@/lib/date";
+import {
+  addMonths,
+  addYears,
+  monthRange,
+  rangeUnit,
+  today,
+  yearMonthOf,
+  yearOf,
+  yearRange,
+} from "@/lib/date";
 import { getCounterpartyBalances, getRunningBalances } from "@/lib/ledger";
 import { formatMoney, toMajorUnits } from "@/lib/money";
 import { CompositionChart } from "./_components/composition-chart";
 import { EntryForm, type EntryFormLabels } from "./_components/entry-form";
+import { PeriodNav } from "./_components/period-nav";
 import { SubmitButton } from "./_components/submit-button";
 import {
   buttonClass,
@@ -83,6 +93,7 @@ export default async function Home({
     addLine: t("entry.addLine"),
     removeLine: t("common.delete"),
     save: t("common.save"),
+    saving: t("common.saving"),
     balanced: t("entry.balanced"),
     unbalanced: t("entry.unbalanced"),
     difference: t("entry.difference"),
@@ -212,6 +223,29 @@ export default async function Home({
   );
   const withoutDuplicate = listParams.toString();
 
+  /**
+   * Filtered to one account, this screen stops being the entry form and
+   * becomes that account's ledger — which is how it is reached from the
+   * balance sheet. So the filter opens instead of hiding behind a
+   * disclosure, the period gets arrows, and the entry form steps aside:
+   * nobody arriving from 자산현황 came here to type a new transaction.
+   *
+   * A copy in progress is the exception. It *is* something to type, and
+   * hiding the form would leave 복제 doing nothing visible.
+   */
+  const isLedger = !!filtered && !copy;
+  const ledgerUnit = from && to ? rangeUnit(from, to) : "custom";
+  const ledgerStep = (delta: number) => {
+    const range =
+      ledgerUnit === "year"
+        ? yearRange(addYears(yearOf(from!), delta))
+        : monthRange(addMonths(yearMonthOf(from!), delta));
+    const next = new URLSearchParams(listParams);
+    next.set("from", range.from);
+    next.set("to", range.to);
+    return `/?${next}`;
+  };
+
   const andMore = (n: number) => t("entry.andMore").replace("{n}", String(n));
   /** "식비 외 1" — the first account plus a count, so a split still reads
    *  as one line in the list. */
@@ -222,7 +256,7 @@ export default async function Home({
 
   return (
     <div className="space-y-4">
-      <PageHeader title={t("nav.entry")} />
+      <PageHeader title={isLedger ? filtered!.name : t("nav.entry")} />
 
       {error === "unbalanced" && (
         <p className="bg-negative-soft text-negative rounded-control px-3 py-2 text-sm">
@@ -236,37 +270,39 @@ export default async function Home({
       )}
 
       {/* The 복제 links jump here; scroll-mt clears the sticky bar. */}
-      <div id="entry" className="scroll-mt-20 space-y-4">
-        {copy && (
-          // The form below is prefilled and about to create a *second*
-          // record, which is indistinguishable from an edit form unless
-          // something says so.
-          <div className="bg-sunken rounded-control flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 text-sm">
-            <span>{t("entry.duplicateNotice")}</span>
-            <Link
-              href={withoutDuplicate ? `/?${withoutDuplicate}` : "/"}
-              className={`${buttonClass("ghost")} ml-auto`}
-            >
-              {t("common.cancel")}
-            </Link>
-          </div>
-        )}
+      {!isLedger && (
+        <div id="entry" className="scroll-mt-20 space-y-4">
+          {copy && (
+            // The form below is prefilled and about to create a *second*
+            // record, which is indistinguishable from an edit form unless
+            // something says so.
+            <div className="bg-sunken rounded-control flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 text-sm">
+              <span>{t("entry.duplicateNotice")}</span>
+              <Link
+                href={withoutDuplicate ? `/?${withoutDuplicate}` : "/"}
+                className={`${buttonClass("ghost")} ml-auto`}
+              >
+                {t("common.cancel")}
+              </Link>
+            </div>
+          )}
 
-        <EntryForm
-          // Remounts when the copied transaction changes, so pressing 복제
-          // on a second row replaces the prefill instead of leaving the
-          // first one's state in place — the form holds its values in
-          // useState, which a prop change alone does not reset.
-          key={duplicate ?? "new"}
-          action={createTransactionAction}
-          accounts={copy ? pickerFor(copy.lines) : allAccounts}
-          baseCurrency={section.baseCurrency}
-          defaultDate={today(section.timezone)}
-          locale={locale}
-          labels={labels}
-          initial={copy}
-        />
-      </div>
+          <EntryForm
+            // Remounts when the copied transaction changes, so pressing 복제
+            // on a second row replaces the prefill instead of leaving the
+            // first one's state in place — the form holds its values in
+            // useState, which a prop change alone does not reset.
+            key={duplicate ?? "new"}
+            action={createTransactionAction}
+            accounts={copy ? pickerFor(copy.lines) : allAccounts}
+            baseCurrency={section.baseCurrency}
+            defaultDate={today(section.timezone)}
+            locale={locale}
+            labels={labels}
+            initial={copy}
+          />
+        </div>
+      )}
 
       {filtered?.tracksCounterparties && (
         <section>
@@ -315,7 +351,10 @@ export default async function Home({
         </div>
 
         <Card className="mb-3">
-          <details>
+          {/* Open on an account's ledger: the filter *is* the controls of
+              that screen, and a disclosure hiding them makes the period
+              on show look like a fixed fact. */}
+          <details open={isLedger}>
             <summary className="text-ink-muted flex min-h-11 cursor-pointer items-center px-4 text-sm">
               {t("entry.filters")}
             </summary>
@@ -362,6 +401,18 @@ export default async function Home({
             </form>
           </details>
         </Card>
+
+        {isLedger && ledgerUnit !== "custom" && (
+          <div className="mb-3">
+            <PeriodNav
+              prevHref={ledgerStep(-1)}
+              nextHref={ledgerStep(1)}
+              label={ledgerUnit === "year" ? yearOf(from!) : yearMonthOf(from!)}
+              prevLabel={ledgerUnit === "year" ? t("common.prevYear") : t("common.prevMonth")}
+              nextLabel={ledgerUnit === "year" ? t("common.nextYear") : t("common.nextMonth")}
+            />
+          </div>
+        )}
 
         <Card>
           {list.length === 0 ? (
