@@ -248,6 +248,12 @@ const en: Record<keyof typeof ko, string> = {
   "budget.monthlySum": "Monthly budgets",
   "budget.monthlySumOver": "Over yearly budget by",
   "budget.empty": "No expense accounts.",
+  "series.section": "By item",
+  "series.hint":
+    "Categories and formulas over the same months. Tap a name below to turn it on or off.",
+  "series.none": "No category or formula to draw.",
+  "series.noneOn": "Nothing is on. Pick one below.",
+  "series.capped": "Four at a time.",
   "formula.section": "Formulas",
   "formula.add": "Add a formula",
   "formula.edit": "Edit formula",

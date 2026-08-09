@@ -61,6 +61,13 @@
      expense red stay reserved for the income statement. */
   --color-series-1: #4338ca;
   --color-series-2: #eb6834;
+  /* Slots 3 and 4 exist for the pick-your-own-series chart, which can
+     draw four at once. Four is the cap, and it is the validator's, not a
+     layout preference: a fifth step could not be found that clears the
+     normal-vision floor against these — the run that failed was
+     olive #8a6a00 against this green at ΔE 14.1, under 15. */
+  --color-series-3: #b8399e;
+  --color-series-4: #0e8a5f;
 
   --radius-card: 1rem;
   --radius-control: 0.75rem;
@@ -101,6 +108,8 @@
     --color-warning: #e0a63a;
     --color-series-1: #9085e9;
     --color-series-2: #d95926;
+    --color-series-3: #cf5cae;
+    --color-series-4: #20a173;
   }
 }
 
@@ -123,6 +132,8 @@
   --color-warning: #e0a63a;
   --color-series-1: #9085e9;
   --color-series-2: #d95926;
+  --color-series-3: #cf5cae;
+  --color-series-4: #20a173;
 }
 
 @layer base {

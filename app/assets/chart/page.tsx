@@ -1,13 +1,19 @@
 import Link from "next/link";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
+import { accounts, formulas } from "@/db/schema";
 import { getTranslations } from "@/i18n";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
 import { addMonths, monthsBetween, shiftWindow, today, yearMonthOf } from "@/lib/date";
+import { parseGroupOrder } from "@/lib/account-groups";
 import { getAccountBalances, getMonthlyBalanceSheet } from "@/lib/ledger";
+import { buildReportSeries } from "@/lib/report-series";
 import { formatMoney } from "@/lib/money";
 import { CompositionChart } from "../../_components/composition-chart";
+import { formulaTotalLabels } from "../../_components/formula-section";
 import { NetWorthChart } from "../../_components/net-worth-chart";
+import { SeriesChart } from "../../_components/series-chart";
 import { PeriodNav } from "../../_components/period-nav";
 import {
   buttonClass,
@@ -53,6 +59,27 @@ export default async function AssetsChartPage({
     .map((b) => ({ id: b.accountId, name: b.name, amount: b.baseAmount }));
 
   const hasHistory = history.some((h) => h.assets !== 0 || h.liabilities !== 0);
+
+  const catalog = await db.query.accounts.findMany({
+    where: eq(accounts.sectionId, section.id),
+    orderBy: asc(accounts.sortOrder),
+    columns: { id: true, name: true, group: true, category: true },
+  });
+  const formulaRows = await db.query.formulas.findMany({
+    where: and(eq(formulas.sectionId, section.id), eq(formulas.scope, "assets")),
+    orderBy: asc(formulas.sortOrder),
+  });
+  const seriesMonths = months;
+  const reportSeries = await buildReportSeries(db, {
+    sectionId: section.id,
+    scope: "assets",
+    months: seriesMonths,
+    baseCurrency: section.baseCurrency,
+    groupOrder: parseGroupOrder(section.groupOrder),
+    accounts: catalog,
+    formulas: formulaRows,
+    totalLabels: formulaTotalLabels("assets", t),
+  });
 
   // The window moves by its own length: paging back from twelve months
   // lands on the twelve before, not on eleven of the same twelve.
@@ -137,6 +164,34 @@ export default async function AssetsChartPage({
             and saying so is cheaper than letting the reader assume it
             averages the period. */}
         <Hint>{t("assets.compositionAsOf")}</Hint>
+      </section>
+
+      <section>
+        <SectionLabel>{t("series.section")}</SectionLabel>
+        <Card>
+          {reportSeries.length === 0 ? (
+            <EmptyState>{t("series.none")}</EmptyState>
+          ) : (
+            <div className="px-2 py-3 md:px-4">
+              <SeriesChart
+                periods={seriesMonths}
+                ticks={seriesMonths.map((m) => m.slice(2).replace("-", "."))}
+                series={reportSeries}
+                initial={reportSeries.slice(0, 2).map((s) => s.key)}
+                currency={section.baseCurrency}
+                locale={locale}
+                caption={t("series.section")}
+                labels={{
+                  table: t("common.viewTable"),
+                  period: t("income.period"),
+                  empty: t("series.noneOn"),
+                  capped: t("series.capped"),
+                }}
+              />
+            </div>
+          )}
+        </Card>
+        <Hint>{t("series.hint")}</Hint>
       </section>
 
       <Link href={`/assets?asOf=${to}`} className={buttonClass("ghost")}>

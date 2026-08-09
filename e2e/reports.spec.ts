@@ -497,6 +497,79 @@ test.describe("reports", () => {
     await expect(row).toContainText("₩1,200,000");
   });
 
+  test("the by-item chart is switched on and off from its legend", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const bank = await byName("은행");
+    const cash = await byName("현금");
+    const opening = await byName("기초자본");
+
+    await db.update(accounts).set({ category: "유동성자금" }).where(eq(accounts.id, bank.id));
+    await db.update(accounts).set({ category: "현금성" }).where(eq(accounts.id, cash.id));
+
+    const post = async (date: string, account: string, amount: number) => {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date, title: "기초" })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: account,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: opening.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+      ]);
+    };
+    await post("2026-01-15", bank.id, 1_000_000);
+    await post("2026-02-15", bank.id, 500_000);
+    await post("2026-01-15", cash.id, 200_000);
+
+    await page.goto("/assets/chart?from=2026-01-01&to=2026-03-31");
+    const legend = page.getByTestId("series-legend");
+    await expect(legend.getByRole("button", { name: "유동성자금" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    // A balance carries forward: March has no transactions of its own
+    // and still holds February's money.
+    await page.getByTestId("series-hit").nth(2).hover();
+    const tip = page.getByTestId("series-tooltip");
+    await expect(tip).toContainText("2026-03");
+    await expect(tip).toContainText("₩1,500,000");
+
+    // The legend is the switch — turning one off takes its line and its
+    // row out of the readout.
+    await legend.getByRole("button", { name: "유동성자금" }).click();
+    await expect(legend.getByRole("button", { name: "유동성자금" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    await page.getByTestId("series-hit").nth(2).hover();
+    await expect(page.getByTestId("series-tooltip")).not.toContainText("유동성자금");
+
+    // ...and back on, without disturbing the one that stayed.
+    await legend.getByRole("button", { name: "유동성자금" }).click();
+    await page.getByTestId("series-hit").nth(2).hover();
+    await expect(page.getByTestId("series-tooltip")).toContainText("유동성자금");
+  });
+
   test("the chart page draws all three charts, each with its numbers in a table", async ({
     page,
   }) => {
