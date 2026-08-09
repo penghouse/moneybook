@@ -7,6 +7,7 @@ import { db } from "@/db/client";
 import { accounts, ACCOUNT_GROUPS, sections, type AccountGroup } from "@/db/schema";
 import { getTranslations } from "@/i18n";
 import { moveGroup, parseGroupOrder, serializeGroupOrder } from "@/lib/account-groups";
+import { canTrackCounterparties } from "@/lib/accounts";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
 import { addDays, today } from "@/lib/date";
@@ -86,7 +87,7 @@ export async function updateAccountAction(formData: FormData) {
   const userId = await requireUserId();
   const accountId = formData.get("accountId");
   if (typeof accountId !== "string") throw new Error("Missing accountId");
-  await loadOwnedAccount(accountId, userId);
+  const account = await loadOwnedAccount(accountId, userId);
 
   const name = formData.get("name");
   const memo = formData.get("memo");
@@ -103,6 +104,12 @@ export async function updateAccountAction(formData: FormData) {
     redirect("/accounts?error=active_range");
   }
 
+  // No CHECK backs this one, so this is the rule rather than a friendlier
+  // rendering of it — an unchecked checkbox does not post at all, and the
+  // group is the account's own, never the form's.
+  const tracksCounterparties =
+    formData.get("tracksCounterparties") === "1" && canTrackCounterparties(account.group);
+
   try {
     await db
       .update(accounts)
@@ -112,6 +119,7 @@ export async function updateAccountAction(formData: FormData) {
         category: normalizeCategory(category),
         activeFrom,
         activeTo,
+        tracksCounterparties,
       })
       .where(eq(accounts.id, accountId));
   } catch {

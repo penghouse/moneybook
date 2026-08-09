@@ -1,0 +1,1 @@
+ALTER TABLE `accounts` ADD `tracks_counterparties` integer DEFAULT false NOT NULL;

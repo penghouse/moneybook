@@ -58,7 +58,12 @@ function emptyLine(side: "left" | "right"): Line {
 }
 
 export interface EntryFormInitial {
-  transactionId: string;
+  /**
+   * Present when the form edits that transaction in place. Absent when
+   * the values are a copy to be saved as a *new* record — same prefill,
+   * opposite outcome, and the id is the only thing that decides which.
+   */
+  transactionId?: string;
   date: string;
   title: string;
   memo: string;
@@ -141,9 +146,13 @@ export function EntryForm({
   const isSimpleCurrencies = lines.every((l) => l.currency === "" || l.currency === baseCurrency);
   const showDetailed = splitForced || !isSimpleCurrencies || lines.length > 2;
 
-  // Create mode only: after a save, clear amount/title but keep date and
-  // the selected accounts, and refocus the amount field for the next
+  /** Prefilled from an existing transaction, but saving adds a new one. */
+  const isDuplicate = !!initial && !initial.transactionId;
+
+  // Blank-form entry only: after a save, clear amount/title but keep date
+  // and the selected accounts, and refocus the amount field for the next
   // entry (plan: "저장 후 날짜·포커스는 유지, 금액·적요만 비웁니다").
+  // A duplicate is a one-shot — the action navigates away from it.
   useEffect(() => {
     if (!initial && submitCount > lastSubmitCount.current) {
       setTitle("");
@@ -240,6 +249,20 @@ export function EntryForm({
   const money = (minor: number | null) =>
     minor === null ? "—" : formatMoney(minor, baseCurrency, locale);
 
+  /**
+   * What the action needs to tell the three cases apart: an id means
+   * update in place, the duplicate marker means create and then leave
+   * the prefill behind, neither means an ordinary new entry.
+   */
+  const formIdentityFields = (
+    <>
+      {initial?.transactionId && (
+        <input type="hidden" name="transactionId" value={initial.transactionId} />
+      )}
+      {isDuplicate && <input type="hidden" name="duplicate" value="1" />}
+    </>
+  );
+
   /** Hidden per-line fields. Order matters: the action zips the parallel
    *  getAll() arrays by index, so every line must emit all of its fields
    *  together — which is what lets the split view render by column
@@ -256,7 +279,7 @@ export function EntryForm({
   if (!showDetailed) {
     return (
       <form action={dispatch} className="space-y-3">
-        {initial && <input type="hidden" name="transactionId" value={initial.transactionId} />}
+        {formIdentityFields}
 
         <div className="bg-card rounded-card">
           {/* Date, title and amount share one row from md up; on a phone
@@ -303,7 +326,10 @@ export function EntryForm({
           {/* The pair. Two columns at every width: which side an account
               sits on *is* the entry, so stacking them would erase it. */}
           <div className="border-rule-soft border-t px-4 py-3">
-            <div className="grid grid-cols-[minmax(0,1fr)_2.25rem_minmax(0,1fr)] items-end gap-1.5 md:grid-cols-[minmax(0,1fr)_2.75rem_minmax(0,1fr)_7rem_7rem] md:gap-3">
+            {/* The swap column is 28px on a phone, not 36: the two account
+                boxes split whatever this row leaves them, so every pixel
+                the middle takes is half a pixel off each name. */}
+            <div className="grid grid-cols-[minmax(0,1fr)_1.75rem_minmax(0,1fr)] items-end gap-1.5 md:grid-cols-[minmax(0,1fr)_2.75rem_minmax(0,1fr)_7rem_7rem] md:gap-3">
               <div className="min-w-0">
                 <Label>
                   <span className="text-ink-muted font-semibold">{labels.left}</span> ·{" "}
@@ -396,7 +422,7 @@ export function EntryForm({
 
   return (
     <form action={dispatch} className="space-y-3">
-      {initial && <input type="hidden" name="transactionId" value={initial.transactionId} />}
+      {formIdentityFields}
 
       <div className="bg-card rounded-card overflow-hidden">
         <div className="grid grid-cols-2 gap-3 px-4 py-3 md:grid-cols-[10.5rem_1fr_1fr]">

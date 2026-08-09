@@ -8,7 +8,7 @@ import {
   type TransactionKind,
 } from "@/db/schema";
 import type { Db } from "@/db/types";
-import { monthRange } from "./date";
+import { monthRange, yearRange } from "./date";
 import { getOrFetchRate, RateUnavailableError } from "./exchange-rates";
 import { convertMinorUnits } from "./money";
 
@@ -177,54 +177,135 @@ export async function getAccountFlows(
   ]);
 }
 
-export interface MonthlyTotal {
-  yearMonth: string;
+export interface CounterpartyBalance {
+  /** The transaction's 적요, which on a 거래처관리 account names who the money is with. */
+  name: string;
+  /** Signed, in the account's own currency's minor units, normal-balance direction. */
+  amount: number;
+}
+
+/**
+ * One 거래처관리 account's balance broken down by counterparty, biggest
+ * first.
+ *
+ * The counterparty is the transaction's own 적요 — see the note on
+ * `accounts.tracksCounterparties` for why that is not a separate field.
+ * Untitled transactions collect under one bucket named by the caller
+ * rather than vanishing, since their money is in the account either way.
+ *
+ * Deliberately **not** bounded by any period the screen happens to be
+ * showing. "받을돈 중 맥북에어 몫이 얼마" is a level, and answering it
+ * for August alone would report someone as settled up because they
+ * happened not to pay this month. `from` exists only to honour an
+ * account's own start date.
+ *
+ * Zero balances are dropped: a counterparty who has settled up
+ * contributes nothing to the total, so removing the row cannot move it —
+ * the same test the balance sheet applies to retired accounts.
+ */
+export async function getCounterpartyBalances(
+  db: Db,
+  params: {
+    sectionId: string;
+    accountId: string;
+    group: AccountGroup;
+    /** The account's start date, when it has one. */
+    from?: string | null;
+    asOf: string;
+    untitledLabel: string;
+  },
+): Promise<CounterpartyBalance[]> {
+  const net = sql<number>`sum(case when ${transactionLines.side} = 'left' then ${transactionLines.amount} else -${transactionLines.amount} end)`;
+
+  const rows = await db
+    .select({ title: transactions.title, net })
+    .from(transactionLines)
+    .innerJoin(transactions, eq(transactionLines.transactionId, transactions.id))
+    .where(
+      and(
+        eq(transactions.sectionId, params.sectionId),
+        eq(transactionLines.accountId, params.accountId),
+        ...(params.from ? [gte(transactions.date, params.from)] : []),
+        lte(transactions.date, params.asOf),
+      ),
+    )
+    .groupBy(transactions.title);
+
+  // Merged after the query rather than in it: an empty title and a title
+  // of whitespace are the same counterparty to a reader, and SQL would
+  // group them apart.
+  const byName = new Map<string, number>();
+  for (const row of rows) {
+    const name = row.title.trim() || params.untitledLabel;
+    byName.set(name, (byName.get(name) ?? 0) + normalBalance(params.group, row.net));
+  }
+
+  return [...byName.entries()]
+    .map(([name, amount]) => ({ name, amount }))
+    .filter((b) => b.amount !== 0)
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+}
+
+export interface PeriodTotal {
+  /** '2026-08' or '2026', matching what was asked for. */
+  period: string;
   /** Base-currency minor units, both always >= 0 (already sign-normalized). */
   income: number;
   expense: number;
 }
 
 /**
- * One query grouped by month + group, not one query per month — the
- * trend chart's whole point is showing many months at once.
+ * One query grouped by period + group, not one query per period — the
+ * trend chart's whole point is showing many at once.
+ *
+ * Months or years, told apart by the length of the keys asked for rather
+ * than by a separate argument: '2026-08' is a month and '2026' is a
+ * year, so a unit argument could only ever contradict them. Mixing the
+ * two in one call is not meaningful and is not supported.
  */
-export async function getMonthlyTotals(
+export async function getPeriodTotals(
   db: Db,
-  params: { sectionId: string; months: readonly string[] },
-): Promise<MonthlyTotal[]> {
-  if (params.months.length === 0) return [];
-  const sortedMonths = [...params.months].sort();
-  const from = monthRange(sortedMonths[0]).from;
-  const to = monthRange(sortedMonths[sortedMonths.length - 1]).to;
+  params: { sectionId: string; periods: readonly string[] },
+): Promise<PeriodTotal[]> {
+  if (params.periods.length === 0) return [];
+  const sorted = [...params.periods].sort();
+  const byYear = sorted[0].length === 4;
+  const first = byYear ? yearRange(sorted[0]) : monthRange(sorted[0]);
+  const last = byYear
+    ? yearRange(sorted[sorted.length - 1])
+    : monthRange(sorted[sorted.length - 1]);
 
-  const yearMonth = sql<string>`substr(${transactions.date}, 1, 7)`;
+  // sql.raw for the length: the same expression is repeated in GROUP BY,
+  // and a bound parameter there has to line up positionally with the one
+  // in the SELECT list.
+  const period = sql<string>`substr(${transactions.date}, 1, ${sql.raw(byYear ? "4" : "7")})`;
   const netBaseAmount = sql<number>`sum(case when ${transactionLines.side} = 'left' then ${transactionLines.baseAmount} else -${transactionLines.baseAmount} end)`;
 
   const rows = await db
-    .select({ yearMonth, group: accounts.group, net: netBaseAmount })
+    .select({ period, group: accounts.group, net: netBaseAmount })
     .from(transactionLines)
     .innerJoin(transactions, eq(transactionLines.transactionId, transactions.id))
     .innerJoin(accounts, eq(transactionLines.accountId, accounts.id))
     .where(
       and(
         eq(transactions.sectionId, params.sectionId),
-        gte(transactions.date, from),
-        lte(transactions.date, to),
+        gte(transactions.date, first.from),
+        lte(transactions.date, last.to),
         inArray(accounts.group, ["income", "expense"]),
       ),
     )
-    .groupBy(yearMonth, accounts.group);
+    .groupBy(period, accounts.group);
 
-  const byMonth = new Map<string, { income: number; expense: number }>();
-  for (const ym of sortedMonths) byMonth.set(ym, { income: 0, expense: 0 });
+  const totals = new Map<string, { income: number; expense: number }>();
+  for (const key of sorted) totals.set(key, { income: 0, expense: 0 });
   for (const row of rows) {
-    const bucket = byMonth.get(row.yearMonth);
-    if (!bucket) continue; // outside the requested months (shouldn't happen given from/to)
+    const bucket = totals.get(row.period);
+    if (!bucket) continue; // outside the requested range (shouldn't happen given from/to)
     if (row.group === "income") bucket.income = normalBalance("income", row.net);
     else bucket.expense = normalBalance("expense", row.net);
   }
 
-  return sortedMonths.map((yearMonth) => ({ yearMonth, ...byMonth.get(yearMonth)! }));
+  return sorted.map((period) => ({ period, ...totals.get(period)! }));
 }
 
 interface UnrealizedFxBase {

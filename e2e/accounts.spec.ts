@@ -3,7 +3,11 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, sections, transactionLines, transactions } from "../db/schema";
 import { getOrCreateSection } from "../lib/current-section";
+import { addDays, today } from "../lib/date";
 import { seedSession, SESSION_COOKIE_NAME } from "./auth-helper";
+
+/** What getOrCreateSection seeds a new section with. */
+const SECTION_TIMEZONE = "Asia/Seoul";
 
 test.describe("accounts", () => {
   let currentUserId = "";
@@ -48,7 +52,12 @@ test.describe("accounts", () => {
     // The chip carries the actual end date, which is what the boolean it
     // replaced could not say. Yesterday, not today: active_to is the last
     // day of use, so "stop using it now" means it ended yesterday.
-    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    //
+    // Computed through the app's own helpers against the section's
+    // timezone, not the runner's UTC clock. Those two are the same date
+    // for most of the day and a day apart after 15:00 UTC, which is a
+    // test that passes all morning and fails after dinner.
+    const yesterday = addDays(today(SECTION_TIMEZONE), -1);
     await expect(page.getByText(`~${yesterday}`)).toBeVisible();
   });
 
@@ -243,12 +252,12 @@ test.describe("accounts", () => {
     const namesBefore = await nameSpans.allInnerTexts();
     expect(namesBefore).toEqual(["식비", "교통비", "통신비", "생활용품"]);
 
-    await page.getByText("교통비").click();
-    await page
-      .locator("li")
-      .filter({ hasText: "교통비" })
-      .getByRole("button", { name: "위로" })
-      .click();
+    // No <summary> click first: the arrows are on the row itself. Burying
+    // them in the panel is what made ordering look unimplemented, since
+    // the group-level pair was visible on the heading right above.
+    const row = page.locator("li").filter({ hasText: "교통비" });
+    await expect(row.locator("details")).not.toHaveAttribute("open", "");
+    await row.getByRole("button", { name: "위로" }).click();
 
     // The submit goes through a server action (fetch + revalidate +
     // re-render), which lands after the click event resolves — poll

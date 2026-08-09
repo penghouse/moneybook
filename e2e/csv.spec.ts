@@ -47,9 +47,11 @@ test.describe("csv", () => {
     const response = await page.request.get("/api/csv/accounts");
     expect(response.status()).toBe(200);
     const text = (await response.text()).replace(/^﻿/, "");
-    expect(text.split("\r\n")[0]).toBe("group,name,currency,activeFrom,activeTo,memo,category");
-    expect(text).toContain("expense,식비,KRW,,,,");
-    expect(text).toContain("liability,신용카드,KRW,,,,");
+    expect(text.split("\r\n")[0]).toBe(
+      "group,name,currency,activeFrom,activeTo,memo,category,tracksCounterparties",
+    );
+    expect(text).toContain("expense,식비,KRW,,,,,");
+    expect(text).toContain("liability,신용카드,KRW,,,,,");
   });
 
   test("exporting transactions CSV includes a seeded transaction with its line memo", async ({
@@ -111,18 +113,28 @@ test.describe("csv", () => {
       page,
       "accounts",
       "accounts.csv",
-      "group,name,currency,activeFrom,activeTo,memo,category\n" +
-        "expense,식비,KRW,,,,\n" + // already exists (default seed) -> existing
-        "expense,반려동물,KRW,2024-01-01,,새 계정,돌보는 것\n", // new, with a start date
+      "group,name,currency,activeFrom,activeTo,memo,category,tracksCounterparties\n" +
+        "expense,식비,KRW,,,,,\n" + // already exists (default seed) -> existing
+        "expense,반려동물,KRW,2024-01-01,,새 계정,돌보는 것,\n" + // new, with a start date
+        "asset,받을돈,KRW,,,,,1\n", // new, and keeps its counterparty setting
     );
 
-    await expect(form.getByText(/신규 1 · 기존 1 · 오류 0/)).toBeVisible();
+    await expect(form.getByText(/신규 2 · 기존 1 · 오류 0/)).toBeVisible();
 
     await form.getByRole("button", { name: "가져오기 확정" }).click();
-    await expect(form.getByText(/생성됨 1 · 건너뜀 1/)).toBeVisible();
+    await expect(form.getByText(/생성됨 2 · 건너뜀 1/)).toBeVisible();
 
     await page.goto("/accounts");
     await expect(page.getByText("반려동물")).toBeVisible();
+    // The flag survived the round trip; a restore that dropped it would
+    // bring the account back with its breakdown silently switched off.
+    // Scoped by the row's own <summary>, not by page text: the 거래처 관리
+    // hint names 받을돈 as an example, so it appears in *every* asset row.
+    const receivable = page
+      .locator("main li")
+      .filter({ has: page.locator("summary").filter({ hasText: "받을돈" }) });
+    await receivable.locator("summary").click();
+    await expect(receivable.locator('input[name="tracksCounterparties"]')).toBeChecked();
     // The category came in with it — a backup that dropped it would
     // restore the accounts but lose how they were filed.
     await expect(page.getByRole("heading", { name: "돌보는 것" })).toBeVisible();
@@ -187,31 +199,47 @@ test.describe("csv", () => {
     await db.insert(budgets).values({
       sectionId: section.id,
       accountId: food!.id,
-      yearMonth: "2026-07",
+      period: "month",
+      periodKey: "2026-07",
       amount: 300_000,
     });
 
     await page.goto("/settings");
     const response = await page.request.get("/api/csv/budgets");
     const text = (await response.text()).replace(/^﻿/, "");
-    expect(text.split("\r\n")[0]).toBe("account,yearMonth,amount");
+    expect(text.split("\r\n")[0]).toBe("account,period,amount");
     expect(text).toContain("식비,2026-07,300000");
 
-    // Re-import the same file with a changed amount; it should upsert.
+    // Re-import the same file with a changed amount, plus a year budget
+    // in the same column — the shape of the key is what tells them apart,
+    // so both must land in the right row.
     const form = await upload(
       page,
       "budgets",
       "budgets.csv",
-      "account,yearMonth,amount\n식비,2026-07,450000\n",
+      "account,period,amount\n식비,2026-07,450000\n식비,2026,5400000\n",
     );
-    await expect(form.getByText(/가져올 거래 1 · 오류 0/)).toBeVisible();
+    await expect(form.getByText(/가져올 거래 2 · 오류 0/)).toBeVisible();
     await form.getByRole("button", { name: "가져오기 확정" }).click();
-    await expect(form.getByText(/갱신 1/)).toBeVisible();
+    await expect(form.getByText(/갱신 2/)).toBeVisible();
 
     const updated = await db.query.budgets.findFirst({
-      where: and(eq(budgets.sectionId, section.id), eq(budgets.yearMonth, "2026-07")),
+      where: and(
+        eq(budgets.sectionId, section.id),
+        eq(budgets.period, "month"),
+        eq(budgets.periodKey, "2026-07"),
+      ),
     });
     expect(updated?.amount).toBe(450_000);
+
+    const yearly = await db.query.budgets.findFirst({
+      where: and(
+        eq(budgets.sectionId, section.id),
+        eq(budgets.period, "year"),
+        eq(budgets.periodKey, "2026"),
+      ),
+    });
+    expect(yearly?.amount).toBe(5_400_000);
   });
 
   test("paired-row import: creates the accounts it names and flips a negative row's sides", async ({

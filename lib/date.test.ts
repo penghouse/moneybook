@@ -1,5 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { addDays, addMonths, monthRange, today, yearMonthOf } from "./date";
+import {
+  addDays,
+  addMonths,
+  addMonthsToDate,
+  addYears,
+  monthRange,
+  rangeUnit,
+  today,
+  yearMonthOf,
+  yearOf,
+  yearRange,
+} from "./date";
 
 describe("today", () => {
   beforeEach(() => {
@@ -68,5 +79,65 @@ describe("addDays", () => {
 
   it("returns the same date for a zero delta", () => {
     expect(addDays("2026-08-05", 0)).toBe("2026-08-05");
+  });
+});
+
+describe("addMonthsToDate", () => {
+  it("keeps the day when the target month has one", () => {
+    expect(addMonthsToDate("2026-08-06", -1)).toBe("2026-07-06");
+    expect(addMonthsToDate("2026-08-06", 1)).toBe("2026-09-06");
+  });
+
+  it("clamps to the last day rather than overflowing into the next month", () => {
+    // The naive `setMonth` gives 2026-03-03 here, which makes a month
+    // arrow skip February entirely.
+    expect(addMonthsToDate("2026-01-31", 1)).toBe("2026-02-28");
+    expect(addMonthsToDate("2024-01-31", 1)).toBe("2024-02-29");
+    expect(addMonthsToDate("2026-03-31", -1)).toBe("2026-02-28");
+  });
+
+  it("crosses a year boundary", () => {
+    expect(addMonthsToDate("2026-01-15", -1)).toBe("2025-12-15");
+    expect(addMonthsToDate("2026-12-15", 1)).toBe("2027-01-15");
+  });
+});
+
+describe("yearRange / addYears", () => {
+  it("spans a whole calendar year", () => {
+    expect(yearRange("2026")).toEqual({ from: "2026-01-01", to: "2026-12-31" });
+  });
+
+  it("steps years", () => {
+    expect(addYears("2026", -1)).toBe("2025");
+    expect(addYears("2026", 1)).toBe("2027");
+  });
+
+  it("reads the year off a date", () => {
+    expect(yearOf("2026-08-06")).toBe("2026");
+  });
+});
+
+describe("rangeUnit", () => {
+  it("recognises a whole calendar month", () => {
+    expect(rangeUnit("2026-08-01", "2026-08-31")).toBe("month");
+    expect(rangeUnit("2026-02-01", "2026-02-28")).toBe("month");
+  });
+
+  it("recognises a whole calendar year", () => {
+    expect(rangeUnit("2026-01-01", "2026-12-31")).toBe("year");
+  });
+
+  it("calls anything else custom", () => {
+    expect(rangeUnit("2026-08-01", "2026-08-30")).toBe("custom");
+    expect(rangeUnit("2026-01-01", "2026-06-30")).toBe("custom");
+    expect(rangeUnit("2026-08-15", "2026-09-14")).toBe("custom");
+  });
+
+  it("prefers year over month for January in a one-month book", () => {
+    // 2026-01-01 ~ 2026-12-31 is not also a month, so there is no real
+    // ambiguity — but the year test runs first either way, which is what
+    // keeps a full year from being reported as January.
+    expect(rangeUnit("2026-01-01", "2026-12-31")).toBe("year");
+    expect(rangeUnit("2026-01-01", "2026-01-31")).toBe("month");
   });
 });

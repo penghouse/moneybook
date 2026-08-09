@@ -154,6 +154,46 @@ CREATE INDEX `transactions_section_date_idx` ON `transactions` (`section_id`,`da
 
 ALTER TABLE `sections` ADD `group_order` text DEFAULT 'asset,liability,equity,expense,income' NOT NULL;
 
+-- Hand-corrected over what `drizzle-kit` generated. Its rebuild selected
+-- the new columns out of the old table (which cannot work) and wrapped
+-- itself in `PRAGMA foreign_keys`, which a remote libSQL server refuses.
+--
+-- The PRAGMA is not needed here at all: `budgets` references other
+-- tables but nothing references *it*, so dropping and recreating it
+-- never trips a foreign key. The existing rows carry across as month
+-- budgets, which is what every one of them was.
+
+CREATE TABLE `__new_budgets` (
+	`id` text PRIMARY KEY NOT NULL,
+	`section_id` text NOT NULL,
+	`account_id` text NOT NULL,
+	`year_month` text DEFAULT '' NOT NULL,
+	`period` text DEFAULT 'month' NOT NULL,
+	`period_key` text NOT NULL,
+	`amount` integer NOT NULL,
+	FOREIGN KEY (`section_id`) REFERENCES `sections`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "budgets_period_check" CHECK("__new_budgets"."period" IN ('month','year')),
+	CONSTRAINT "budgets_period_key_format_check" CHECK(("__new_budgets"."period" = 'month' AND "__new_budgets"."period_key" GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]')
+       OR ("__new_budgets"."period" = 'year' AND "__new_budgets"."period_key" GLOB '[0-9][0-9][0-9][0-9]'))
+);
+
+INSERT INTO `__new_budgets`("id", "section_id", "account_id", "year_month", "period", "period_key", "amount") SELECT "id", "section_id", "account_id", "year_month", 'month', "year_month", "amount" FROM `budgets`;
+
+DROP TABLE `budgets`;
+
+ALTER TABLE `__new_budgets` RENAME TO `budgets`;
+
+CREATE UNIQUE INDEX `budgets_account_year_month_unique` ON `budgets` (`account_id`,`year_month`);
+
+CREATE UNIQUE INDEX `budgets_account_period_unique` ON `budgets` (`account_id`,`period`,`period_key`);
+
+DROP INDEX `budgets_account_year_month_unique`;
+
+ALTER TABLE `budgets` DROP COLUMN `year_month`;
+
+ALTER TABLE `accounts` ADD `tracks_counterparties` integer DEFAULT false NOT NULL;
+
 -- Drizzle's bookkeeping. The app never reads it; `drizzle-kit migrate`
 -- does, to know what has already run. Recording the migrations this file
 -- is equivalent to is what stops the next `npm run db:migrate` from
@@ -167,4 +207,7 @@ CREATE TABLE `__drizzle_migrations` (
 
 INSERT INTO `__drizzle_migrations` (`hash`, `created_at`) VALUES
 	('e080edf6f58176c92afda1a1b598c7fe643504fe3557927e846a40f2f54c8879', 1785906516337),
-	('1cf9aeeb26a3a693893dfa2178d42c2788adfbbb31d14c78e42c31217ab5cdb8', 1785991646983);
+	('1cf9aeeb26a3a693893dfa2178d42c2788adfbbb31d14c78e42c31217ab5cdb8', 1785991646983),
+	('bcce57e61f7b16e016296bdb38cc65366ac41fd58e8f03e915164881e450b9ec', 1786247084505),
+	('90af2c3f8c0a8855ca94b67b6a24c69797eda38faf44e28bc9833ca76502ede5', 1786247135287),
+	('432d2627f2a56171a64b61882fb7ddf9123dfe01c8025dc31bf4351ceb46300d', 1786250222679);

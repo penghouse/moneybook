@@ -65,10 +65,14 @@ export function AccountCombobox({
         data-control
         className="bg-sunken rounded-control focus-within:outline-accent flex min-h-12 items-center overflow-hidden focus-within:outline-2 focus-within:outline-offset-[-2px]"
       >
+        {/* Narrower on a phone. At 360px every pixel of chrome here costs
+            about a sixth of a Korean glyph out of the account name, and
+            this tag is the one piece that repeats what the label above
+            already says. */}
         {side && (
           <span
             aria-hidden="true"
-            className={`text-accent-ink grid w-7 shrink-0 place-items-center self-stretch text-[15px] leading-none font-bold ${
+            className={`text-accent-ink grid w-5 shrink-0 place-items-center self-stretch text-sm leading-none font-bold md:w-7 md:text-[15px] ${
               side === "left" ? "bg-accent" : "bg-ink-faint"
             }`}
           >
@@ -94,12 +98,29 @@ export function AccountCombobox({
           // belongs to the wrapper; without it the input itself is 24px
           // tall and tapping the wrapper's padding focuses nothing — on
           // the control this app is tapped through more than any other.
-          className="text-ink min-w-0 flex-1 self-stretch bg-transparent px-2.5 outline-none"
+          className="text-ink min-w-0 flex-1 self-stretch bg-transparent px-2 outline-none md:px-2.5"
           autoComplete="off"
         />
       </div>
       {open && (
-        <ul className="bg-card rounded-control ring-rule absolute z-20 mt-1 max-h-56 w-full overflow-auto shadow-lg ring-1">
+        // The list is absolutely positioned, so it is not bound to the
+        // width of the box that opened it — and it should not be. Half a
+        // phone row is four or five Korean glyphs, which is not enough to
+        // tell 「생활비카드」 from 「생활비통장」, and truncating the very
+        // names you are choosing between defeats the picker.
+        //
+        // `w-max` sizes to the longest name and `min-w-full` keeps it at
+        // least as wide as the box. It grows away from the edge it is
+        // anchored to, so the right-hand box's list opens leftward and
+        // both stay on screen: each box sits ~36px in from its side of a
+        // 320px viewport, which leaves 16rem to grow into. A viewport
+        // cap would not work — it bounds the width, not the far edge,
+        // and the list starts a third of the way across.
+        <ul
+          className={`bg-card rounded-control ring-rule absolute z-20 mt-1 max-h-56 w-max max-w-64 min-w-full overflow-auto shadow-lg ring-1 ${
+            side === "right" ? "right-0" : "left-0"
+          }`}
+        >
           {filtered.length === 0 ? (
             <li className="text-ink-faint px-3 py-2 text-sm">—</li>
           ) : (
@@ -115,10 +136,10 @@ export function AccountCombobox({
                     setOpen(false);
                     onSelect?.(a);
                   }}
-                  className="hover:bg-sunken flex min-h-12 w-full items-center justify-between gap-2 px-3.5 text-left"
+                  className="hover:bg-sunken flex min-h-12 w-full items-center gap-2 px-3.5 text-left"
                 >
                   <span className="min-w-0 truncate">{a.name}</span>
-                  <span className="text-ink-faint shrink-0 text-xs">{a.currency}</span>
+                  <span className="text-ink-faint ml-auto shrink-0 text-xs">{a.currency}</span>
                 </button>
               </li>
             ))

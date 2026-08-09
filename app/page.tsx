@@ -8,8 +8,9 @@ import { activeOn } from "@/lib/accounts";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
 import { today } from "@/lib/date";
-import { getRunningBalances } from "@/lib/ledger";
+import { getCounterpartyBalances, getRunningBalances } from "@/lib/ledger";
 import { formatMoney, toMajorUnits } from "@/lib/money";
+import { CompositionChart } from "./_components/composition-chart";
 import { EntryForm, type EntryFormLabels } from "./_components/entry-form";
 import { SubmitButton } from "./_components/submit-button";
 import {
@@ -17,6 +18,8 @@ import {
   Card,
   controlClass,
   EmptyState,
+  Hint,
+  KeyValueRow,
   Label,
   Money,
   PageHeader,
@@ -40,12 +43,13 @@ export default async function Home({
     to?: string;
     accountId?: string;
     q?: string;
+    duplicate?: string;
   }>;
 }) {
   const userId = await requireUserId();
   const { t, locale } = await getTranslations();
   const section = await getOrCreateSection(db, { userId, locale });
-  const { error, name: errorAccountName, from, to, accountId, q } = await searchParams;
+  const { error, name: errorAccountName, from, to, accountId, q, duplicate } = await searchParams;
 
   const allAccounts = await db.query.accounts.findMany({
     // The picker offers what can be posted to *now*; a closed account
@@ -140,6 +144,74 @@ export default async function Home({
   const balanceByTransactionId = new Map(runningBalances.map((b) => [b.transactionId, b] as const));
   const balanceCaption = `${t("entry.balance")} · ${filtered ? filtered.name : t("assets.netWorth")}`;
 
+  // 거래처관리 계정을 보고 있을 때만. Not bounded by the from/to filter
+  // above it on purpose — see getCounterpartyBalances: who still owes
+  // what is a level, and reading it for August alone would report
+  // someone as settled up because they happened not to pay this month.
+  const counterparties = filtered?.tracksCounterparties
+    ? await getCounterpartyBalances(db, {
+        sectionId: section.id,
+        accountId: filtered.id,
+        group: filtered.group,
+        from: filtered.activeFrom,
+        asOf: today(section.timezone),
+        untitledLabel: t("accounts.uncategorized"),
+      })
+    : [];
+  const counterpartyTotal = counterparties.reduce((sum, c) => sum + c.amount, 0);
+  const showShares = counterpartyTotal > 0 && counterparties.every((c) => c.amount > 0);
+
+  /**
+   * The entry form's picker offers what can be posted to *today*, but a
+   * form prefilled from an old transaction must still be able to show
+   * the accounts that transaction used — including one closed since.
+   * Without this the box renders blank while its hidden id is intact,
+   * which reads as data loss and submits something the user never saw.
+   */
+  function pickerFor(lines: { accountId: string }[]) {
+    const missing = lines
+      .map((l) => l.accountId)
+      .filter((id) => !allAccounts.some((a) => a.id === id))
+      .map((id) => filterAccounts.find((a) => a.id === id))
+      .filter((a) => a !== undefined);
+    return missing.length === 0 ? allAccounts : [...allAccounts, ...missing];
+  }
+
+  /** The transaction's values as form state — the same shape whether it is
+   *  being edited in place or copied into a new one. */
+  const prefillFrom = (tx: (typeof list)[number]) => ({
+    date: tx.date,
+    title: tx.title,
+    memo: tx.memo ?? "",
+    lines: tx.lines.map((l) => ({
+      side: l.side,
+      accountId: l.accountId,
+      currency: l.currency,
+      amountMajor: toMajorUnits(l.amount, l.currency),
+      rate: l.rate,
+      memo: l.memo ?? "",
+    })),
+  });
+
+  // Fetched by id rather than picked out of `list`: the source is
+  // usually right there, but the list is filtered and capped at 100, and
+  // a copy link that quietly does nothing once the row scrolls past the
+  // limit is worse than one more query. Scoped to the section, so an id
+  // naming someone else's transaction finds nothing.
+  const source = duplicate
+    ? await db.query.transactions.findFirst({
+        where: and(eq(transactions.id, duplicate), eq(transactions.sectionId, section.id)),
+        with: { lines: { with: { account: true }, orderBy: asc(transactionLines.lineOrder) } },
+      })
+    : undefined;
+  const copy = source ? prefillFrom(source) : undefined;
+
+  /** The current filter, so copying does not throw away the list you found it in. */
+  const listParams = new URLSearchParams(
+    Object.entries({ from, to, accountId, q }).filter(([, v]) => v) as [string, string][],
+  );
+  const withoutDuplicate = listParams.toString();
+
   const andMore = (n: number) => t("entry.andMore").replace("{n}", String(n));
   /** "식비 외 1" — the first account plus a count, so a split still reads
    *  as one line in the list. */
@@ -163,14 +235,76 @@ export default async function Home({
         </p>
       )}
 
-      <EntryForm
-        action={createTransactionAction}
-        accounts={allAccounts}
-        baseCurrency={section.baseCurrency}
-        defaultDate={today(section.timezone)}
-        locale={locale}
-        labels={labels}
-      />
+      {/* The 복제 links jump here; scroll-mt clears the sticky bar. */}
+      <div id="entry" className="scroll-mt-20 space-y-4">
+        {copy && (
+          // The form below is prefilled and about to create a *second*
+          // record, which is indistinguishable from an edit form unless
+          // something says so.
+          <div className="bg-sunken rounded-control flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 text-sm">
+            <span>{t("entry.duplicateNotice")}</span>
+            <Link
+              href={withoutDuplicate ? `/?${withoutDuplicate}` : "/"}
+              className={`${buttonClass("ghost")} ml-auto`}
+            >
+              {t("common.cancel")}
+            </Link>
+          </div>
+        )}
+
+        <EntryForm
+          // Remounts when the copied transaction changes, so pressing 복제
+          // on a second row replaces the prefill instead of leaving the
+          // first one's state in place — the form holds its values in
+          // useState, which a prop change alone does not reset.
+          key={duplicate ?? "new"}
+          action={createTransactionAction}
+          accounts={copy ? pickerFor(copy.lines) : allAccounts}
+          baseCurrency={section.baseCurrency}
+          defaultDate={today(section.timezone)}
+          locale={locale}
+          labels={labels}
+          initial={copy}
+        />
+      </div>
+
+      {filtered?.tracksCounterparties && (
+        <section>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+            <SectionLabel>{t("entry.counterparties")}</SectionLabel>
+            <span className="tnum text-ink-faint text-xs">
+              {formatMoney(counterpartyTotal, filtered.currency, locale)}
+            </span>
+          </div>
+          <Card>
+            {counterparties.length === 0 ? (
+              <EmptyState>{t("entry.noCounterparties")}</EmptyState>
+            ) : showShares ? (
+              <CompositionChart
+                slices={counterparties.map((c) => ({ id: c.name, name: c.name, amount: c.amount }))}
+                currency={filtered.currency}
+                locale={locale}
+                shareLabel={t("entry.counterparties")}
+              />
+            ) : (
+              // A share is only defined over same-signed amounts, and a
+              // counterparty *can* sit the other way round — an
+              // overpayment on a receivable. Rather than draw a bar whose
+              // length lies, those fall back to a plain list: every
+              // counterparty is still there with its balance, which is
+              // what was asked for.
+              counterparties.map((c) => (
+                <KeyValueRow
+                  key={c.name}
+                  label={c.name}
+                  value={<Money amount={c.amount} currency={filtered.currency} locale={locale} />}
+                />
+              ))
+            )}
+          </Card>
+          <Hint>{t("entry.counterpartiesHint")}</Hint>
+        </section>
+      )}
 
       <section>
         {/* The balance column is a bare number without this — the reader
@@ -274,32 +408,33 @@ export default async function Home({
                       <div className="border-rule-soft space-y-3 border-t px-4 py-3">
                         <EntryForm
                           action={updateTransactionAction}
-                          accounts={allAccounts}
+                          accounts={pickerFor(tx.lines)}
                           baseCurrency={section.baseCurrency}
                           defaultDate={today(section.timezone)}
                           locale={locale}
                           labels={labels}
-                          initial={{
-                            transactionId: tx.id,
-                            date: tx.date,
-                            title: tx.title,
-                            memo: tx.memo ?? "",
-                            lines: tx.lines.map((l) => ({
-                              side: l.side,
-                              accountId: l.accountId,
-                              currency: l.currency,
-                              amountMajor: toMajorUnits(l.amount, l.currency),
-                              rate: l.rate,
-                              memo: l.memo ?? "",
-                            })),
-                          }}
+                          initial={{ transactionId: tx.id, ...prefillFrom(tx) }}
                         />
-                        <form action={deleteTransactionAction}>
-                          <input type="hidden" name="transactionId" value={tx.id} />
-                          <SubmitButton variant="danger" pendingLabel={t("common.working")}>
-                            {t("common.delete")}
-                          </SubmitButton>
-                        </form>
+                        <div className="flex flex-wrap gap-2">
+                          {/* 복제 is navigation, not a mutation: it opens the
+                              entry form at the top of the page carrying this
+                              transaction's values, so every field can be
+                              checked and changed before anything is written.
+                              The hash is what saves a scroll back up on a
+                              phone. */}
+                          <Link
+                            href={`/?${new URLSearchParams({ ...Object.fromEntries(listParams), duplicate: tx.id })}#entry`}
+                            className={buttonClass("secondary")}
+                          >
+                            {t("entry.duplicate")}
+                          </Link>
+                          <form action={deleteTransactionAction} className="ml-auto">
+                            <input type="hidden" name="transactionId" value={tx.id} />
+                            <SubmitButton variant="danger" pendingLabel={t("common.working")}>
+                              {t("common.delete")}
+                            </SubmitButton>
+                          </form>
+                        </div>
                       </div>
                     </details>
                   </li>

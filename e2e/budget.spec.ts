@@ -85,6 +85,42 @@ test.describe("budget", () => {
   test("month navigation keeps the selected month in the URL", async ({ page }) => {
     await page.goto("/budget");
     await page.getByRole("link", { name: /다음 달/ }).click();
-    await expect(page).toHaveURL(/yearMonth=\d{4}-\d{2}/);
+    await expect(page).toHaveURL(/period=\d{4}-\d{2}/);
+  });
+
+  test("the yearly view warns when the twelve months add up past the year's cap", async ({
+    page,
+  }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const year = today(section.timezone).slice(0, 4);
+
+    // Two months of ₩300,000 each, then a ₩500,000 cap for the whole
+    // year — the exact situation the year screen exists to surface.
+    await page.goto(`/budget?period=${year}-01`);
+    const janRow = page.getByTestId("budget-row").filter({ hasText: "식비" });
+    await janRow.locator('input[name="amount"]').fill("300000");
+    await janRow.getByRole("button", { name: "저장" }).click();
+    await expect(page.getByText(/예산 설정.*₩300,000/)).toBeVisible();
+
+    await page.goto(`/budget?period=${year}-02`);
+    const febRow = page.getByTestId("budget-row").filter({ hasText: "식비" });
+    await febRow.locator('input[name="amount"]').fill("300000");
+    await febRow.getByRole("button", { name: "저장" }).click();
+    await expect(page.getByText(/예산 설정.*₩300,000/)).toBeVisible();
+
+    await page.getByRole("link", { name: "연간" }).click();
+    await expect(page).toHaveURL(new RegExp(`period=${year}$`));
+
+    const yearRow = page.getByTestId("budget-row").filter({ hasText: "식비" });
+    await yearRow.locator('input[name="amount"]').fill("500000");
+    await yearRow.getByRole("button", { name: "저장" }).click();
+
+    // ₩600,000 of monthly budgets against a ₩500,000 year cap.
+    await expect(page.getByText(/월 예산 합계.*₩600,000/).first()).toBeVisible();
+    await expect(page.getByText(/연 예산 초과.*₩100,000/).first()).toBeVisible();
+
+    // The month screen is untouched by any of it.
+    await page.getByRole("link", { name: "월간" }).click();
+    await expect(page).toHaveURL(/period=\d{4}-\d{2}/);
   });
 });

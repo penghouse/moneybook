@@ -6,6 +6,8 @@ import {
   type RateSource,
   type TransactionKind,
 } from "@/db/schema";
+import { canTrackCounterparties } from "./accounts";
+import { parseBudgetPeriod, type BudgetPeriodRef } from "./budgets";
 import { assertBalanced, type BalanceLineInput } from "./ledger";
 import { minorUnitDigits, toMinorUnits } from "./money";
 import type { AccountCsvRow, BudgetCsvRow, RateCsvRow, TransactionCsvRow } from "./csv";
@@ -26,7 +28,7 @@ export type ImportIssue =
   | { code: "invalidCurrency"; value: string }
   | { code: "duplicateInFile" }
   | { code: "invalidDate"; value: string }
-  | { code: "invalidYearMonth"; value: string }
+  | { code: "invalidPeriod"; value: string }
   | { code: "invalidKind"; value: string }
   | { code: "invalidSource"; value: string }
   | { code: "tooFewLines" }
@@ -62,6 +64,7 @@ export interface AccountRowCheck {
   /** Both null unless the row carried a window; blank means unbounded. */
   activeFrom?: string | null;
   activeTo?: string | null;
+  tracksCounterparties?: boolean;
 }
 
 /** Blank is a legitimate value here (unbounded), so only a malformed one is an error. */
@@ -114,6 +117,11 @@ export function checkAccountRow(
     status: existingNames.has(name) ? "existing" : "new",
     activeFrom: from.date,
     activeTo: to.date,
+    // Anything truthy in the cell means on, but only where the group can
+    // carry it — the flag is a property of asset and liability accounts,
+    // and a hand-edited file must not be able to set it on a 식비.
+    tracksCounterparties:
+      row.tracksCounterparties.trim() !== "" && canTrackCounterparties(row.group as AccountGroup),
   };
 }
 
@@ -255,26 +263,27 @@ export function checkTransactionGroup(
 // ---- Budgets ----
 
 export type BudgetRowCheck =
-  | { ok: true; accountId: string; yearMonth: string; amountMajor: number }
+  | ({ ok: true; accountId: string; amountMajor: number } & BudgetPeriodRef)
   | { ok: false; label: string; issue: ImportIssue };
 
 export function checkBudgetRow(
   row: BudgetCsvRow,
   accountsByName: ReadonlyMap<string, { id: string; currency: string }>,
 ): BudgetRowCheck {
-  const label = `${row.account} ${row.yearMonth}`.trim();
+  const label = `${row.account} ${row.period}`.trim();
   const account = accountsByName.get(row.account.trim());
   if (!account) {
     return { ok: false, label, issue: { code: "unknownAccount", value: row.account } };
   }
-  if (!/^\d{4}-\d{2}$/.test(row.yearMonth.trim())) {
-    return { ok: false, label, issue: { code: "invalidYearMonth", value: row.yearMonth } };
+  const ref = parseBudgetPeriod(row.period);
+  if (!ref) {
+    return { ok: false, label, issue: { code: "invalidPeriod", value: row.period } };
   }
   const amountMajor = Number(row.amount);
   if (!Number.isFinite(amountMajor) || amountMajor < 0) {
     return { ok: false, label, issue: { code: "invalidAmount", value: row.amount } };
   }
-  return { ok: true, accountId: account.id, yearMonth: row.yearMonth.trim(), amountMajor };
+  return { ok: true, accountId: account.id, ...ref, amountMajor };
 }
 
 // ---- Exchange rates ----

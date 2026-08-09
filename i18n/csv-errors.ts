@@ -9,7 +9,7 @@ const ISSUE_KEY: Record<ImportIssueCode, TranslationKey> = {
   invalidCurrency: "csvError.invalidCurrency",
   duplicateInFile: "csvError.duplicateInFile",
   invalidDate: "csvError.invalidDate",
-  invalidYearMonth: "csvError.invalidYearMonth",
+  invalidPeriod: "csvError.invalidPeriod",
   invalidKind: "csvError.invalidKind",
   invalidSource: "csvError.invalidSource",
   tooFewLines: "csvError.tooFewLines",

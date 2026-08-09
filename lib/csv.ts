@@ -168,6 +168,10 @@ export function parseTransactionsCsv(text: string): TransactionCsvRow[] {
 // used, and a backup that rounds a date down to true/false loses the
 // answer for good. Blank on either end means unbounded.
 //
+// `tracksCounterparties` is '1' or ''. It is a setting the user made,
+// not something derivable from the ledger, so a restore without it
+// would come back with the counterparty breakdown silently switched off.
+//
 // Changing these columns invalidates accounts.csv files exported before
 // it, since parseTable rejects the whole file on a header mismatch. That
 // cost is paid deliberately, as it was for `category`: silently dropping
@@ -180,6 +184,7 @@ export const ACCOUNT_CSV_COLUMNS = [
   "activeTo",
   "memo",
   "category",
+  "tracksCounterparties",
 ] as const;
 
 export type AccountCsvRow = Record<(typeof ACCOUNT_CSV_COLUMNS)[number], string>;
@@ -194,7 +199,12 @@ export function parseAccountsCsv(text: string): AccountCsvRow[] {
 
 // ---- Budgets CSV ----
 
-export const BUDGET_CSV_COLUMNS = ["account", "yearMonth", "amount"] as const;
+// One `period` column holding either '2026-08' (a month budget) or
+// '2026' (a year one), rather than a `period,periodKey` pair mirroring
+// the two DB columns. The key's shape already says which it is, so a
+// hand-edited file cannot claim `year` next to `2026-08` — the pair
+// would be a contradiction the DB's CHECK rejects after the fact.
+export const BUDGET_CSV_COLUMNS = ["account", "period", "amount"] as const;
 
 export type BudgetCsvRow = Record<(typeof BUDGET_CSV_COLUMNS)[number], string>;
 
