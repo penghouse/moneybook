@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, sections, transactionLines, transactions } from "../db/schema";
@@ -249,6 +249,38 @@ test.describe("accounts", () => {
       .filter({ hasText: /^먹고사는 것/ })
       .last();
     await expect(heading).toContainText("₩15,000");
+  });
+
+  test("상위 그룹 suggestions are scoped to their 분류", async ({ page }) => {
+    await page.goto("/accounts");
+
+    // File an expense under 먹고사는 것.
+    const food = accountRow(page, "식비");
+    await food.locator("summary").click();
+    await food.locator('input[name="category"]').fill("먹고사는 것");
+    await food.getByRole("button", { name: "저장" }).click();
+    await expect(page.getByRole("heading", { name: "먹고사는 것" }).first()).toBeVisible();
+
+    const optionsFor = (input: Locator) =>
+      input.evaluate((el: HTMLInputElement) => {
+        const list = el.list;
+        return list ? [...list.options].map((o) => o.value) : null;
+      });
+
+    // A 상위 그룹 groups accounts within one 분류, so an expense's
+    // grouping has no business being offered on a 자산.
+    const bank = accountRow(page, "은행");
+    await bank.locator("summary").click();
+    expect(await optionsFor(bank.locator('input[name="category"]'))).toEqual([]);
+    expect(await optionsFor(food.locator('input[name="category"]'))).toEqual(["먹고사는 것"]);
+
+    // The new-account form follows whichever 분류 is selected.
+    const newForm = page.locator("form").filter({ has: page.getByPlaceholder("예: 식비") });
+    const newCategory = newForm.locator('input[name="category"]');
+    await newForm.locator('select[name="group"]').selectOption("expense");
+    expect(await optionsFor(newCategory)).toEqual(["먹고사는 것"]);
+    await newForm.locator('select[name="group"]').selectOption("asset");
+    expect(await optionsFor(newCategory)).toEqual([]);
   });
 
   test("moving an account up changes its order within the group", async ({ page }) => {
