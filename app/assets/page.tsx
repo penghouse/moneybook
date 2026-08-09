@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db/client";
-import { accounts } from "@/db/schema";
+import { accounts, formulas } from "@/db/schema";
 import { getTranslations, type TranslationKey } from "@/i18n";
 import { isClosedBy } from "@/lib/accounts";
 import { parseGroupOrder } from "@/lib/account-groups";
@@ -16,8 +16,10 @@ import {
   yearOf,
   yearRange,
 } from "@/lib/date";
+import { buildFormulaItems } from "@/lib/formula-items";
 import { getAccountBalances, getUnrealizedFx } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
+import { FormulaSection, formulaTotalLabels } from "../_components/formula-section";
 import { PeriodNav } from "../_components/period-nav";
 import { SubmitButton } from "../_components/submit-button";
 import {
@@ -201,6 +203,28 @@ export default async function AssetsPage({
     (g): g is "asset" | "liability" => g === "asset" || g === "liability",
   );
 
+  /**
+   * The 계산식 band's inputs, built from the same balances the sheet
+   * above prints — so a formula naming 「유동성자금」 can only ever mean
+   * the 유동성자금 on this screen, at this 기준일.
+   */
+  const formulaCatalog = await db.query.accounts.findMany({
+    where: eq(accounts.sectionId, section.id),
+    orderBy: asc(accounts.sortOrder),
+    columns: { id: true, name: true, group: true, category: true },
+  });
+  const formulaItems = buildFormulaItems({
+    scope: "assets",
+    groupOrder: parseGroupOrder(section.groupOrder),
+    accounts: formulaCatalog,
+    amountByAccountId: new Map(balances.map((b) => [b.accountId, b.baseAmount])),
+    labels: { totals: formulaTotalLabels("assets", t) },
+  });
+  const formulaRows = await db.query.formulas.findMany({
+    where: and(eq(formulas.sectionId, section.id), eq(formulas.scope, "assets")),
+    orderBy: asc(formulas.sortOrder),
+  });
+
   const assetsHref = (date: string, unit: "month" | "year") => `/assets?asOf=${date}&step=${unit}`;
   const stepHref = (delta: number) =>
     assetsHref(step === "year" ? addYearsToDate(asOf, delta) : addMonthsToDate(asOf, delta), step);
@@ -315,6 +339,15 @@ export default async function AssetsPage({
       {groupOrder.map((group) =>
         renderGroup(group, group === "asset" ? visibleAssets : visibleLiabilities),
       )}
+
+      <FormulaSection
+        scope="assets"
+        rows={formulaRows}
+        items={formulaItems}
+        currency={section.baseCurrency}
+        locale={locale}
+        t={t}
+      />
     </div>
   );
 }

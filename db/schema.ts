@@ -312,6 +312,63 @@ export const transactionLinesRelations = relations(transactionLines, ({ one }) =
   }),
 }));
 
+export const FORMULA_SCOPES = ["assets", "income"] as const;
+export type FormulaScope = (typeof FORMULA_SCOPES)[number];
+
+/**
+ * A figure the book does not keep, worked out from ones it does.
+ *
+ * "살 수 있는 집값" is not an account and never will be — it is
+ * 유동성자금 + 투자 − 묶인돈, then some arithmetic on top. Adding an
+ * account for it would put a number in the ledger that no transaction
+ * ever moved; adding a column for it would mean a new column for every
+ * such question. So it is stored as a *recipe*, evaluated against
+ * whatever the screen is showing.
+ *
+ * Scoped to one report because the terms mean different things on each:
+ * on the balance sheet an account contributes its balance, on the income
+ * statement the period's flow. A formula that could be read on both
+ * would be two formulas wearing one name.
+ *
+ * `terms` is JSON rather than this codebase's usual delimited string.
+ * The other lists (nav favourites, group order) are drawn from fixed
+ * vocabularies with no delimiters in them; a term can name a 상위 그룹,
+ * which is free text the reader typed and may contain any character at
+ * all. Parsed defensively on read — see lib/formulas.ts — so a term
+ * naming an account since deleted drops out instead of breaking the
+ * report it sits under.
+ */
+export const formulas = sqliteTable(
+  "formulas",
+  {
+    id: uuid(),
+    sectionId: text("section_id")
+      .notNull()
+      .references(() => sections.id, { onDelete: "cascade" }),
+    scope: text("scope", { enum: FORMULA_SCOPES }).notNull(),
+    name: text("name").notNull(),
+    /** JSON array of signed terms; see lib/formulas.ts. */
+    terms: text("terms").notNull().default("[]"),
+    /**
+     * Arithmetic over `x`, the signed sum of the terms — "(x-3.1e8)/2".
+     * Empty means the sum itself, which is the common case.
+     */
+    expression: text("expression").notNull().default(""),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (t) => [
+    index("formulas_section_scope_idx").on(t.sectionId, t.scope, t.sortOrder),
+    check("formulas_scope_check", sql`${t.scope} IN ('assets','income')`),
+  ],
+);
+
+export const formulasRelations = relations(formulas, ({ one }) => ({
+  section: one(sections, {
+    fields: [formulas.sectionId],
+    references: [sections.id],
+  }),
+}));
+
 export const budgetsRelations = relations(budgets, ({ one }) => ({
   section: one(sections, {
     fields: [budgets.sectionId],

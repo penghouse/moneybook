@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { accounts } from "@/db/schema";
+import { accounts, formulas } from "@/db/schema";
 import { getTranslations } from "@/i18n";
 import {
   addMonths,
@@ -17,8 +17,10 @@ import { parseGroupOrder } from "@/lib/account-groups";
 import { PeriodNav } from "../_components/period-nav";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
+import { buildFormulaItems } from "@/lib/formula-items";
 import { getAccountFlows } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
+import { FormulaSection, formulaTotalLabels } from "../_components/formula-section";
 import {
   buttonClass,
   Card,
@@ -62,6 +64,23 @@ export default async function IncomePage({
   const netIncome = totalIncome - totalExpense;
 
   const shownYear = yearOf(from);
+
+  /**
+   * The 계산식 band's inputs, built from the same flows the statement
+   * above prints — so a formula reads the period on screen rather than
+   * some period of its own.
+   */
+  const formulaItems = buildFormulaItems({
+    scope: "income",
+    groupOrder: parseGroupOrder(section.groupOrder),
+    accounts: allAccounts,
+    amountByAccountId: new Map(flows.map((f) => [f.accountId, f.baseAmount])),
+    labels: { totals: formulaTotalLabels("income", t) },
+  });
+  const formulaRows = await db.query.formulas.findMany({
+    where: and(eq(formulas.sectionId, section.id), eq(formulas.scope, "income")),
+    orderBy: asc(formulas.sortOrder),
+  });
 
   const base = (minor: number) => formatMoney(minor, section.baseCurrency, locale);
 
@@ -216,6 +235,15 @@ export default async function IncomePage({
             ? renderList(t("group.income"), income)
             : renderList(t("group.expense"), expense),
         )}
+
+      <FormulaSection
+        scope="income"
+        rows={formulaRows}
+        items={formulaItems}
+        currency={section.baseCurrency}
+        locale={locale}
+        t={t}
+      />
     </div>
   );
 }

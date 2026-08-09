@@ -241,6 +241,31 @@ const ko = {
   "budget.monthlySum": "월 예산 합계",
   "budget.monthlySumOver": "연 예산 초과",
   "budget.empty": "비용 계정이 없습니다.",
+  "formula.section": "계산식",
+  "formula.add": "계산식 추가",
+  "formula.edit": "계산식 편집",
+  "formula.manage": "계산식 관리",
+  "formula.name": "계산식 이름",
+  "formula.namePlaceholder": "예: 살 수 있는 집값",
+  "formula.nameRequired": "계산식 이름을 입력해 주세요.",
+  "formula.terms": "항목 선택",
+  "formula.termsHint":
+    "더할 항목은 +, 뺄 항목은 −를 고르세요. 고른 항목들의 합이 아래 수식의 x가 됩니다.",
+  "formula.none": "없음",
+  "formula.plus": "더하기",
+  "formula.minus": "빼기",
+  "formula.expression": "추가 계산 (선택)",
+  "formula.expressionHint":
+    "x를 포함한 사칙연산을 쓸 수 있습니다. 비워 두면 고른 항목들의 합이 그대로 결과가 됩니다.",
+  "formula.expressionPlaceholder": "예: (x+1150000000)/2",
+  "formula.expressionInvalid": "수식을 읽을 수 없습니다. 숫자와 x, + − × ÷, 괄호만 쓸 수 있습니다.",
+  "formula.expressionBroken": "계산할 수 없는 수식입니다 (0으로 나눔).",
+  "formula.empty": "아직 계산식이 없습니다.",
+  "formula.emptyHint": "계정과목에 없는 값을 항목들의 합으로 만들어 두고 볼 수 있습니다.",
+  "formula.missingTerms": "없어진 항목 {n}개는 빼고 계산했습니다.",
+  "formula.currentValue": "현재 값",
+  "formula.snapshotHint":
+    "지금 화면이 보여주는 값들로 계산합니다. 항목이 바뀌면 계산식도 손봐 주세요.",
 } as const;
 
 export default ko;

@@ -246,6 +246,32 @@ const en: Record<keyof typeof ko, string> = {
   "budget.monthlySum": "Monthly budgets",
   "budget.monthlySumOver": "Over yearly budget by",
   "budget.empty": "No expense accounts.",
+  "formula.section": "Formulas",
+  "formula.add": "Add a formula",
+  "formula.edit": "Edit formula",
+  "formula.manage": "Manage formulas",
+  "formula.name": "Formula name",
+  "formula.namePlaceholder": "e.g. What we could pay for a house",
+  "formula.nameRequired": "Give the formula a name.",
+  "formula.terms": "Pick the items",
+  "formula.termsHint":
+    "Choose + to add an item and \u2212 to subtract it. Their sum is the x in the expression below.",
+  "formula.none": "None",
+  "formula.plus": "Add",
+  "formula.minus": "Subtract",
+  "formula.expression": "Extra arithmetic (optional)",
+  "formula.expressionHint":
+    "Arithmetic over x. Leave it blank and the result is the sum of the items you picked.",
+  "formula.expressionPlaceholder": "e.g. (x+1150000000)/2",
+  "formula.expressionInvalid":
+    "That expression can't be read. Only numbers, x, + \u2212 \u00d7 \u00f7 and parentheses.",
+  "formula.expressionBroken": "That expression can't be worked out (division by zero).",
+  "formula.empty": "No formulas yet.",
+  "formula.emptyHint": "Build a figure the chart of accounts doesn't keep out of the ones it does.",
+  "formula.missingTerms": "{n} item(s) no longer exist and were left out.",
+  "formula.currentValue": "Now",
+  "formula.snapshotHint":
+    "Worked out from what this screen is showing. Revisit the formula when the items change.",
 };
 
 export default en;
