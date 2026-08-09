@@ -71,15 +71,88 @@ test.describe("budget", () => {
     await row.locator('input[name="amount"]').fill("300000");
     await row.getByRole("button", { name: "저장" }).click();
 
-    await expect(page.getByText(/지출.*₩200,000/)).toBeVisible();
-    await expect(page.getByText(/예산 설정.*₩300,000.*67%/)).toBeVisible();
-    await expect(page.getByText(/잔여.*₩100,000/)).toBeVisible();
+    // Read off the row rather than the page: 식비 is the only budgeted
+    // account here, so 전체 carries the very same figures — which is the
+    // next test's subject and would make every match here ambiguous.
+    const foodRow = () => page.getByTestId("budget-row").filter({ hasText: "식비" });
+    await expect.poll(() => foodRow().innerText()).toMatch(/지출.*₩200,000/);
+    await expect(foodRow()).toContainText("예산 설정 ₩300,000 (67%)");
+    await expect(foodRow()).toContainText("잔여 ₩100,000");
 
-    const row2 = page.getByTestId("budget-row").filter({ hasText: "식비" });
-    await row2.locator('input[name="amount"]').fill("150000");
-    await row2.getByRole("button", { name: "저장" }).click();
+    await foodRow().locator('input[name="amount"]').fill("150000");
+    await foodRow().getByRole("button", { name: "저장" }).click();
 
-    await expect(page.getByText(/초과.*₩50,000/)).toBeVisible();
+    await expect.poll(() => foodRow().innerText()).toMatch(/초과.*₩50,000/);
+  });
+
+  test("the whole book's budget carries the same %/초과 reading as one item", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = (name: string) =>
+      db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      });
+    const food = await byName("식비");
+    const transport = await byName("교통비");
+    const card = await byName("신용카드");
+    const asOf = today(section.timezone);
+
+    for (const [account, amount] of [
+      [food!, 120_000],
+      [transport!, 60_000],
+    ] as const) {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date: asOf, title: account.name })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: account.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: card!.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+      ]);
+    }
+
+    await page.goto("/budget");
+    const total = page.getByTestId("budget-total");
+
+    // Nothing budgeted anywhere yet: spend alone, no share to report.
+    await expect(total).toContainText("₩180,000");
+    await expect(total).not.toContainText("%");
+
+    const setBudget = async (name: string, amount: string) => {
+      const row = page.getByTestId("budget-row").filter({ hasText: name });
+      await row.locator('input[name="amount"]').fill(amount);
+      await row.getByRole("button", { name: "저장" }).click();
+    };
+    await setBudget("식비", "200000");
+    await setBudget("교통비", "100000");
+
+    // 180,000 of 300,000, across every item in the book.
+    await expect.poll(() => total.innerText()).toContain("60%");
+    await expect(total).toContainText("₩180,000 / ₩300,000");
+
+    // 식비 alone over is not the book over — the level that says so.
+    await setBudget("식비", "100000");
+    await expect.poll(() => total.innerText()).toContain("90%");
+    await expect(total).not.toContainText("초과");
+
+    await setBudget("교통비", "50000");
+    await expect.poll(() => total.innerText()).toContain("초과");
+    await expect(total).toContainText("₩30,000");
   });
 
   test("a 상위 항목 shows its own usage, and reads as a heading over its accounts", async ({
