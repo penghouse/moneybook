@@ -78,6 +78,36 @@ export function addYears(year: string, delta: number): string {
 }
 
 /**
+ * How many periods a chart may draw before the range is refused.
+ *
+ * The guard is not about taste — a reversed or hand-typed range would
+ * otherwise loop until the request dies, and a query string does not go
+ * through the form that guards against it. 600 months is fifty years,
+ * past anything a personal ledger holds.
+ */
+const MAX_PERIODS = 600;
+
+/** Every month touched by [from, to], oldest first, as 'YYYY-MM'. */
+export function monthsBetween(from: string, to: string): string[] {
+  const last = yearMonthOf(to);
+  const months: string[] = [];
+  for (let m = yearMonthOf(from); m <= last && months.length < MAX_PERIODS; m = addMonths(m, 1)) {
+    months.push(m);
+  }
+  return months;
+}
+
+/** Every year touched by [from, to], oldest first, as 'YYYY'. */
+export function yearsBetween(from: string, to: string): string[] {
+  const last = yearOf(to);
+  const years: string[] = [];
+  for (let y = yearOf(from); y <= last && years.length < MAX_PERIODS; y = addYears(y, 1)) {
+    years.push(y);
+  }
+  return years;
+}
+
+/**
  * What unit a from/to range represents, worked out from the range
  * itself rather than carried alongside it.
  *

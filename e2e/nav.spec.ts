@@ -9,7 +9,16 @@ import { SESSION_COOKIE_NAME, seedSession } from "./auth-helper";
  * that would have caught the original bug.
  */
 
-const PAGES = ["/", "/assets", "/assets/chart", "/income", "/budget", "/accounts", "/settings"];
+const PAGES = [
+  "/",
+  "/assets",
+  "/assets/chart",
+  "/income",
+  "/income/chart",
+  "/budget",
+  "/accounts",
+  "/settings",
+];
 const PHONE = { width: 360, height: 640 };
 
 // A fresh user per *run*, not one shared across the file, and not keyed
