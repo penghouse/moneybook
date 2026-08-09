@@ -252,12 +252,12 @@ test.describe("accounts", () => {
     const namesBefore = await nameSpans.allInnerTexts();
     expect(namesBefore).toEqual(["식비", "교통비", "통신비", "생활용품"]);
 
-    await page.getByText("교통비").click();
-    await page
-      .locator("li")
-      .filter({ hasText: "교통비" })
-      .getByRole("button", { name: "위로" })
-      .click();
+    // No <summary> click first: the arrows are on the row itself. Burying
+    // them in the panel is what made ordering look unimplemented, since
+    // the group-level pair was visible on the heading right above.
+    const row = page.locator("li").filter({ hasText: "교통비" });
+    await expect(row.locator("details")).not.toHaveAttribute("open", "");
+    await row.getByRole("button", { name: "위로" }).click();
 
     // The submit goes through a server action (fetch + revalidate +
     // re-render), which lands after the click event resolves — poll

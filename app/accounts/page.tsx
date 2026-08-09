@@ -229,10 +229,52 @@ export default async function AccountsPage({
                         return (
                           <li
                             key={account.id}
-                            className="not-first:border-rule-soft not-first:border-t"
+                            className="not-first:border-rule-soft relative not-first:border-t"
                           >
+                            {/* 위로/아래로 sit on the row itself, pinned to
+                                the summary's own height so they stay put
+                                when the panel opens. They were inside the
+                                panel, which made ordering something you
+                                had to open an account to discover — while
+                                the group-level pair sat in plain sight on
+                                the heading right above.
+
+                                A <form> cannot live inside <summary> (it
+                                is flow content, not phrasing), and a
+                                button in there would toggle the panel on
+                                every press anyway. Absolute is what lets
+                                the row carry a control the disclosure
+                                does not own; `pr-24` on the summary is
+                                the space reserved for it. */}
+                            <div className="absolute top-0 right-1 flex h-12 items-center gap-0.5">
+                              <form action={moveAccountAction}>
+                                <input type="hidden" name="accountId" value={account.id} />
+                                <input type="hidden" name="direction" value="up" />
+                                <SubmitButton
+                                  variant="ghost"
+                                  disabled={i === 0}
+                                  pendingLabel="…"
+                                  label={t("common.moveUp")}
+                                >
+                                  ↑
+                                </SubmitButton>
+                              </form>
+                              <form action={moveAccountAction}>
+                                <input type="hidden" name="accountId" value={account.id} />
+                                <input type="hidden" name="direction" value="down" />
+                                <SubmitButton
+                                  variant="ghost"
+                                  disabled={i === list.length - 1}
+                                  pendingLabel="…"
+                                  label={t("common.moveDown")}
+                                >
+                                  ↓
+                                </SubmitButton>
+                              </form>
+                            </div>
+
                             <details>
-                              <summary className="flex min-h-11 cursor-pointer items-center gap-2 px-4 py-2">
+                              <summary className="flex min-h-12 cursor-pointer items-center gap-2 py-2 pr-24 pl-4">
                                 <span className="min-w-0 truncate">{account.name}</span>
                                 {windowLabel(account) && (
                                   <Chip>
@@ -305,26 +347,6 @@ export default async function AccountsPage({
                                 <Hint>{t("accounts.activeHint")}</Hint>
 
                                 <div className="flex flex-wrap gap-2">
-                                  <form action={moveAccountAction}>
-                                    <input type="hidden" name="accountId" value={account.id} />
-                                    <input type="hidden" name="direction" value="up" />
-                                    <SubmitButton
-                                      disabled={i === 0}
-                                      pendingLabel={t("common.working")}
-                                    >
-                                      {t("common.moveUp")}
-                                    </SubmitButton>
-                                  </form>
-                                  <form action={moveAccountAction}>
-                                    <input type="hidden" name="accountId" value={account.id} />
-                                    <input type="hidden" name="direction" value="down" />
-                                    <SubmitButton
-                                      disabled={i === list.length - 1}
-                                      pendingLabel={t("common.working")}
-                                    >
-                                      {t("common.moveDown")}
-                                    </SubmitButton>
-                                  </form>
                                   <form action={toggleArchiveAction}>
                                     <input type="hidden" name="accountId" value={account.id} />
                                     <SubmitButton pendingLabel={t("common.working")}>

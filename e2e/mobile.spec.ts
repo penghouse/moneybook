@@ -108,3 +108,47 @@ test("@mobile the amount field is 16px, so iOS does not zoom on focus", async ({
   const fontSize = await amount.evaluate((el) => getComputedStyle(el).fontSize);
   expect(parseFloat(fontSize)).toBeGreaterThanOrEqual(16);
 });
+
+/**
+ * The picker used to show about four glyphs closed and three and a half
+ * in its list, which cannot separate 「생활비카드」 from 「생활비통장」 —
+ * on the control this app is tapped through more than any other.
+ *
+ * Asserted in glyphs rather than pixels, because pixels alone would pass
+ * on a wider phone while the real complaint was about a narrow one.
+ */
+test("@mobile the account picker shows a readable number of characters", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto("/");
+  const box = entryForm(page).locator('input[placeholder="계정 검색"]').first();
+
+  const glyphs = await box.evaluate((el: HTMLInputElement) => {
+    const style = getComputedStyle(el);
+    const ctx = document.createElement("canvas").getContext("2d")!;
+    ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    const inner = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    return inner / ctx.measureText("가").width;
+  });
+  expect(glyphs).toBeGreaterThanOrEqual(4);
+});
+
+test("@mobile the account list is wider than the box, and stays on screen", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto("/");
+  const boxes = entryForm(page).locator('input[placeholder="계정 검색"]');
+
+  for (const index of [0, 1]) {
+    await boxes.nth(index).click();
+    const list = page.locator("main ul").last();
+    const listBox = (await list.boundingBox())!;
+    const inputBox = (await boxes.nth(index).boundingBox())!;
+
+    expect(listBox.width).toBeGreaterThan(inputBox.width);
+    // The right-hand box's list has to open leftward to manage this.
+    expect(listBox.x).toBeGreaterThanOrEqual(0);
+    expect(listBox.x + listBox.width).toBeLessThanOrEqual(320);
+
+    await page.keyboard.press("Escape");
+    await page.getByRole("heading").first().click();
+  }
+});

@@ -22,6 +22,7 @@ import { buttonClass, type ButtonVariant } from "./ui";
 export function SubmitButton({
   children,
   pendingLabel,
+  label,
   variant = "secondary",
   full = false,
   disabled = false,
@@ -30,6 +31,12 @@ export function SubmitButton({
   children: React.ReactNode;
   /** Shown while the action runs. Falls back to the idle label. */
   pendingLabel?: string;
+  /**
+   * The accessible name, for buttons whose visible content is a glyph.
+   * An arrow is not a word in any language, so a row of them needs this
+   * to be readable — and it is what the tests address them by.
+   */
+  label?: string;
   variant?: ButtonVariant;
   full?: boolean;
   /** For buttons that are unavailable for their own reasons, e.g. "move up" at the top. */
@@ -46,6 +53,7 @@ export function SubmitButton({
       // one line of text either way, so the row cannot reflow and shift
       // the buttons beside it out from under a finger mid-tap.
       aria-busy={pending}
+      aria-label={label}
       className={`${buttonClass(variant, full)} ${className}`}
     >
       {pending && pendingLabel ? pendingLabel : children}

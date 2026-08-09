@@ -303,7 +303,10 @@ export function EntryForm({
           {/* The pair. Two columns at every width: which side an account
               sits on *is* the entry, so stacking them would erase it. */}
           <div className="border-rule-soft border-t px-4 py-3">
-            <div className="grid grid-cols-[minmax(0,1fr)_2.25rem_minmax(0,1fr)] items-end gap-1.5 md:grid-cols-[minmax(0,1fr)_2.75rem_minmax(0,1fr)_7rem_7rem] md:gap-3">
+            {/* The swap column is 28px on a phone, not 36: the two account
+                boxes split whatever this row leaves them, so every pixel
+                the middle takes is half a pixel off each name. */}
+            <div className="grid grid-cols-[minmax(0,1fr)_1.75rem_minmax(0,1fr)] items-end gap-1.5 md:grid-cols-[minmax(0,1fr)_2.75rem_minmax(0,1fr)_7rem_7rem] md:gap-3">
               <div className="min-w-0">
                 <Label>
                   <span className="text-ink-muted font-semibold">{labels.left}</span> ·{" "}
