@@ -3,11 +3,19 @@ import { db } from "@/db/client";
 import { getTranslations } from "@/i18n";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
-import { addMonths, monthRange, monthsBetween, today, yearMonthOf, yearsBetween } from "@/lib/date";
+import {
+  addMonths,
+  monthRange,
+  monthsBetween,
+  shiftWindow,
+  today,
+  yearMonthOf,
+  yearsBetween,
+} from "@/lib/date";
 import { getPeriodTotals } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
 import { NetIncomeChart } from "../../_components/net-income-chart";
-import { PeriodUnits } from "../../_components/period-nav";
+import { PeriodNav } from "../../_components/period-nav";
 import {
   buttonClass,
   Card,
@@ -61,6 +69,15 @@ export default async function IncomeChartPage({
   const unitHref = (next: "month" | "year") => `/income/chart?from=${from}&to=${to}&unit=${next}`;
   const trendLabel = byYear ? t("income.trendByYear") : t("income.trendByMonth");
 
+  // The window moves by its own length, so paging back from twelve
+  // months lands on the twelve before — the comparison the chart is for.
+  // A fixed month step would leave eleven of the twelve on screen and
+  // make every press look like nothing happened.
+  const stepHref = (delta: number) => {
+    const next = shiftWindow(start, to, delta);
+    return `/income/chart?from=${next.from}&to=${next.to}&unit=${byYear ? "year" : "month"}`;
+  };
+
   return (
     <div className="space-y-4">
       <PageHeader title={t("nav.incomeChart")}>
@@ -105,17 +122,21 @@ export default async function IncomeChartPage({
         </div>
       </Card>
 
-      {/* The same switch the three period screens carry, so 월간/연간
-          means one thing across the app — here it sets the width of a
-          bar rather than the range, which the heading below says. */}
-      <Card>
-        <PeriodUnits
-          units={[
-            { label: t("common.unitMonth"), href: unitHref("month"), active: !byYear },
-            { label: t("common.unitYear"), href: unitHref("year"), active: byYear },
-          ]}
-        />
-      </Card>
+      {/* The arrows move the whole window; the switch below them sets
+          how wide a bar is, not how long the range is. Both live in the
+          bar the period screens use, so the controls are where the hand
+          already goes. */}
+      <PeriodNav
+        prevHref={stepHref(-1)}
+        nextHref={stepHref(1)}
+        label={`${start} ~ ${to}`}
+        prevLabel={t("common.prevWindow")}
+        nextLabel={t("common.nextWindow")}
+        units={[
+          { label: t("common.unitMonth"), href: unitHref("month"), active: !byYear },
+          { label: t("common.unitYear"), href: unitHref("year"), active: byYear },
+        ]}
+      />
 
       <section>
         <SectionLabel>{trendLabel}</SectionLabel>

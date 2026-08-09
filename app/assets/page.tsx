@@ -80,6 +80,17 @@ export default async function AssetsPage({
   const windowOf = new Map(sectionAccounts.map((a) => [a.id, a]));
 
   /**
+   * Name, group and 상위 그룹 for every account, in the book's order.
+   * Read by the 상위 그룹 bands below and by the 계산식 menu, which have
+   * to agree about which account is filed where.
+   */
+  const catalog = await db.query.accounts.findMany({
+    where: eq(accounts.sectionId, section.id),
+    orderBy: asc(accounts.sortOrder),
+    columns: { id: true, name: true, group: true, category: true },
+  });
+
+  /**
    * Retired accounts that have been emptied out, folded away.
    *
    * The condition is deliberately `balance is zero` **and** closed, not
@@ -140,7 +151,81 @@ export default async function AssetsPage({
 
   const base = (minor: number) => formatMoney(minor, section.baseCurrency, locale);
 
+  /**
+   * The 상위 그룹 each account is filed under, and the order they were
+   * put in.
+   *
+   * The balance sheet was the one report that ignored 상위 그룹
+   * entirely, while 기간손익 and 예산 both grouped by it — so a book
+   * organised into 유동성자금 / 투자 / 묶인돈 showed those groupings
+   * everywhere except the screen they matter most on.
+   */
+  const categoryOf = new Map(catalog.map((a) => [a.id, a.category ?? null] as const));
+  const hasCategories = catalog.some((a) => a.category);
+
+  function byCategory(list: typeof balances) {
+    const map = new Map<string | null, typeof balances>();
+    for (const b of list) {
+      const key = categoryOf.get(b.accountId) ?? null;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(b);
+    }
+    // Uncategorised last: it is where things land before they are filed,
+    // not a group of its own.
+    return [...map.entries()]
+      .sort(([a], [b]) => (a === null ? 1 : b === null ? -1 : 0))
+      .map(([category, rows]) => ({
+        category,
+        rows,
+        subtotal: rows.reduce((sum, b) => sum + b.baseAmount, 0),
+      }));
+  }
+
   function renderGroup(group: "asset" | "liability", list: typeof balances) {
+    const renderRow = (a: (typeof balances)[number]) => {
+      const f = fxByAccountId.get(a.accountId);
+      return (
+        <KeyValueRow
+          key={a.accountId}
+          // "왜 이 숫자지" is answered by the transactions behind
+          // it, so the row opens the period on screen filtered to
+          // this account. The balance is cumulative to 기준일
+          // while the list is one period — the link answers what
+          // moved it lately, not how it got to where it is.
+          href={`/?accountId=${a.accountId}&from=${periodFrom}&to=${periodTo}`}
+          label={a.name}
+          value={<Money amount={a.amount} currency={a.currency} locale={locale} />}
+          // Only foreign-currency accounts carry a book/current
+          // split; for base-currency accounts the two are the same
+          // number and the chips would be noise.
+          sub={
+            f && (
+              <>
+                <Chip>
+                  {t("assets.book")} {base(f.bookBaseAmount)}
+                </Chip>
+                {f.rateUnavailable ? (
+                  <Chip tone="warning">{t("assets.rateUnavailable")}</Chip>
+                ) : (
+                  <>
+                    <Chip>
+                      {t("assets.current")} {base(f.currentBaseAmount)}
+                    </Chip>
+                    {f.unrealized !== 0 && (
+                      <Chip tone={f.unrealized > 0 ? "positive" : "negative"}>
+                        {t("assets.unrealized")} {f.unrealized > 0 ? "+" : ""}
+                        {base(f.unrealized)}
+                      </Chip>
+                    )}
+                  </>
+                )}
+              </>
+            )
+          }
+        />
+      );
+    };
+
     return (
       <section key={group}>
         <SectionLabel>{t(GROUP_LABEL_KEY[group])}</SectionLabel>
@@ -148,49 +233,23 @@ export default async function AssetsPage({
           {list.length === 0 ? (
             <EmptyState>{t("assets.empty")}</EmptyState>
           ) : (
-            list.map((a) => {
-              const f = fxByAccountId.get(a.accountId);
-              return (
-                <KeyValueRow
-                  key={a.accountId}
-                  // "왜 이 숫자지" is answered by the transactions behind
-                  // it, so the row opens the period on screen filtered to
-                  // this account. The balance is cumulative to 기준일
-                  // while the list is one period — the link answers what
-                  // moved it lately, not how it got to where it is.
-                  href={`/?accountId=${a.accountId}&from=${periodFrom}&to=${periodTo}`}
-                  label={a.name}
-                  value={<Money amount={a.amount} currency={a.currency} locale={locale} />}
-                  // Only foreign-currency accounts carry a book/current
-                  // split; for base-currency accounts the two are the same
-                  // number and the chips would be noise.
-                  sub={
-                    f && (
-                      <>
-                        <Chip>
-                          {t("assets.book")} {base(f.bookBaseAmount)}
-                        </Chip>
-                        {f.rateUnavailable ? (
-                          <Chip tone="warning">{t("assets.rateUnavailable")}</Chip>
-                        ) : (
-                          <>
-                            <Chip>
-                              {t("assets.current")} {base(f.currentBaseAmount)}
-                            </Chip>
-                            {f.unrealized !== 0 && (
-                              <Chip tone={f.unrealized > 0 ? "positive" : "negative"}>
-                                {t("assets.unrealized")} {f.unrealized > 0 ? "+" : ""}
-                                {base(f.unrealized)}
-                              </Chip>
-                            )}
-                          </>
-                        )}
-                      </>
-                    )
-                  }
-                />
-              );
-            })
+            byCategory(list).map(({ category, rows, subtotal }) => (
+              <div key={category ?? "\u0000uncategorized"}>
+                {hasCategories && (
+                  // The same band the income statement uses, so one
+                  // grouping reads the same on every report.
+                  <div className="bg-sunken border-rule-soft flex items-baseline gap-3 border-t px-4 py-1.5 first:border-t-0">
+                    <span className="text-ink-muted min-w-0 truncate text-xs font-semibold">
+                      {category ?? t("accounts.uncategorized")}
+                    </span>
+                    <span className="tnum text-ink-muted ml-auto text-xs font-semibold">
+                      {base(subtotal)}
+                    </span>
+                  </div>
+                )}
+                {rows.map(renderRow)}
+              </div>
+            ))
           )}
         </Card>
       </section>
@@ -203,20 +262,10 @@ export default async function AssetsPage({
     (g): g is "asset" | "liability" => g === "asset" || g === "liability",
   );
 
-  /**
-   * The 계산식 band's inputs, built from the same balances the sheet
-   * above prints — so a formula naming 「유동성자금」 can only ever mean
-   * the 유동성자금 on this screen, at this 기준일.
-   */
-  const formulaCatalog = await db.query.accounts.findMany({
-    where: eq(accounts.sectionId, section.id),
-    orderBy: asc(accounts.sortOrder),
-    columns: { id: true, name: true, group: true, category: true },
-  });
   const formulaItems = buildFormulaItems({
     scope: "assets",
     groupOrder: parseGroupOrder(section.groupOrder),
-    accounts: formulaCatalog,
+    accounts: catalog,
     amountByAccountId: new Map(balances.map((b) => [b.accountId, b.baseAmount])),
     labels: { totals: formulaTotalLabels("assets", t) },
   });

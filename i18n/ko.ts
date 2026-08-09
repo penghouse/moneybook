@@ -44,6 +44,8 @@ const ko = {
   "common.nextMonth": "다음 달",
   "common.prevYear": "이전 해",
   "common.nextYear": "다음 해",
+  "common.prevWindow": "이전 기간",
+  "common.nextWindow": "다음 기간",
   "common.unitMonth": "월간",
   "common.unitYear": "연간",
   "common.archive": "보관",

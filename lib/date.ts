@@ -108,6 +108,33 @@ export function yearsBetween(from: string, to: string): string[] {
 }
 
 /**
+ * The window before or after [from, to], the same length as it.
+ *
+ * "The same length" is measured in *months* when the range is whole
+ * months and in days otherwise. A twelve-month window stepped back by
+ * 365 days would land on the 2nd of the month and stay one day off for
+ * ever after; stepped by twelve months it lands exactly on the previous
+ * twelve, which is the comparison anyone paging a chart is after.
+ *
+ * `delta` is in windows: -1 is the one before, +1 the one after.
+ */
+export function shiftWindow(from: string, to: string, delta: number): { from: string; to: string } {
+  const firstOfMonth = from.slice(8) === "01";
+  const lastOfMonth = to === monthRange(yearMonthOf(to)).to;
+
+  if (firstOfMonth && lastOfMonth) {
+    const months = monthsBetween(from, to).length;
+    const start = addMonths(yearMonthOf(from), months * delta);
+    const end = addMonths(yearMonthOf(to), months * delta);
+    return { from: `${start}-01`, to: monthRange(end).to };
+  }
+
+  // Inclusive day count, so stepping back leaves no gap and no overlap.
+  const days = Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1;
+  return { from: addDays(from, days * delta), to: addDays(to, days * delta) };
+}
+
+/**
  * What unit a from/to range represents, worked out from the range
  * itself rather than carried alongside it.
  *

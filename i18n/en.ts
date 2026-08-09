@@ -46,6 +46,8 @@ const en: Record<keyof typeof ko, string> = {
   "common.nextMonth": "Next month",
   "common.prevYear": "Previous year",
   "common.nextYear": "Next year",
+  "common.prevWindow": "Earlier",
+  "common.nextWindow": "Later",
   "common.unitMonth": "Monthly",
   "common.unitYear": "Yearly",
   "common.archive": "Archive",
