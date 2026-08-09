@@ -7,6 +7,13 @@ import { db } from "@/db/client";
 import { accounts, ACCOUNT_GROUPS, sections, type AccountGroup } from "@/db/schema";
 import { getTranslations } from "@/i18n";
 import { moveGroup, parseGroupOrder, serializeGroupOrder } from "@/lib/account-groups";
+import {
+  moveAccountWithinCategory,
+  moveCategoryBlock,
+  renumber,
+  type MoveDirection,
+  type OrderableAccount,
+} from "@/lib/account-order";
 import { canTrackCounterparties } from "@/lib/accounts";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
@@ -96,7 +103,12 @@ export async function updateAccountAction(formData: FormData) {
     throw new Error("Name is required");
   }
 
-  const activeFrom = normalizeDate(formData.get("activeFrom"));
+  // The form no longer offers 사용 시작, so an absent field means "leave
+  // it alone" rather than "clear it" — reading it as null would wipe a
+  // start date brought in by a CSV import on the next unrelated save.
+  const activeFrom = formData.has("activeFrom")
+    ? normalizeDate(formData.get("activeFrom"))
+    : account.activeFrom;
   const activeTo = normalizeDate(formData.get("activeTo"));
   // The database has a CHECK for this too; catching it here is what
   // turns it into a message rather than a stack trace.
@@ -205,38 +217,70 @@ export async function deleteAccountAction(formData: FormData) {
   revalidatePath("/accounts");
 }
 
-export async function moveAccountAction(formData: FormData) {
-  const userId = await requireUserId();
-  const accountId = formData.get("accountId");
+function readDirection(formData: FormData): MoveDirection {
   const direction = formData.get("direction");
-  if (typeof accountId !== "string" || typeof direction !== "string") {
-    throw new Error("Missing accountId/direction");
-  }
-  if (direction !== "up" && direction !== "down") {
-    throw new Error("Invalid direction");
-  }
+  if (direction !== "up" && direction !== "down") throw new Error("Invalid direction");
+  return direction;
+}
 
-  const account = await loadOwnedAccount(accountId, userId);
-  const siblings = await db.query.accounts.findMany({
+/**
+ * Writes a group's new order, renumbering 0..n-1 so its category blocks
+ * end up contiguous. That compaction is the point: while blocks were
+ * interleaved, a move could swap an account with one from another
+ * category and change nothing on screen.
+ */
+async function writeOrder(order: readonly OrderableAccount[]) {
+  const changed = renumber(order);
+  if (changed.length === 0) return;
+  await db.transaction(async (tx) => {
+    for (const { id, sortOrder } of changed) {
+      await tx.update(accounts).set({ sortOrder }).where(eq(accounts.id, id));
+    }
+  });
+  // Every screen lists accounts in this order, not just this one.
+  for (const path of ["/", "/accounts", "/assets", "/income", "/budget"]) {
+    revalidatePath(path);
+  }
+}
+
+/** The accounts a move rearranges: one group of one section, in current order. */
+async function siblingsOf(account: { sectionId: string; group: AccountGroup }) {
+  return db.query.accounts.findMany({
     where: and(eq(accounts.sectionId, account.sectionId), eq(accounts.group, account.group)),
     orderBy: asc(accounts.sortOrder),
   });
+}
 
-  const index = siblings.findIndex((a) => a.id === accountId);
-  const swapIndex = direction === "up" ? index - 1 : index + 1;
-  if (swapIndex < 0 || swapIndex >= siblings.length) return;
+export async function moveAccountAction(formData: FormData) {
+  const userId = await requireUserId();
+  const accountId = formData.get("accountId");
+  if (typeof accountId !== "string") throw new Error("Missing accountId");
+  const direction = readDirection(formData);
 
-  const other = siblings[swapIndex];
-  await db.transaction(async (tx) => {
-    await tx
-      .update(accounts)
-      .set({ sortOrder: other.sortOrder })
-      .where(eq(accounts.id, account.id));
-    await tx
-      .update(accounts)
-      .set({ sortOrder: account.sortOrder })
-      .where(eq(accounts.id, other.id));
-  });
+  const account = await loadOwnedAccount(accountId, userId);
+  const order = moveAccountWithinCategory(await siblingsOf(account), accountId, direction);
+  // null means it is already at that end of its own category block. The
+  // buttons are disabled there, so this is a stale click, not an error.
+  if (order) await writeOrder(order);
+}
 
-  revalidatePath("/accounts");
+/** Moves a whole 상위 그룹 within its group, accounts and all. */
+export async function moveCategoryAction(formData: FormData) {
+  const userId = await requireUserId();
+  const { locale } = await getTranslations();
+  const section = await getOrCreateSection(db, { userId, locale });
+
+  const group = formData.get("group");
+  const category = formData.get("category");
+  if (typeof group !== "string" || !ACCOUNT_GROUPS.includes(group as AccountGroup)) {
+    throw new Error("Invalid group");
+  }
+  if (typeof category !== "string" || category.length === 0) {
+    throw new Error("Missing category");
+  }
+  const direction = readDirection(formData);
+
+  const siblings = await siblingsOf({ sectionId: section.id, group: group as AccountGroup });
+  const order = moveCategoryBlock(siblings, category, direction);
+  if (order) await writeOrder(order);
 }

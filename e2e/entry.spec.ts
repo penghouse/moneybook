@@ -55,7 +55,9 @@ test.describe("entry", () => {
     await expect(page.getByText(/신용카드.*12,000/)).toBeVisible();
   });
 
-  test("clears amount/title but keeps the date after a save (rapid entry)", async ({ page }) => {
+  test("clears what belongs to the transaction but keeps the date (rapid entry)", async ({
+    page,
+  }) => {
     await page.goto("/");
     const form = createForm(page);
     const dateInput = form.locator('input[type="date"]').first();
@@ -65,12 +67,20 @@ test.describe("entry", () => {
     await pickAccount(form, 1, "신용카드");
     await form.locator('input[type="number"]').first().fill("5000");
     await form.locator('input[name="title"]').fill("커피");
+    await form.locator("summary", { hasText: "메모" }).click();
+    await form.locator('input[name="memo"]').fill("테이크아웃");
     await form.getByRole("button", { name: "저장" }).click();
 
     await expect(page.getByText("커피")).toBeVisible();
+    // The date and both accounts carry over — that is what makes a run of
+    // entries quick.
     await expect(dateInput).toHaveValue(dateBefore);
+    await expect(form.locator('input[placeholder="계정 검색"]').first()).toHaveValue("식비");
+    // Everything describing *that* transaction goes. A memo left behind
+    // attaches itself to the next one without saying so.
     await expect(form.locator('input[name="title"]')).toHaveValue("");
     await expect(form.locator('input[type="number"]').first()).toHaveValue("");
+    await expect(form.locator('input[name="memo"]')).toHaveValue("");
   });
 
   test("rejects a split transaction until debit and credit totals match", async ({ page }) => {
@@ -108,9 +118,9 @@ test.describe("entry", () => {
 
     // The list shows one line per transaction: the first account plus a
     // count, and the debit total.
-    // The row's collapsed <details> still holds an edit form in the DOM,
-    // so assert on the summary rather than the whole list item.
-    const summary = page.locator("main li").first().locator("summary");
+    // The row is the button that opens its dialog; assert on that rather
+    // than the list item, whose dialog is in the DOM too.
+    const summary = page.locator("main li").first().locator("button").first();
     await expect(summary.getByText("식비 외 1")).toBeVisible();
     // Exact: the balance column beneath now reads "-₩45,000" (net worth
     // is negative with only a card debt on the books), which a substring
@@ -204,9 +214,9 @@ test.describe("entry", () => {
     }
 
     // Newest first: 저녁 carries both expenses, 점심 only the first.
-    // `.first()`: each row's collapsed edit form carries its own <summary>
+    // `.first()`: the row button, not anything inside its dialog.
     // for the memo field.
-    const rowSummary = (i: number) => page.locator("main li").nth(i).locator("summary").first();
+    const rowSummary = (i: number) => page.locator("main li").nth(i).locator("button").first();
     await expect(rowSummary(0)).toContainText("-₩32,000");
     await expect(rowSummary(1)).toContainText("-₩12,000");
     await expect(page.getByText("잔액 · 순자산")).toBeVisible();
@@ -232,10 +242,16 @@ test.describe("entry", () => {
     await expect(page.getByText("원래 제목")).toBeVisible();
 
     await page.getByText("원래 제목").click();
-    const row = page.locator("li", { hasText: "원래 제목" });
-    await row.locator('input[name="title"]').fill("수정된 제목");
-    await row.getByRole("button", { name: "저장" }).click();
+    // The edit form opens as a modal rather than unfolding under the row,
+    // so the whole record is on screen instead of wherever the list
+    // happened to push it.
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.locator('input[name="title"]').fill("수정된 제목");
+    await dialog.getByRole("button", { name: "저장" }).click();
 
+    // Saving is what closes it — the dialog's work is done.
+    await expect(dialog).toBeHidden();
     await expect(page.getByText("수정된 제목")).toBeVisible();
     await expect(page.getByText("원래 제목")).not.toBeVisible();
   });
@@ -251,7 +267,7 @@ test.describe("entry", () => {
     await expect(page.getByText("정기 결제")).toHaveCount(1);
 
     await page.getByText("정기 결제").click();
-    await page.locator("li", { hasText: "정기 결제" }).getByRole("link", { name: "복제" }).click();
+    await page.getByRole("dialog").getByRole("link", { name: "복제" }).click();
 
     // Everything needed to check it before writing anything: the date,
     // both sides, the amount and the title all arrive filled in.
@@ -275,6 +291,147 @@ test.describe("entry", () => {
     await expect(createForm(page).locator('input[name="title"]')).toHaveValue("");
   });
 
+  test("the save button stays off until something in the transaction changes", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("9000");
+    await form.locator('input[name="title"]').fill("원래 제목");
+    await form.getByRole("button", { name: "저장" }).click();
+    await expect(page.getByText("원래 제목")).toBeVisible();
+
+    await page.getByText("원래 제목").click();
+    const row = page.getByRole("dialog");
+    const save = row.getByRole("button", { name: "저장" });
+
+    // Nothing has changed yet, so there is nothing to save. Pressing it
+    // would rewrite every line of the transaction for no gain, and the
+    // round trip is what read as the page freezing.
+    await expect(save).toBeDisabled();
+
+    await row.locator('input[name="title"]').fill("수정된 제목");
+    await expect(save).toBeEnabled();
+
+    // Typed back to what it was: off again, so the button tracks the
+    // content rather than merely whether a key was pressed.
+    await row.locator('input[name="title"]').fill("원래 제목");
+    await expect(save).toBeDisabled();
+  });
+
+  test("a copy can be saved unchanged, even though nothing differs", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("4000");
+    await form.locator('input[name="title"]').fill("같은 거래");
+    await form.getByRole("button", { name: "저장" }).click();
+    await expect(page.getByText("같은 거래")).toHaveCount(1);
+
+    await page.getByText("같은 거래").click();
+    await page
+      .locator("main li", { hasText: "같은 거래" })
+      .getByRole("link", { name: "복제" })
+      .click();
+
+    // A duplicate is prefilled identical on purpose — the dirty check
+    // belongs to editing in place, not to this.
+    const copy = createForm(page);
+    await expect(copy.getByRole("button", { name: "저장" })).toBeEnabled();
+    await copy.getByRole("button", { name: "저장" }).click();
+    await expect(page.getByText("같은 거래")).toHaveCount(2);
+  });
+
+  test("the list shows what was written on a transaction", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("6000");
+    await form.locator('input[name="title"]').fill("김밥");
+    await form.locator("summary", { hasText: "메모" }).click();
+    await form.locator('input[name="memo"]').fill("출근길에");
+    await form.getByRole("button", { name: "저장" }).click();
+
+    // The memo used to be visible only by opening the row, which makes a
+    // list you have to open to trust.
+    const row = page.locator("main li").filter({ hasText: "김밥" }).first();
+    await expect(row.getByText("출근길에")).toBeVisible();
+  });
+
+  test("a #tag in a memo collects its transactions and totals them", async ({ page }) => {
+    const spend = async (title: string, amount: string, memo: string) => {
+      const form = createForm(page);
+      await pickAccount(form, 0, "식비");
+      await pickAccount(form, 1, "신용카드");
+      await form.locator('input[type="number"]').first().fill(amount);
+      await form.locator('input[name="title"]').fill(title);
+      if (!(await form.locator('input[name="memo"]').isVisible())) {
+        await form.locator("summary", { hasText: "메모" }).click();
+      }
+      await form.locator('input[name="memo"]').fill(memo);
+      await form.getByRole("button", { name: "저장" }).click();
+      await expect(page.getByText(title)).toBeVisible();
+    };
+
+    await page.goto("/");
+    await spend("택시", "18000", "급해서 #낭비");
+    await spend("장보기", "42000", "#필수");
+    await spend("배달", "22000", "#낭비 야식");
+    // Not the same tag, and a substring match would wrongly count it.
+    await spend("충동구매", "99000", "#낭비벽 고쳐야");
+
+    // Reached the way it is meant to be: the chip in the filter panel.
+    await page.locator("main details", { hasText: "검색·필터" }).locator("summary").click();
+    await page.getByRole("link", { name: "#낭비", exact: true }).click();
+
+    await expect(page).toHaveURL(/tag=/);
+    await expect(page.getByText("2건")).toBeVisible();
+    // 18,000 + 22,000 — 낭비벽 is a different tag, 필수 is not this one.
+    // Exact: the running-balance column happens to read -₩40,000 here.
+    await expect(page.getByText("₩40,000", { exact: true })).toBeVisible();
+
+    const rows = page.locator("main li");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.filter({ hasText: "충동구매" })).toHaveCount(0);
+  });
+
+  test("a recent 적요 suggests itself and fills in both sides", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+
+    // Establish the repeat: 점심 out of 식비, onto 신용카드.
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("11000");
+    await form.locator('input[name="title"]').fill("점심");
+    await form.getByRole("button", { name: "저장" }).click();
+    await expect(page.getByText("점심")).toBeVisible();
+
+    // A fresh form: type the amount first, then reach for the 적요.
+    await page.reload();
+    const next = createForm(page);
+    await next.locator('input[type="number"]').first().fill("13000");
+    await next.locator('input[name="title"]').click();
+    await next.locator('input[name="title"]').fill("점");
+
+    const suggestion = next.getByRole("button", { name: /점심/ });
+    await expect(suggestion).toBeVisible();
+    await suggestion.click();
+
+    // Both sides come back from last time; the amount is the one part
+    // that differs between repeats, so it is left alone.
+    const names = next.locator('input[placeholder="계정 검색"]');
+    await expect(next.locator('input[name="title"]')).toHaveValue("점심");
+    await expect(names.nth(0)).toHaveValue("식비");
+    await expect(names.nth(1)).toHaveValue("신용카드");
+    await expect(next.locator('input[type="number"]').first()).toHaveValue("13000");
+
+    await next.getByRole("button", { name: "저장" }).click();
+    await expect(page.locator("main li").filter({ hasText: "점심" })).toHaveCount(2);
+  });
+
   test("deleting a transaction removes it from the list", async ({ page }) => {
     await page.goto("/");
     const form = createForm(page);
@@ -286,9 +443,12 @@ test.describe("entry", () => {
     await expect(page.getByText("지울 거래")).toBeVisible();
 
     await page.getByText("지울 거래").click();
-    const row = page.locator("li", { hasText: "지울 거래" });
-    await row.getByRole("button", { name: "삭제" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "삭제" }).click();
 
-    await expect(page.getByText("지울 거래")).not.toBeVisible();
+    // Asserted on the row count: while the dialog is closing, its title
+    // and the row both carry the text, and "not visible" cannot say
+    // anything useful about two elements at once.
+    await expect(page.locator("main li")).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toBeHidden();
   });
 });

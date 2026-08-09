@@ -28,6 +28,7 @@ const en: Record<keyof typeof ko, string> = {
 
   "common.save": "Save",
   "common.cancel": "Cancel",
+  "common.close": "Close",
   "common.delete": "Delete",
   "common.edit": "Edit",
   "common.add": "Add",
@@ -84,10 +85,9 @@ const en: Record<keyof typeof ko, string> = {
   "accounts.category": "Category",
   "accounts.categoryPlaceholder": "e.g. Eating out",
   "accounts.uncategorized": "Uncategorized",
-  "accounts.activeFrom": "In use from",
   "accounts.activeTo": "In use until",
   "accounts.activeHint":
-    "Leave blank for no bound. An end date takes the account out of the entry form and the budget, and folds it away on the balance sheet once its balance is zero. Past transactions and balances are untouched.",
+    "Leave blank to keep the account in use. An end date takes it out of the entry form and the budget, and folds it away on the balance sheet once its balance is zero. Past transactions and balances are untouched.",
   "accounts.activeRangeError": "The end date is before the start date.",
   "accounts.tracksCounterparties": "Track counterparties",
   "accounts.tracksCounterpartiesHint":
@@ -186,6 +186,9 @@ const en: Record<keyof typeof ko, string> = {
   "entry.filterTo": "To",
   "entry.filterAccount": "Account",
   "entry.filterSearch": "Search",
+  "entry.filterTag": "Tag",
+  "entry.tagPlaceholder": "e.g. waste",
+  "entry.tagCount": "{n} transactions",
   "entry.filterClear": "Clear",
   "entry.allAccounts": "All",
   "entry.noTransactions": "No transactions yet.",

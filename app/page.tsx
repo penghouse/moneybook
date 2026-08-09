@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, like, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db/client";
 import { accounts, transactionLines, transactions } from "@/db/schema";
@@ -7,11 +7,28 @@ import { interpolate } from "@/i18n/format";
 import { activeOn } from "@/lib/accounts";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
-import { today } from "@/lib/date";
-import { getCounterpartyBalances, getRunningBalances } from "@/lib/ledger";
+import {
+  addMonths,
+  addYears,
+  monthRange,
+  rangeUnit,
+  today,
+  yearMonthOf,
+  yearOf,
+  yearRange,
+} from "@/lib/date";
+import {
+  findTaggedTransactionIds,
+  getCounterpartyBalances,
+  getRunningBalances,
+  getTitleSuggestions,
+} from "@/lib/ledger";
 import { formatMoney, toMajorUnits } from "@/lib/money";
+import { collectTags, normalizeTag } from "@/lib/tags";
 import { CompositionChart } from "./_components/composition-chart";
+import { DialogActionForm, RowDialog } from "./_components/dialog";
 import { EntryForm, type EntryFormLabels } from "./_components/entry-form";
+import { PeriodNav } from "./_components/period-nav";
 import { SubmitButton } from "./_components/submit-button";
 import {
   buttonClass,
@@ -43,13 +60,24 @@ export default async function Home({
     to?: string;
     accountId?: string;
     q?: string;
+    tag?: string;
     duplicate?: string;
   }>;
 }) {
   const userId = await requireUserId();
   const { t, locale } = await getTranslations();
   const section = await getOrCreateSection(db, { userId, locale });
-  const { error, name: errorAccountName, from, to, accountId, q, duplicate } = await searchParams;
+  const {
+    error,
+    name: errorAccountName,
+    from,
+    to,
+    accountId,
+    q,
+    tag: tagParam,
+    duplicate,
+  } = await searchParams;
+  const tag = normalizeTag(tagParam);
 
   const allAccounts = await db.query.accounts.findMany({
     // The picker offers what can be posted to *now*; a closed account
@@ -67,6 +95,11 @@ export default async function Home({
     orderBy: asc(accounts.sortOrder),
   });
 
+  // Deliberately not narrowed by whatever the list is filtered to: the
+  // suggestions are for what you are about to type, not for what you are
+  // currently looking at.
+  const suggestions = await getTitleSuggestions(db, { sectionId: section.id });
+
   const labels: EntryFormLabels = {
     date: t("common.date"),
     title: t("common.title"),
@@ -83,6 +116,7 @@ export default async function Home({
     addLine: t("entry.addLine"),
     removeLine: t("common.delete"),
     save: t("common.save"),
+    saving: t("common.saving"),
     balanced: t("entry.balanced"),
     unbalanced: t("entry.unbalanced"),
     difference: t("entry.difference"),
@@ -111,6 +145,20 @@ export default async function Home({
       inArray(
         transactions.id,
         matches.map((m) => m.transactionId),
+      ),
+    );
+  }
+
+  // Snapshotted before the tag narrows things: the tag chips are how you
+  // find the other tags, so they are read from the period rather than
+  // from what one of them has already filtered down to.
+  const untaggedConditions = [...conditions];
+
+  if (tag) {
+    conditions.push(
+      inArray(
+        transactions.id,
+        await findTaggedTransactionIds(db, { sectionId: section.id, tag, from, to }),
       ),
     );
   }
@@ -208,9 +256,83 @@ export default async function Home({
 
   /** The current filter, so copying does not throw away the list you found it in. */
   const listParams = new URLSearchParams(
-    Object.entries({ from, to, accountId, q }).filter(([, v]) => v) as [string, string][],
+    Object.entries({ from, to, accountId, q, tag }).filter(([, v]) => v) as [string, string][],
   );
   const withoutDuplicate = listParams.toString();
+
+  /**
+   * Filtered to one account, this screen stops being the entry form and
+   * becomes that account's ledger — which is how it is reached from the
+   * balance sheet. So the filter opens instead of hiding behind a
+   * disclosure, the period gets arrows, and the entry form steps aside:
+   * nobody arriving from 자산현황 came here to type a new transaction.
+   *
+   * A copy in progress is the exception. It *is* something to type, and
+   * hiding the form would leave 복제 doing nothing visible.
+   */
+  const isLedger = !!filtered && !copy;
+  const ledgerUnit = from && to ? rangeUnit(from, to) : "custom";
+  const ledgerStep = (delta: number) => {
+    const range =
+      ledgerUnit === "year"
+        ? yearRange(addYears(yearOf(from!), delta))
+        : monthRange(addMonths(yearMonthOf(from!), delta));
+    const next = new URLSearchParams(listParams);
+    next.set("from", range.from);
+    next.set("to", range.to);
+    return `/?${next}`;
+  };
+
+  /**
+   * What this transaction has written on it, transaction memo first and
+   * any line memos after — one line, so the list still reads as a list.
+   * A split's per-line notes are often the only text it carries.
+   */
+  const memoOf = (tx: (typeof list)[number]) =>
+    [tx.memo, ...tx.lines.map((l) => l.memo)].filter((m) => m?.trim()).join(" · ");
+
+  /**
+   * Which tags exist in the period on screen, so the chips can offer
+   * them. Read from `untaggedConditions` — filtered down by a tag, the
+   * list would only ever show the tag already chosen.
+   */
+  const knownTags = await db
+    .select({ memo: transactions.memo, lineMemo: transactionLines.memo })
+    .from(transactions)
+    .innerJoin(transactionLines, eq(transactionLines.transactionId, transactions.id))
+    .where(and(...untaggedConditions))
+    .then((rows) => [...new Set(rows.flatMap((r) => collectTags([r.memo, r.lineMemo])))].sort());
+
+  /**
+   * What the filter adds up to, and how many rows it matched.
+   *
+   * Computed with an aggregate over the same conditions rather than from
+   * `list`, which stops at TRANSACTION_LIMIT — a 합계 that silently
+   * ignored the hundred-and-first transaction would be worse than none.
+   * Each transaction contributes its debit total, the number its own row
+   * shows; for a transfer that is the amount moved, not new spending.
+   */
+  const filterTotal = tag
+    ? (
+        await db
+          .select({
+            total: sql<number>`coalesce(sum(case when ${transactionLines.side} = 'left' then ${transactionLines.baseAmount} else 0 end), 0)`,
+            count: sql<number>`count(distinct ${transactions.id})`,
+          })
+          .from(transactions)
+          .innerJoin(transactionLines, eq(transactionLines.transactionId, transactions.id))
+          .where(and(...conditions))
+      )[0]
+    : null;
+
+  /** The same filter with one parameter changed — used by the tag chips. */
+  const withParam = (key: string, value: string | null) => {
+    const next = new URLSearchParams(listParams);
+    if (value) next.set(key, value);
+    else next.delete(key);
+    const query = next.toString();
+    return query ? `/?${query}` : "/";
+  };
 
   const andMore = (n: number) => t("entry.andMore").replace("{n}", String(n));
   /** "식비 외 1" — the first account plus a count, so a split still reads
@@ -222,7 +344,7 @@ export default async function Home({
 
   return (
     <div className="space-y-4">
-      <PageHeader title={t("nav.entry")} />
+      <PageHeader title={isLedger ? filtered!.name : t("nav.entry")} />
 
       {error === "unbalanced" && (
         <p className="bg-negative-soft text-negative rounded-control px-3 py-2 text-sm">
@@ -236,37 +358,41 @@ export default async function Home({
       )}
 
       {/* The 복제 links jump here; scroll-mt clears the sticky bar. */}
-      <div id="entry" className="scroll-mt-20 space-y-4">
-        {copy && (
-          // The form below is prefilled and about to create a *second*
-          // record, which is indistinguishable from an edit form unless
-          // something says so.
-          <div className="bg-sunken rounded-control flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 text-sm">
-            <span>{t("entry.duplicateNotice")}</span>
-            <Link
-              href={withoutDuplicate ? `/?${withoutDuplicate}` : "/"}
-              className={`${buttonClass("ghost")} ml-auto`}
-            >
-              {t("common.cancel")}
-            </Link>
-          </div>
-        )}
+      {!isLedger && (
+        <div id="entry" className="scroll-mt-20 space-y-4">
+          {copy && (
+            // The form below is prefilled and about to create a *second*
+            // record, which is indistinguishable from an edit form unless
+            // something says so.
+            <div className="bg-sunken rounded-control flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 text-sm">
+              <span>{t("entry.duplicateNotice")}</span>
+              <Link
+                href={withoutDuplicate ? `/?${withoutDuplicate}` : "/"}
+                className={`${buttonClass("ghost")} ml-auto`}
+              >
+                {t("common.cancel")}
+              </Link>
+            </div>
+          )}
 
-        <EntryForm
-          // Remounts when the copied transaction changes, so pressing 복제
-          // on a second row replaces the prefill instead of leaving the
-          // first one's state in place — the form holds its values in
-          // useState, which a prop change alone does not reset.
-          key={duplicate ?? "new"}
-          action={createTransactionAction}
-          accounts={copy ? pickerFor(copy.lines) : allAccounts}
-          baseCurrency={section.baseCurrency}
-          defaultDate={today(section.timezone)}
-          locale={locale}
-          labels={labels}
-          initial={copy}
-        />
-      </div>
+          <EntryForm
+            // Remounts when the copied transaction changes, so pressing 복제
+            // on a second row replaces the prefill instead of leaving the
+            // first one's state in place — the form holds its values in
+            // useState, which a prop change alone does not reset.
+            key={duplicate ?? "new"}
+            action={createTransactionAction}
+            accounts={copy ? pickerFor(copy.lines) : allAccounts}
+            baseCurrency={section.baseCurrency}
+            defaultDate={today(section.timezone)}
+            locale={locale}
+            labels={labels}
+            initial={copy}
+            suggestions={suggestions}
+            afterSaveHref={copy ? (withoutDuplicate ? `/?${withoutDuplicate}` : "/") : undefined}
+          />
+        </div>
+      )}
 
       {filtered?.tracksCounterparties && (
         <section>
@@ -315,7 +441,10 @@ export default async function Home({
         </div>
 
         <Card className="mb-3">
-          <details>
+          {/* Open on an account's ledger: the filter *is* the controls of
+              that screen, and a disclosure hiding them makes the period
+              on show look like a fixed fact. */}
+          <details open={isLedger}>
             <summary className="text-ink-muted flex min-h-11 cursor-pointer items-center px-4 text-sm">
               {t("entry.filters")}
             </summary>
@@ -351,6 +480,36 @@ export default async function Home({
                 <Label>{t("entry.filterSearch")}</Label>
                 <input type="text" name="q" defaultValue={q} className={controlClass} />
               </div>
+              <div className="min-w-0">
+                <Label>{t("entry.filterTag")}</Label>
+                <input
+                  type="text"
+                  name="tag"
+                  defaultValue={tag ?? ""}
+                  placeholder={t("entry.tagPlaceholder")}
+                  className={controlClass}
+                />
+              </div>
+              {knownTags.length > 0 && (
+                <div className="col-span-2 flex flex-wrap gap-1.5 md:col-span-4">
+                  {/* The tags on what is currently listed, as one tap each.
+                      Written into memos as free text, so this is the only
+                      place that can say which ones exist. */}
+                  {knownTags.map((known) => (
+                    <Link
+                      key={known}
+                      href={withParam("tag", known === tag ? null : known)}
+                      className={`rounded-full border px-2.5 py-1 text-xs ${
+                        known === tag
+                          ? "border-accent bg-accent text-accent-ink"
+                          : "bg-sunken text-ink-muted hover:bg-rule border-transparent"
+                      }`}
+                    >
+                      #{known}
+                    </Link>
+                  ))}
+                </div>
+              )}
               <div className="col-span-2 grid grid-cols-[1fr_auto] gap-2 md:col-span-4 md:justify-end">
                 <button type="submit" className={buttonClass("secondary", true)}>
                   {t("common.apply")}
@@ -362,6 +521,36 @@ export default async function Home({
             </form>
           </details>
         </Card>
+
+        {filterTotal && (
+          <Card className="mb-3">
+            <KeyValueRow
+              label={
+                <span className="flex items-baseline gap-2">
+                  <span className="font-semibold">#{tag}</span>
+                  <span className="text-ink-faint text-xs">
+                    {interpolate(t("entry.tagCount"), { n: String(filterTotal.count) })}
+                  </span>
+                </span>
+              }
+              value={
+                <Money amount={filterTotal.total} currency={section.baseCurrency} locale={locale} />
+              }
+            />
+          </Card>
+        )}
+
+        {isLedger && ledgerUnit !== "custom" && (
+          <div className="mb-3">
+            <PeriodNav
+              prevHref={ledgerStep(-1)}
+              nextHref={ledgerStep(1)}
+              label={ledgerUnit === "year" ? yearOf(from!) : yearMonthOf(from!)}
+              prevLabel={ledgerUnit === "year" ? t("common.prevYear") : t("common.prevMonth")}
+              nextLabel={ledgerUnit === "year" ? t("common.nextYear") : t("common.nextMonth")}
+            />
+          </div>
+        )}
 
         <Card>
           {list.length === 0 ? (
@@ -379,33 +568,49 @@ export default async function Home({
 
                 return (
                   <li key={tx.id} className="not-first:border-rule-soft not-first:border-t">
-                    <details className="group">
-                      {/* list-none: the summary holds two block lines, so
-                          the default disclosure triangle would sit on a
-                          line of its own above them. */}
-                      <summary className="cursor-pointer list-none px-4 py-3 [&::-webkit-details-marker]:hidden">
-                        <span className="flex items-baseline gap-2.5">
-                          <span className="text-ink-faint tnum shrink-0 font-mono text-xs">
-                            {tx.date.slice(5)}
+                    <RowDialog
+                      title={tx.title || tx.date}
+                      closeLabel={t("common.close")}
+                      trigger={
+                        <>
+                          <span className="flex items-baseline gap-2.5">
+                            <span className="text-ink-faint tnum shrink-0 font-mono text-xs">
+                              {tx.date.slice(5)}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate font-semibold">
+                              {tx.title}
+                            </span>
+                            <span className="flex shrink-0 flex-col items-end">
+                              <Money
+                                amount={total}
+                                currency={section.baseCurrency}
+                                locale={locale}
+                              />
+                              {balance && (
+                                <span className="tnum text-ink-faint text-xs">
+                                  {formatMoney(balance.amount, balance.currency, locale)}
+                                </span>
+                              )}
+                            </span>
                           </span>
-                          <span className="min-w-0 flex-1 truncate font-semibold">{tx.title}</span>
-                          <span className="flex shrink-0 flex-col items-end">
-                            <Money amount={total} currency={section.baseCurrency} locale={locale} />
-                            {balance && (
-                              <span className="tnum text-ink-faint text-xs">
-                                {formatMoney(balance.amount, balance.currency, locale)}
-                              </span>
-                            )}
+                          <span className="text-ink-muted mt-0.5 flex items-center gap-1.5 text-sm">
+                            <span className="min-w-0 truncate">{namesOf(leftLines)}</span>
+                            <span className="text-ink-faint shrink-0">←</span>
+                            <span className="min-w-0 truncate">{namesOf(rightLines)}</span>
                           </span>
-                        </span>
-                        <span className="text-ink-muted mt-0.5 flex items-center gap-1.5 text-sm">
-                          <span className="min-w-0 truncate">{namesOf(leftLines)}</span>
-                          <span className="text-ink-faint shrink-0">←</span>
-                          <span className="min-w-0 truncate">{namesOf(rightLines)}</span>
-                        </span>
-                      </summary>
-
-                      <div className="border-rule-soft space-y-3 border-t px-4 py-3">
+                          {/* The memo was written on this transaction and
+                              then only ever visible by opening it. A row
+                              that hides what you typed is a row you have
+                              to open to trust. */}
+                          {memoOf(tx) && (
+                            <span className="text-ink-faint mt-0.5 block truncate text-xs">
+                              {memoOf(tx)}
+                            </span>
+                          )}
+                        </>
+                      }
+                    >
+                      <div className="space-y-3">
                         <EntryForm
                           action={updateTransactionAction}
                           accounts={pickerFor(tx.lines)}
@@ -414,6 +619,7 @@ export default async function Home({
                           locale={locale}
                           labels={labels}
                           initial={{ transactionId: tx.id, ...prefillFrom(tx) }}
+                          suggestions={suggestions}
                         />
                         <div className="flex flex-wrap gap-2">
                           {/* 복제 is navigation, not a mutation: it opens the
@@ -428,15 +634,15 @@ export default async function Home({
                           >
                             {t("entry.duplicate")}
                           </Link>
-                          <form action={deleteTransactionAction} className="ml-auto">
+                          <DialogActionForm action={deleteTransactionAction} className="ml-auto">
                             <input type="hidden" name="transactionId" value={tx.id} />
                             <SubmitButton variant="danger" pendingLabel={t("common.working")}>
                               {t("common.delete")}
                             </SubmitButton>
-                          </form>
+                          </DialogActionForm>
                         </div>
                       </div>
-                    </details>
+                    </RowDialog>
                   </li>
                 );
               })}

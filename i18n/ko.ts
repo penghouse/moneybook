@@ -26,6 +26,7 @@ const ko = {
 
   "common.save": "저장",
   "common.cancel": "취소",
+  "common.close": "닫기",
   "common.delete": "삭제",
   "common.edit": "수정",
   "common.add": "추가",
@@ -82,10 +83,9 @@ const ko = {
   "accounts.category": "상위 그룹",
   "accounts.categoryPlaceholder": "예: 먹는 것",
   "accounts.uncategorized": "미분류",
-  "accounts.activeFrom": "사용 시작",
   "accounts.activeTo": "사용 끝",
   "accounts.activeHint":
-    "비워 두면 제한 없음. 사용 끝을 넣으면 입력 폼과 예산에서 빠지고, 잔액이 0이면 자산현황에서도 접힙니다. 지난 거래와 잔액은 그대로 남습니다.",
+    "비워 두면 계속 쓰는 계정입니다. 사용 끝을 넣으면 입력 폼과 예산에서 빠지고, 잔액이 0이면 자산현황에서도 접힙니다. 지난 거래와 잔액은 그대로 남습니다.",
   "accounts.activeRangeError": "사용 끝이 사용 시작보다 빠릅니다.",
   "accounts.tracksCounterparties": "거래처 관리",
   "accounts.tracksCounterpartiesHint":
@@ -181,6 +181,9 @@ const ko = {
   "entry.filterTo": "종료일",
   "entry.filterAccount": "계정",
   "entry.filterSearch": "검색",
+  "entry.filterTag": "태그",
+  "entry.tagPlaceholder": "예: 낭비",
+  "entry.tagCount": "{n}건",
   "entry.filterClear": "초기화",
   "entry.allAccounts": "전체",
   "entry.noTransactions": "거래가 없습니다.",

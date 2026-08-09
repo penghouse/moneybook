@@ -1,4 +1,16 @@
-import { and, asc, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  like as like_,
+  lte,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import {
   accounts,
   transactionLines,
@@ -11,6 +23,7 @@ import type { Db } from "@/db/types";
 import { monthRange, yearRange } from "./date";
 import { getOrFetchRate, RateUnavailableError } from "./exchange-rates";
 import { convertMinorUnits } from "./money";
+import { hasTag, normalizeTag } from "./tags";
 
 const CREDIT_NORMAL_GROUPS: ReadonlySet<AccountGroup> = new Set(["liability", "equity", "income"]);
 
@@ -574,4 +587,105 @@ export async function getRunningBalances(
     amount: account ? normalBalance(account.group, Number(r.running)) : Number(r.running),
     currency: account ? account.currency : params.baseCurrency,
   }));
+}
+
+/**
+ * The ids of every transaction carrying `#tag` in its memo or in any of
+ * its lines' memos.
+ *
+ * Two steps on purpose. SQL narrows with `LIKE '%#낭비%'`, which is cheap
+ * but would also match 「#낭비벽」; the exact token test then happens in
+ * JS, where the boundary is knowable. See lib/tags.
+ *
+ * Ids rather than rows, so the caller can fold them in with whatever
+ * else it is filtering by — a tag inside one account's ledger, or inside
+ * a month — instead of this function having to know about all of it.
+ */
+export async function findTaggedTransactionIds(
+  db: Db,
+  params: { sectionId: string; tag: string; from?: string; to?: string },
+): Promise<string[]> {
+  const tag = normalizeTag(params.tag);
+  if (tag === null) return [];
+
+  const like = `%#${tag}%`;
+  const rows = await db
+    .select({
+      id: transactions.id,
+      memo: transactions.memo,
+      lineMemo: transactionLines.memo,
+    })
+    .from(transactions)
+    .innerJoin(transactionLines, eq(transactionLines.transactionId, transactions.id))
+    .where(
+      and(
+        eq(transactions.sectionId, params.sectionId),
+        params.from ? gte(transactions.date, params.from) : undefined,
+        params.to ? lte(transactions.date, params.to) : undefined,
+        or(like_(transactions.memo, like), like_(transactionLines.memo, like)),
+      ),
+    );
+
+  const memosById = new Map<string, (string | null)[]>();
+  for (const row of rows) {
+    const memos = memosById.get(row.id) ?? [];
+    memos.push(row.memo, row.lineMemo);
+    memosById.set(row.id, memos);
+  }
+  return [...memosById.entries()].filter(([, memos]) => hasTag(memos, tag)).map(([id]) => id);
+}
+
+export interface TitleSuggestion {
+  title: string;
+  /** The accounts that 적요 was last posted between, when it was a plain two-sided entry. */
+  leftAccountId: string | null;
+  rightAccountId: string | null;
+}
+
+/**
+ * Distinct 적요 from recent transactions, most recent first, each
+ * carrying the pair of accounts it was last posted between.
+ *
+ * Most entries are repeats — 「점심」 out of 식비 and onto 신용카드 for
+ * the hundredth time — so the 적요 is enough to know the rest. Picking
+ * one fills the two sides and leaves the amount alone, which is the only
+ * part that actually differs.
+ *
+ * Reduced in JS over a window of recent transactions rather than by a
+ * GROUP BY: "the accounts of the *latest* transaction with this title"
+ * is a per-group argmax, which SQLite can only express with a
+ * correlated subquery or a window function, and the window here is small
+ * enough that reading it is cheaper than either.
+ *
+ * Splits contribute their 적요 but no accounts — a suggestion cannot say
+ * which of four legs to fill, and half-filling a form is worse than
+ * filling none of it.
+ */
+export async function getTitleSuggestions(
+  db: Db,
+  params: { sectionId: string; scan?: number; limit?: number },
+): Promise<TitleSuggestion[]> {
+  const rows = await db.query.transactions.findMany({
+    where: eq(transactions.sectionId, params.sectionId),
+    orderBy: [desc(transactions.date), desc(transactions.createdAt), desc(transactions.id)],
+    limit: params.scan ?? 300,
+    columns: { title: true },
+    with: { lines: { columns: { side: true, accountId: true } } },
+  });
+
+  const byTitle = new Map<string, TitleSuggestion>();
+  for (const row of rows) {
+    const title = row.title.trim();
+    if (!title || byTitle.has(title)) continue;
+    const left = row.lines.filter((l) => l.side === "left");
+    const right = row.lines.filter((l) => l.side === "right");
+    const simple = left.length === 1 && right.length === 1;
+    byTitle.set(title, {
+      title,
+      leftAccountId: simple ? left[0].accountId : null,
+      rightAccountId: simple ? right[0].accountId : null,
+    });
+    if (byTitle.size >= (params.limit ?? 50)) break;
+  }
+  return [...byTitle.values()];
 }
