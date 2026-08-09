@@ -178,16 +178,55 @@ export default async function BudgetPage({
               (sum, a) => sum + (spentByAccountId.get(a.id) ?? 0),
               0,
             );
+            // A category with no budget anywhere under it has no share to
+            // report — the same distinction an account row draws between
+            // "no budget" and "a budget of zero", applied to a sum.
+            const anyBudgetHere = inCategory.some((a) => budgetByAccountId.has(a.id));
+            const percentHere = budgeted > 0 ? Math.round((spentHere / budgeted) * 100) : null;
+            const overHere = anyBudgetHere && spentHere > budgeted;
+
             return (
               <div key={category ?? " uncategorized"}>
                 {hasCategories && (
-                  <div className="bg-sunken border-rule-soft flex items-baseline gap-3 border-t px-4 py-1.5 first:border-t-0">
-                    <span className="text-ink-muted min-w-0 truncate text-xs font-semibold">
-                      {category ?? t("accounts.uncategorized")}
-                    </span>
-                    <span className="tnum text-ink-muted ml-auto text-xs font-semibold">
-                      {base(spentHere)} / {base(budgeted)}
-                    </span>
+                  // The 상위 항목 band: the same figures its accounts show,
+                  // one level up. Told apart from the rows it covers by the
+                  // filled background, the heavier name, and those rows
+                  // being indented under it — one signal could be read as
+                  // decoration, three cannot.
+                  <div
+                    data-testid="budget-category"
+                    className="bg-sunken border-rule-soft border-t px-4 py-2 first:border-t-0"
+                  >
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                      <span className="min-w-0 truncate text-sm font-bold">
+                        {category ?? t("accounts.uncategorized")}
+                      </span>
+                      {anyBudgetHere &&
+                        (overHere ? (
+                          <Chip tone="negative">
+                            {t("budget.over")} {base(spentHere - budgeted)}
+                          </Chip>
+                        ) : (
+                          percentHere !== null && <Chip>{percentHere}%</Chip>
+                        ))}
+                      <span className="tnum text-ink-muted ml-auto text-xs font-semibold">
+                        {base(spentHere)}
+                        {anyBudgetHere && ` / ${base(budgeted)}`}
+                      </span>
+                    </div>
+                    {anyBudgetHere && (
+                      // Thinner than an account's bar: this one summarises
+                      // those, and a heavier bar would read as the more
+                      // important number.
+                      <div className="bg-rule-soft mt-1.5 h-1 overflow-hidden rounded-full">
+                        <div
+                          className={`h-full rounded-full ${overHere ? "bg-negative" : "bg-accent"}`}
+                          style={{
+                            width: `${overHere ? 100 : Math.max(0, Math.min(100, percentHere ?? 0))}%`,
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
                 {inCategory.map((account) => {
@@ -207,7 +246,12 @@ export default async function BudgetPage({
                     <div
                       key={account.id}
                       data-testid="budget-row"
-                      className="not-first:border-rule-soft px-4 py-3 not-first:border-t"
+                      className={`not-first:border-rule-soft py-3 not-first:border-t ${
+                        // Indented under its 상위 항목, with a rule down the
+                        // margin: the band above is a heading, not another
+                        // row of the same list.
+                        hasCategories ? "border-rule-soft mx-4 border-l pl-3" : "px-4"
+                      }`}
                     >
                       <div className="flex items-baseline gap-2">
                         <span className="min-w-0 truncate font-semibold">{account.name}</span>

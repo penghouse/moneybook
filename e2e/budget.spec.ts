@@ -82,6 +82,97 @@ test.describe("budget", () => {
     await expect(page.getByText(/초과.*₩50,000/)).toBeVisible();
   });
 
+  test("a 상위 항목 shows its own usage, and reads as a heading over its accounts", async ({
+    page,
+  }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = (name: string) =>
+      db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      });
+    const food = await byName("식비");
+    const supplies = await byName("생활용품");
+    const card = await byName("신용카드");
+    const asOf = today(section.timezone);
+
+    // Both under one 상위 항목, so the band above them has something to sum.
+    for (const account of [food!, supplies!]) {
+      await db.update(accounts).set({ category: "먹고사는 것" }).where(eq(accounts.id, account.id));
+    }
+    for (const [account, amount] of [
+      [food!, 120_000],
+      [supplies!, 60_000],
+    ] as const) {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date: asOf, title: account.name })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: account.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: card!.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+      ]);
+    }
+
+    await page.goto("/budget");
+    const band = page.getByTestId("budget-category").filter({ hasText: "먹고사는 것" });
+
+    // No budget under it yet, so there is no share to report.
+    await expect(band).toContainText("₩180,000");
+    await expect(band).not.toContainText("%");
+
+    const setBudget = async (name: string, amount: string) => {
+      const row = page.getByTestId("budget-row").filter({ hasText: name });
+      await row.locator('input[name="amount"]').fill(amount);
+      await row.getByRole("button", { name: "저장" }).click();
+    };
+    await setBudget("식비", "200000");
+    await setBudget("생활용품", "100000");
+
+    // 180,000 of 300,000 — read off the band, not off any one account.
+    await expect.poll(() => band.innerText()).toContain("60%");
+    await expect(band).toContainText("₩180,000 / ₩300,000");
+
+    // 식비 alone goes over. The band is the level that says the group as
+    // a whole is still within its budget, which is the thing an account
+    // row cannot tell you.
+    await setBudget("식비", "100000");
+    await expect
+      .poll(() => page.getByTestId("budget-row").filter({ hasText: "식비" }).innerText())
+      .toContain("초과");
+    await expect.poll(() => band.innerText()).toContain("90%");
+    await expect(band).not.toContainText("초과");
+
+    // Both over, so the sum is too: 180,000 spent against 150,000.
+    await setBudget("생활용품", "50000");
+    await expect.poll(() => band.innerText()).toContain("초과");
+    await expect(band).toContainText("₩30,000");
+
+    // And the band is a heading, not another row: its accounts sit inset
+    // from it, which is what says one covers the other.
+    const bandBox = (await band.boundingBox())!;
+    const rowBox = (await page
+      .getByTestId("budget-row")
+      .filter({ hasText: "식비" })
+      .boundingBox())!;
+    expect(rowBox.x).toBeGreaterThan(bandBox.x);
+  });
+
   test("month navigation keeps the selected month in the URL", async ({ page }) => {
     await page.goto("/budget");
     await page.getByRole("link", { name: /다음 달/ }).click();
