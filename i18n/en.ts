@@ -136,7 +136,7 @@ const en: Record<keyof typeof ko, string> = {
   "csvError.invalidCurrency": "Unknown currency: {value}",
   "csvError.duplicateInFile": "Name is duplicated within the file",
   "csvError.invalidDate": "Malformed date: {value}",
-  "csvError.invalidYearMonth": "Malformed year-month: {value}",
+  "csvError.invalidPeriod": "Malformed period (2026-08 or 2026): {value}",
   "csvError.invalidKind": "Unknown transaction kind: {value}",
   "csvError.invalidSource": "Unknown rate source: {value}",
   "csvError.tooFewLines": "A transaction needs at least two lines",
@@ -214,7 +214,6 @@ const en: Record<keyof typeof ko, string> = {
   "income.trend": "Last 12 months",
   "income.thisMonth": "This month",
 
-  "budget.month": "Month",
   "budget.setBudget": "Set budget",
   "budget.spent": "Spent",
   "budget.remaining": "Remaining",
@@ -222,6 +221,14 @@ const en: Record<keyof typeof ko, string> = {
   "budget.noBudget": "No budget set",
   "budget.prevMonth": "Previous month",
   "budget.nextMonth": "Next month",
+  "budget.prevYear": "Previous year",
+  "budget.nextYear": "Next year",
+  "budget.unitMonth": "Monthly",
+  "budget.unitYear": "Yearly",
+  "budget.setYearBudget": "Set yearly budget",
+  "budget.yearTotal": "Yearly budget",
+  "budget.monthlySum": "Monthly budgets",
+  "budget.monthlySumOver": "Over yearly budget by",
   "budget.empty": "No expense accounts.",
 };
 

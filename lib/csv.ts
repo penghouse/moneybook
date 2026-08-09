@@ -194,7 +194,12 @@ export function parseAccountsCsv(text: string): AccountCsvRow[] {
 
 // ---- Budgets CSV ----
 
-export const BUDGET_CSV_COLUMNS = ["account", "yearMonth", "amount"] as const;
+// One `period` column holding either '2026-08' (a month budget) or
+// '2026' (a year one), rather than a `period,periodKey` pair mirroring
+// the two DB columns. The key's shape already says which it is, so a
+// hand-edited file cannot claim `year` next to `2026-08` — the pair
+// would be a contradiction the DB's CHECK rejects after the fact.
+export const BUDGET_CSV_COLUMNS = ["account", "period", "amount"] as const;
 
 export type BudgetCsvRow = Record<(typeof BUDGET_CSV_COLUMNS)[number], string>;
 

@@ -32,6 +32,7 @@ export type RateSource = (typeof RATE_SOURCES)[number];
 // sql`` binds it as a `?` parameter, which SQLite rejects inside DDL.
 const DATE_GLOB = sql.raw("'[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'");
 const YEAR_MONTH_GLOB = sql.raw("'[0-9][0-9][0-9][0-9]-[0-9][0-9]'");
+const YEAR_GLOB = sql.raw("'[0-9][0-9][0-9][0-9]'");
 
 // ---- Domain: sections ----
 
@@ -207,6 +208,9 @@ export const exchangeRates = sqliteTable(
 
 // ---- Domain: budgets ----
 
+export const BUDGET_PERIODS = ["month", "year"] as const;
+export type BudgetPeriod = (typeof BUDGET_PERIODS)[number];
+
 export const budgets = sqliteTable(
   "budgets",
   {
@@ -217,13 +221,35 @@ export const budgets = sqliteTable(
     accountId: text("account_id")
       .notNull()
       .references(() => accounts.id, { onDelete: "cascade" }),
-    yearMonth: text("year_month").notNull(),
+    // A budget is set either for a month or for a whole year, and the
+    // two answer different questions: the month is what you steer by,
+    // the year is the cap you are checking the twelve months against.
+    //
+    // One table with a `period` discriminator rather than a second
+    // `annual_budgets` table — that table would repeat section, account
+    // and amount verbatim, and every query, CSV column and backup step
+    // would then exist in two versions.
+    //
+    // Deliberately *not* an overall (account-less) yearly budget: the
+    // total is the sum of the per-account yearly ones, so a nullable
+    // account_id would buy nothing and cost the NOT NULL and the unique
+    // index.
+    period: text("period", { enum: BUDGET_PERIODS }).notNull().default("month"),
+    // '2026-08' when period is 'month', '2026' when it is 'year'.
+    periodKey: text("period_key").notNull(),
     // Minor-unit amount in the section's base currency.
     amount: integer("amount").notNull(),
   },
   (t) => [
-    unique("budgets_account_year_month_unique").on(t.accountId, t.yearMonth),
-    check("budgets_year_month_format_check", sql`${t.yearMonth} GLOB ${YEAR_MONTH_GLOB}`),
+    unique("budgets_account_period_unique").on(t.accountId, t.period, t.periodKey),
+    check("budgets_period_check", sql`${t.period} IN ('month','year')`),
+    // The key's shape is checked against the period it belongs to, so a
+    // year budget cannot be filed under a month key or the reverse.
+    check(
+      "budgets_period_key_format_check",
+      sql`(${t.period} = 'month' AND ${t.periodKey} GLOB ${YEAR_MONTH_GLOB})
+       OR (${t.period} = 'year' AND ${t.periodKey} GLOB ${YEAR_GLOB})`,
+    ),
   ],
 );
 

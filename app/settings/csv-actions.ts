@@ -450,11 +450,12 @@ export async function importBudgetsAction(
       .values({
         sectionId: section.id,
         accountId: row.accountId,
-        yearMonth: row.yearMonth,
+        period: row.period,
+        periodKey: row.periodKey,
         amount: toMinorUnits(row.amountMajor, section.baseCurrency),
       })
       .onConflictDoUpdate({
-        target: [budgets.accountId, budgets.yearMonth],
+        target: [budgets.accountId, budgets.period, budgets.periodKey],
         set: { amount: toMinorUnits(row.amountMajor, section.baseCurrency) },
       });
   }

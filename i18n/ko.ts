@@ -132,7 +132,7 @@ const ko = {
   "csvError.invalidCurrency": "알 수 없는 통화: {value}",
   "csvError.duplicateInFile": "파일 안에서 이름이 중복됩니다",
   "csvError.invalidDate": "날짜 형식이 잘못되었습니다: {value}",
-  "csvError.invalidYearMonth": "연월 형식이 잘못되었습니다: {value}",
+  "csvError.invalidPeriod": "기간 형식이 잘못되었습니다 (2026-08 또는 2026): {value}",
   "csvError.invalidKind": "알 수 없는 거래 구분: {value}",
   "csvError.invalidSource": "알 수 없는 환율 출처: {value}",
   "csvError.tooFewLines": "거래에는 분개선이 최소 두 줄 필요합니다",
@@ -210,7 +210,6 @@ const ko = {
   "income.trend": "최근 12개월 추이",
   "income.thisMonth": "이번 달",
 
-  "budget.month": "월",
   "budget.setBudget": "예산 설정",
   "budget.spent": "지출",
   "budget.remaining": "잔여",
@@ -218,6 +217,14 @@ const ko = {
   "budget.noBudget": "예산 미설정",
   "budget.prevMonth": "이전 달",
   "budget.nextMonth": "다음 달",
+  "budget.prevYear": "이전 해",
+  "budget.nextYear": "다음 해",
+  "budget.unitMonth": "월간",
+  "budget.unitYear": "연간",
+  "budget.setYearBudget": "연 예산 설정",
+  "budget.yearTotal": "연 예산 합계",
+  "budget.monthlySum": "월 예산 합계",
+  "budget.monthlySumOver": "연 예산 초과",
   "budget.empty": "비용 계정이 없습니다.",
 } as const;
 

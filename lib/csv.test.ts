@@ -178,8 +178,10 @@ describe("accounts csv round trip", () => {
 
 describe("budgets csv round trip", () => {
   const rows: BudgetCsvRow[] = [
-    { account: "식비", yearMonth: "2026-07", amount: "300000" },
-    { account: "교통비", yearMonth: "2026-08", amount: "50000" },
+    { account: "식비", period: "2026-07", amount: "300000" },
+    { account: "교통비", period: "2026-08", amount: "50000" },
+    // A year budget travels in the same column — its shape is what says so.
+    { account: "식비", period: "2026", amount: "3600000" },
   ];
 
   it("round-trips through build/parse", () => {

@@ -6,6 +6,7 @@ import {
   type RateSource,
   type TransactionKind,
 } from "@/db/schema";
+import { parseBudgetPeriod, type BudgetPeriodRef } from "./budgets";
 import { assertBalanced, type BalanceLineInput } from "./ledger";
 import { minorUnitDigits, toMinorUnits } from "./money";
 import type { AccountCsvRow, BudgetCsvRow, RateCsvRow, TransactionCsvRow } from "./csv";
@@ -26,7 +27,7 @@ export type ImportIssue =
   | { code: "invalidCurrency"; value: string }
   | { code: "duplicateInFile" }
   | { code: "invalidDate"; value: string }
-  | { code: "invalidYearMonth"; value: string }
+  | { code: "invalidPeriod"; value: string }
   | { code: "invalidKind"; value: string }
   | { code: "invalidSource"; value: string }
   | { code: "tooFewLines" }
@@ -255,26 +256,27 @@ export function checkTransactionGroup(
 // ---- Budgets ----
 
 export type BudgetRowCheck =
-  | { ok: true; accountId: string; yearMonth: string; amountMajor: number }
+  | ({ ok: true; accountId: string; amountMajor: number } & BudgetPeriodRef)
   | { ok: false; label: string; issue: ImportIssue };
 
 export function checkBudgetRow(
   row: BudgetCsvRow,
   accountsByName: ReadonlyMap<string, { id: string; currency: string }>,
 ): BudgetRowCheck {
-  const label = `${row.account} ${row.yearMonth}`.trim();
+  const label = `${row.account} ${row.period}`.trim();
   const account = accountsByName.get(row.account.trim());
   if (!account) {
     return { ok: false, label, issue: { code: "unknownAccount", value: row.account } };
   }
-  if (!/^\d{4}-\d{2}$/.test(row.yearMonth.trim())) {
-    return { ok: false, label, issue: { code: "invalidYearMonth", value: row.yearMonth } };
+  const ref = parseBudgetPeriod(row.period);
+  if (!ref) {
+    return { ok: false, label, issue: { code: "invalidPeriod", value: row.period } };
   }
   const amountMajor = Number(row.amount);
   if (!Number.isFinite(amountMajor) || amountMajor < 0) {
     return { ok: false, label, issue: { code: "invalidAmount", value: row.amount } };
   }
-  return { ok: true, accountId: account.id, yearMonth: row.yearMonth.trim(), amountMajor };
+  return { ok: true, accountId: account.id, ...ref, amountMajor };
 }
 
 // ---- Exchange rates ----

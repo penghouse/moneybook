@@ -14,12 +14,20 @@ import { buttonClass, Card } from "./ui";
  * Plain links, not a form: this is navigation, so it should be
  * middle-clickable, bookmarkable, and back-button-able like any other.
  */
+export interface PeriodUnitOption {
+  /** "월" / "년". */
+  label: string;
+  href: string;
+  active: boolean;
+}
+
 export function PeriodNav({
   prevHref,
   nextHref,
   label,
   prevLabel,
   nextLabel,
+  units,
 }: {
   prevHref: string;
   nextHref: string;
@@ -27,6 +35,8 @@ export function PeriodNav({
   label: string;
   prevLabel: string;
   nextLabel: string;
+  /** 월/년 switch, omitted on screens that only step one unit. */
+  units?: readonly PeriodUnitOption[];
 }) {
   return (
     <Card>
@@ -39,6 +49,28 @@ export function PeriodNav({
           {nextLabel} →
         </Link>
       </div>
+      {units && (
+        // A second row rather than squeezed alongside the arrows: at
+        // 360px the arrows already fill the width, and a control that
+        // changes what the numbers *mean* should not be the one that
+        // gets truncated.
+        <div
+          role="group"
+          className="border-rule-soft flex gap-1 border-t px-1 py-1"
+          data-testid="period-units"
+        >
+          {units.map((unit) => (
+            <Link
+              key={unit.label}
+              href={unit.href}
+              aria-current={unit.active ? "page" : undefined}
+              className={`${buttonClass(unit.active ? "primary" : "ghost")} flex-1 justify-center`}
+            >
+              {unit.label}
+            </Link>
+          ))}
+        </div>
+      )}
     </Card>
   );
 }

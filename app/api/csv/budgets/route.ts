@@ -23,7 +23,7 @@ export async function GET() {
   // restored into a rebuilt book, the same way transactions are.
   const rows = await db.query.budgets.findMany({
     where: eq(budgets.sectionId, section.id),
-    orderBy: [asc(budgets.yearMonth)],
+    orderBy: [asc(budgets.periodKey), asc(budgets.period)],
     with: { account: true },
   });
 
@@ -33,7 +33,9 @@ export async function GET() {
     rows,
     toCells: (b) => [
       b.account.name,
-      b.yearMonth,
+      // Just the key: '2026' is a year budget and '2026-08' a month one,
+      // so the discriminator column would only repeat what this says.
+      b.periodKey,
       String(toMajorUnits(b.amount, section.baseCurrency)),
     ],
   });

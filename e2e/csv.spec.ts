@@ -187,31 +187,47 @@ test.describe("csv", () => {
     await db.insert(budgets).values({
       sectionId: section.id,
       accountId: food!.id,
-      yearMonth: "2026-07",
+      period: "month",
+      periodKey: "2026-07",
       amount: 300_000,
     });
 
     await page.goto("/settings");
     const response = await page.request.get("/api/csv/budgets");
     const text = (await response.text()).replace(/^﻿/, "");
-    expect(text.split("\r\n")[0]).toBe("account,yearMonth,amount");
+    expect(text.split("\r\n")[0]).toBe("account,period,amount");
     expect(text).toContain("식비,2026-07,300000");
 
-    // Re-import the same file with a changed amount; it should upsert.
+    // Re-import the same file with a changed amount, plus a year budget
+    // in the same column — the shape of the key is what tells them apart,
+    // so both must land in the right row.
     const form = await upload(
       page,
       "budgets",
       "budgets.csv",
-      "account,yearMonth,amount\n식비,2026-07,450000\n",
+      "account,period,amount\n식비,2026-07,450000\n식비,2026,5400000\n",
     );
-    await expect(form.getByText(/가져올 거래 1 · 오류 0/)).toBeVisible();
+    await expect(form.getByText(/가져올 거래 2 · 오류 0/)).toBeVisible();
     await form.getByRole("button", { name: "가져오기 확정" }).click();
-    await expect(form.getByText(/갱신 1/)).toBeVisible();
+    await expect(form.getByText(/갱신 2/)).toBeVisible();
 
     const updated = await db.query.budgets.findFirst({
-      where: and(eq(budgets.sectionId, section.id), eq(budgets.yearMonth, "2026-07")),
+      where: and(
+        eq(budgets.sectionId, section.id),
+        eq(budgets.period, "month"),
+        eq(budgets.periodKey, "2026-07"),
+      ),
     });
     expect(updated?.amount).toBe(450_000);
+
+    const yearly = await db.query.budgets.findFirst({
+      where: and(
+        eq(budgets.sectionId, section.id),
+        eq(budgets.period, "year"),
+        eq(budgets.periodKey, "2026"),
+      ),
+    });
+    expect(yearly?.amount).toBe(5_400_000);
   });
 
   test("paired-row import: creates the accounts it names and flips a negative row's sides", async ({

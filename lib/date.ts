@@ -58,3 +58,33 @@ export function addMonths(yearMonth: string, delta: number): string {
   const month = (totalMonths % 12) + 1;
   return `${year}-${String(month).padStart(2, "0")}`;
 }
+
+export function yearOf(date: string): string {
+  return date.slice(0, 4);
+}
+
+/** 1 Jan to 31 Dec of `year` ('YYYY'), inclusive. */
+export function yearRange(year: string): { from: string; to: string } {
+  return { from: `${year}-01-01`, to: `${year}-12-31` };
+}
+
+export function addYears(year: string, delta: number): string {
+  return String(Number(year) + delta);
+}
+
+/**
+ * What unit a from/to range represents, worked out from the range
+ * itself rather than carried alongside it.
+ *
+ * Storing the unit in the URL next to the dates would let the two
+ * disagree — `unit=year` with an August range — and a shared link or a
+ * back-button press is exactly where that shows up. Derived, the
+ * contradiction cannot be represented.
+ */
+export function rangeUnit(from: string, to: string): "month" | "year" | "custom" {
+  const asYear = yearRange(yearOf(from));
+  if (from === asYear.from && to === asYear.to) return "year";
+  const asMonth = monthRange(yearMonthOf(from));
+  if (from === asMonth.from && to === asMonth.to) return "month";
+  return "custom";
+}
