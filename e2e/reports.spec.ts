@@ -694,6 +694,35 @@ test.describe("reports", () => {
     await legend.getByRole("button", { name: "유동성자금" }).click();
     await page.getByTestId("series-hit").nth(2).hover();
     await expect(page.getByTestId("series-tooltip")).toContainText("유동성자금");
+
+    // The choice survives a navigation. Stepping the window is the
+    // ordinary way to use this screen, and it re-renders the page from
+    // the server — a chart that came back with the default two on made
+    // comparing one item across windows impossible.
+    await legend.getByRole("button", { name: "현금성" }).click();
+    await expect(legend.getByRole("button", { name: "현금성" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    await page.getByRole("link", { name: "이전 기간" }).click();
+    await expect(page).toHaveURL(/from=2025-10-01/);
+    const afterStep = page.getByTestId("series-legend");
+    await expect(afterStep.getByRole("button", { name: "현금성" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    await expect(afterStep.getByRole("button", { name: "유동성자금" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    // And a fresh visit, not just a step — this is a preference, not
+    // something carried in the URL.
+    await page.goto("/assets/chart?from=2026-01-01&to=2026-03-31");
+    await expect(
+      page.getByTestId("series-legend").getByRole("button", { name: "현금성" }),
+    ).toHaveAttribute("aria-pressed", "false");
   });
 
   test("the chart page draws all three charts, each with its numbers in a table", async ({
