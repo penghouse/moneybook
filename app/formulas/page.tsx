@@ -2,10 +2,9 @@ import { and, asc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db/client";
 import { accounts, formulas, FORMULA_SCOPES, type FormulaScope } from "@/db/schema";
-import { getTranslations } from "@/i18n";
+import { activeOn } from "@/lib/accounts";
 import { parseGroupOrder } from "@/lib/account-groups";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
+import { currentSection } from "@/lib/current-request";
 import { monthRange, today, yearMonthOf } from "@/lib/date";
 import { buildFormulaItems, formulaValues } from "@/lib/formula-items";
 import { evaluateFormula, parseTerms, termKey } from "@/lib/formulas";
@@ -34,21 +33,13 @@ export default async function FormulasPage({
 }: {
   searchParams: Promise<{ scope?: string; id?: string; new?: string; error?: string }>;
 }) {
-  const userId = await requireUserId();
-  const { t, locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section, t, locale } = await currentSection();
   const params = await searchParams;
 
   const scope: FormulaScope = FORMULA_SCOPES.includes(params.scope as FormulaScope)
     ? (params.scope as FormulaScope)
     : "assets";
   const reportHref = scope === "assets" ? "/assets" : "/income";
-
-  const catalog = await db.query.accounts.findMany({
-    where: eq(accounts.sectionId, section.id),
-    orderBy: asc(accounts.sortOrder),
-    columns: { id: true, name: true, group: true, category: true },
-  });
 
   /**
    * The figures the menu shows next to each item.
@@ -60,30 +51,64 @@ export default async function FormulasPage({
    * March. The report itself evaluates against whatever it is showing.
    */
   const now = today(section.timezone);
-  const amountByAccountId = new Map<string, number>();
-  if (scope === "assets") {
-    for (const b of await getAccountBalances(db, { sectionId: section.id, asOf: now })) {
-      amountByAccountId.set(b.accountId, b.baseAmount);
-    }
-  } else {
-    const { from, to } = monthRange(yearMonthOf(now));
-    for (const f of await getAccountFlows(db, { sectionId: section.id, from, to })) {
-      amountByAccountId.set(f.accountId, f.baseAmount);
-    }
-  }
+  const month = monthRange(yearMonthOf(now));
+  // Four reads that need nothing from each other. The two catalogs are
+  // separate queries rather than one filtered in JS because `activeOn`
+  // is the database's own predicate — see lib/accounts — and running the
+  // active-window rule twice, once here and once there, is how the two
+  // drift apart.
+  const [figures, catalog, liveCatalog, rows] = await Promise.all([
+    scope === "assets"
+      ? getAccountBalances(db, { sectionId: section.id, asOf: now })
+      : getAccountFlows(db, { sectionId: section.id, from: month.from, to: month.to }),
+    db.query.accounts.findMany({
+      where: eq(accounts.sectionId, section.id),
+      orderBy: asc(accounts.sortOrder),
+      columns: { id: true, name: true, group: true, category: true },
+    }),
+    db.query.accounts.findMany({
+      where: and(eq(accounts.sectionId, section.id), activeOn(now)),
+      orderBy: asc(accounts.sortOrder),
+      columns: { id: true, name: true, group: true, category: true },
+    }),
+    db.query.formulas.findMany({
+      where: and(eq(formulas.sectionId, section.id), eq(formulas.scope, scope)),
+      orderBy: asc(formulas.sortOrder),
+    }),
+  ]);
+  const amountByAccountId = new Map(figures.map((f) => [f.accountId, f.baseAmount]));
 
+  const groupOrder = parseGroupOrder(section.groupOrder);
+  const totals = formulaTotalLabels(scope, t);
+
+  /**
+   * Two menus, not one.
+   *
+   * `items` is built from the whole catalog because it is what the
+   * formulas are *evaluated* against, and a formula that names an
+   * account closed last year must still add it up — dropping it from the
+   * sum would quietly change a number nobody touched.
+   *
+   * `pickable` is what the editor offers, and that is only what is in
+   * use today. Writing a new formula out of accounts that have been
+   * retired is not something anyone means to do, and the list is long
+   * enough without them.
+   */
   const items = buildFormulaItems({
     scope,
-    groupOrder: parseGroupOrder(section.groupOrder),
+    groupOrder,
     accounts: catalog,
     amountByAccountId,
-    labels: { totals: formulaTotalLabels(scope, t) },
+    labels: { totals },
   });
   const values = { byKey: formulaValues(items) };
 
-  const rows = await db.query.formulas.findMany({
-    where: and(eq(formulas.sectionId, section.id), eq(formulas.scope, scope)),
-    orderBy: asc(formulas.sortOrder),
+  const pickable = buildFormulaItems({
+    scope,
+    groupOrder,
+    accounts: liveCatalog,
+    amountByAccountId,
+    labels: { totals },
   });
 
   const editing = params.id ? rows.find((r) => r.id === params.id) : undefined;
@@ -131,7 +156,7 @@ export default async function FormulasPage({
           <section>
             <SectionLabel>{t("formula.terms")}</SectionLabel>
             <Card>
-              {items.map((item) => {
+              {pickable.map((item) => {
                 const sign = selected.get(item.key);
                 return (
                   <div
@@ -152,19 +177,33 @@ export default async function FormulasPage({
                     >
                       {item.label}
                     </span>
-                    <span className="tnum text-ink-faint text-xs">{base(item.amount)}</span>
                     {/* Three states in one control, because an item is
                         added, subtracted, or not in the formula — and the
                         two-column checkbox version of this lets you tick
                         both sides of the same row. */}
-                    <div className="border-rule flex overflow-hidden rounded-full border">
+                    <div className="border-rule flex shrink-0 overflow-hidden rounded-full border">
                       {(
                         [
-                          ["", t("formula.none"), "—"],
-                          ["+", t("formula.plus"), "+"],
-                          ["-", t("formula.minus"), "−"],
+                          [
+                            "",
+                            t("formula.none"),
+                            "—",
+                            "has-checked:bg-sunken has-checked:text-ink",
+                          ],
+                          [
+                            "+",
+                            t("formula.plus"),
+                            "+",
+                            "has-checked:bg-positive has-checked:text-accent-ink",
+                          ],
+                          [
+                            "-",
+                            t("formula.minus"),
+                            "−",
+                            "has-checked:bg-negative has-checked:text-accent-ink",
+                          ],
                         ] as const
-                      ).map(([value, label, glyph]) => {
+                      ).map(([value, label, glyph, checkedClass]) => {
                         // Which of the three is checked, worked out from
                         // the sign rather than per-cell: written the
                         // other way round, an item with no sign made
@@ -176,15 +215,13 @@ export default async function FormulasPage({
                         return (
                           <label
                             key={value || "none"}
-                            className={`tnum relative flex h-11 w-11 items-center justify-center text-sm ${
-                              active
-                                ? value === "-"
-                                  ? "bg-negative text-accent-ink font-bold"
-                                  : value === "+"
-                                    ? "bg-positive text-accent-ink font-bold"
-                                    : "bg-sunken text-ink-muted font-semibold"
-                                : "text-ink-faint"
-                            }`}
+                            // Coloured by the *live* :checked state, not by
+                            // what was saved. Rendered from the saved sign,
+                            // the cell simply never lit up when you pressed
+                            // it — the radio changed, the page did not, and
+                            // the control read as broken. No script: the
+                            // browser already knows which radio is on.
+                            className={`tnum text-ink-faint relative flex h-11 w-11 items-center justify-center text-sm has-checked:font-bold ${checkedClass}`}
                           >
                             {/* The radio *is* the cell rather than a
                                 visually-hidden dot beside it: the whole

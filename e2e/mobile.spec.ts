@@ -18,6 +18,7 @@ const PAGES = [
   "/income",
   "/income/chart",
   "/budget",
+  "/formulas",
   "/accounts",
   "/settings",
 ];

@@ -497,6 +497,132 @@ test.describe("reports", () => {
     await expect(row).toContainText("₩1,200,000");
   });
 
+  test("an income statement row opens its transactions, with its share of the period", async ({
+    page,
+  }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const food = await byName("식비");
+    const transport = await byName("교통비");
+    const card = await byName("신용카드");
+
+    const spend = async (account: string, amount: number, title: string) => {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date: "2026-08-10", title })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: account,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: card.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+      ]);
+    };
+    await spend(food.id, 300_000, "장보기");
+    await spend(food.id, 150_000, "장보기(주말)");
+    await spend(food.id, 300_000, "커피");
+    await spend(transport.id, 250_000, "교통카드");
+
+    await page.goto("/income?from=2026-08-01&to=2026-08-31");
+    await page.getByRole("link", { name: /식비/ }).click();
+    await expect(page).toHaveURL(/accountId=[^&]+&from=2026-08-01&to=2026-08-31/);
+    await expect(page.getByText("장보기").first()).toBeVisible();
+
+    // What is *inside* 식비, not how 식비 compares with 교통비 — that is
+    // the statement one screen back. Titles are grouped without their
+    // parentheses, so 장보기 and 장보기(주말) are one line.
+    const share = page.getByRole("list", { name: "적요별 비중" });
+    await expect(share.locator("li").filter({ hasText: "장보기" })).toContainText("60.0%");
+    await expect(share.locator("li").filter({ hasText: "커피" })).toContainText("40.0%");
+    await expect(share.locator("li")).toHaveCount(2);
+  });
+
+  test("a row's account names open their own month, and its tags read as filters", async ({
+    page,
+  }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const food = await byName("식비");
+    const card = await byName("신용카드");
+
+    const [tx] = await db
+      .insert(transactions)
+      .values({ sectionId: section.id, date: "2026-08-11", title: "장보기", memo: "주말 #낭비" })
+      .returning();
+    await db.insert(transactionLines).values([
+      {
+        transactionId: tx.id,
+        side: "left",
+        accountId: food.id,
+        currency: "KRW",
+        amount: 84_000,
+        rate: 1,
+        baseAmount: 84_000,
+      },
+      {
+        transactionId: tx.id,
+        side: "right",
+        accountId: card.id,
+        currency: "KRW",
+        amount: 84_000,
+        rate: 1,
+        baseAmount: 84_000,
+      },
+    ]);
+
+    await page.goto("/?from=2026-08-01&to=2026-08-31");
+    const row = page.getByRole("listitem").filter({ hasText: "장보기" });
+
+    // The strip under the title goes somewhere; the title itself still
+    // opens the editor. Both live in the same row without fighting.
+    await row.getByRole("link", { name: "신용카드" }).click();
+    await expect(page).toHaveURL(new RegExp(`accountId=${card.id}&from=2026-08-01&to=2026-08-31`));
+    await expect(page.getByRole("heading", { name: "신용카드" })).toBeVisible();
+
+    await page.goBack();
+    await page
+      .getByRole("listitem")
+      .filter({ hasText: "장보기" })
+      .getByRole("link", { name: "식비" })
+      .click();
+    await expect(page).toHaveURL(new RegExp(`accountId=${food.id}`));
+
+    await page.goBack();
+    // A tag in a memo is a filter, so it reads as one and presses as one.
+    await page
+      .getByRole("listitem")
+      .filter({ hasText: "장보기" })
+      .getByRole("link", { name: "#낭비" })
+      .click();
+    await expect(page).toHaveURL(/tag=%EB%82%AD%EB%B9%84|tag=낭비/);
+    await expect(page.getByText("장보기")).toBeVisible();
+
+    // The title still opens the editor.
+    await page.goto("/?from=2026-08-01&to=2026-08-31");
+    await page.getByRole("button", { name: /장보기/ }).click();
+    await expect(page.getByRole("dialog", { name: "장보기" })).toBeVisible();
+  });
+
   test("the by-item chart is switched on and off from its legend", async ({ page }) => {
     const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
     const byName = async (name: string) =>
@@ -620,10 +746,24 @@ test.describe("reports", () => {
 
     // One chart carries all three lines, so the legend has to name all
     // three — colour matching alone is never the identity channel.
-    const legend = trend.locator("xpath=preceding-sibling::div[1]");
+    const legend = page.getByTestId("net-worth-legend");
     for (const name of ["자산", "부채", "순자산"]) {
       await expect(legend.getByText(name, { exact: true })).toBeVisible();
     }
+
+    // Gridlines carry the values nothing is directly labelled with, so
+    // the scale has to be readable without hovering anything.
+    await expect(trend.getByText("0", { exact: true }).first()).toBeVisible();
+
+    // Hovering a month reports all three figures for it at once —
+    // reading the gap between two lines is not a way to learn a number.
+    await page.getByTestId("net-worth-hit").last().hover();
+    const readout = page.getByTestId("net-worth-tooltip");
+    await expect(readout).toBeVisible();
+    for (const name of ["자산", "부채", "순자산"]) {
+      await expect(readout.getByText(name, { exact: true })).toBeVisible();
+    }
+    await expect(readout.getByText("₩5,000,000").first()).toBeVisible();
 
     // A chart nobody can read still has to give up its numbers.
     await page.getByText("표로 보기").first().click();

@@ -8,6 +8,7 @@ const ko = {
   "nav.income": "기간손익",
   "nav.incomeChart": "기간손익 그래프",
   "nav.budget": "예산",
+  "nav.formulas": "계산식",
   "nav.accounts": "계정과목",
   "nav.settings": "설정",
   "nav.menu": "메뉴",
@@ -29,7 +30,6 @@ const ko = {
   "common.cancel": "취소",
   "common.close": "닫기",
   "common.delete": "삭제",
-  "common.edit": "수정",
   "common.add": "추가",
   "common.date": "날짜",
   "common.amount": "금액",
@@ -37,7 +37,6 @@ const ko = {
   "common.memo": "메모",
   "common.name": "이름",
   "common.currency": "통화",
-  "common.loading": "불러오는 중...",
   "common.moveUp": "위로",
   "common.moveDown": "아래로",
   "common.prevMonth": "이전 달",
@@ -55,7 +54,6 @@ const ko = {
   "common.saving": "저장 중…",
   "common.working": "처리 중…",
 
-  "auth.login": "로그인",
   "auth.logout": "로그아웃",
   "auth.loginWithGoogle": "Google로 로그인",
   "auth.loginWithNaver": "네이버로 로그인",
@@ -64,10 +62,6 @@ const ko = {
     "허용 목록(ALLOWED_EMAILS)이 비어 있어 아무도 로그인할 수 없습니다. 배포 환경변수를 설정하고 다시 배포해 주세요.",
   "auth.error": "로그인에 실패했습니다. ({code})",
   "auth.allowlistHint": "이 가계부는 허용 목록에 있는 계정만 쓸 수 있습니다.",
-
-  "locale.toggle": "언어",
-  "locale.ko": "한국어",
-  "locale.en": "English",
 
   "theme.toggle": "테마",
   "theme.light": "라이트",
@@ -79,9 +73,6 @@ const ko = {
   "accounts.deleteError": "거래가 있는 계정은 삭제할 수 없습니다. 대신 보관해 주세요.",
   "accounts.empty": "아직 계정이 없습니다.",
   "accounts.showArchived": "지난 계정 보기",
-  "accounts.groupOrder": "분류 순서",
-  "accounts.groupOrderHint":
-    "여기서 정한 순서를 자산현황·기간손익·예산이 그대로 따릅니다. 계정 순서도 마찬가지입니다.",
   "accounts.group": "분류",
   "accounts.category": "상위 그룹",
   "accounts.categoryPlaceholder": "예: 먹는 것",
@@ -103,7 +94,6 @@ const ko = {
   "settings.navFavorites": "하단 바 즐겨찾기",
   "settings.navFavoritesHint": "휴대폰 화면 아래에 둘 메뉴를 최대 4개까지 고릅니다.",
   "settings.exchangeRates": "환율",
-  "settings.manualRate": "환율 수동 입력",
   "settings.rate": "환율",
   "settings.recentRates": "최근 환율",
   "settings.noRates": "저장된 환율이 없습니다.",
@@ -166,7 +156,6 @@ const ko = {
   "entry.swap": "좌우 바꾸기",
   "entry.addLine": "줄 추가",
   "entry.difference": "차액",
-  "entry.andMore": "외 {n}",
   "entry.duplicate": "복제",
   "entry.duplicateNotice": "복제한 내용입니다. 확인 후 저장하면 새 거래로 추가됩니다.",
   "entry.counterparties": "거래처별 잔액",
@@ -174,6 +163,7 @@ const ko = {
   "entry.noCounterparties": "남은 잔액이 있는 거래처가 없습니다.",
   "entry.filters": "검색·필터",
   "entry.details": "세부내역",
+  "entry.share": "적요별 비중",
   "entry.balance": "잔액",
   "entry.runningTotal": "누계",
   "entry.rate": "환율",
@@ -231,7 +221,6 @@ const ko = {
   "income.trendByMonth": "월별 추이",
   "income.trendByYear": "연도별 추이",
   "income.period": "기간",
-  "income.thisMonth": "이번 달",
 
   "budget.setBudget": "예산 설정",
   "budget.spent": "지출",
@@ -270,7 +259,6 @@ const ko = {
   "formula.empty": "아직 계산식이 없습니다.",
   "formula.emptyHint": "계정과목에 없는 값을 항목들의 합으로 만들어 두고 볼 수 있습니다.",
   "formula.missingTerms": "없어진 항목 {n}개는 빼고 계산했습니다.",
-  "formula.currentValue": "현재 값",
   "formula.snapshotHint":
     "지금 화면이 보여주는 값들로 계산합니다. 항목이 바뀌면 계산식도 손봐 주세요.",
 } as const;

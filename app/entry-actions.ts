@@ -1,16 +1,14 @@
 "use server";
 
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { accounts, transactionLines, transactions } from "@/db/schema";
-import { getTranslations } from "@/i18n";
 import { isActiveOn } from "@/lib/accounts";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
 import { assertBalanced, type BalanceLineInput } from "@/lib/ledger";
 import { convertMinorUnits, toMinorUnits } from "@/lib/money";
+import { currentSection } from "@/lib/current-request";
 
 type LineWithAccount = BalanceLineInput & { accountId: string; memo: string | null };
 
@@ -52,8 +50,13 @@ async function buildLines(
     throw new Error("Malformed transaction lines");
   }
 
+  // Scoped to the section in the query, not only in the check below.
+  // The ids arrive in a form body, so naming somebody else's account has
+  // to come back empty rather than come back and be rejected — one
+  // fence in the database, one in the code, and neither relying on the
+  // other having been remembered.
   const accountRows = await db.query.accounts.findMany({
-    where: inArray(accounts.id, [...new Set(accountIds)]),
+    where: and(eq(accounts.sectionId, sectionId), inArray(accounts.id, [...new Set(accountIds)])),
   });
   const accountsById = new Map(accountRows.map((a) => [a.id, a]));
 
@@ -106,9 +109,7 @@ function readHeader(formData: FormData) {
 }
 
 export async function createTransactionAction(formData: FormData) {
-  const userId = await requireUserId();
-  const { locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section } = await currentSection();
 
   const header = readHeader(formData);
   const lines = await buildLines(formData, section.id, section.baseCurrency, header.date);
@@ -148,9 +149,7 @@ export async function createTransactionAction(formData: FormData) {
 }
 
 export async function updateTransactionAction(formData: FormData) {
-  const userId = await requireUserId();
-  const { locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section } = await currentSection();
 
   const transactionId = formData.get("transactionId");
   if (typeof transactionId !== "string") throw new Error("Missing transactionId");
@@ -197,9 +196,7 @@ export async function updateTransactionAction(formData: FormData) {
 }
 
 export async function deleteTransactionAction(formData: FormData) {
-  const userId = await requireUserId();
-  const { locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section } = await currentSection();
 
   const transactionId = formData.get("transactionId");
   if (typeof transactionId !== "string") throw new Error("Missing transactionId");

@@ -5,16 +5,12 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { accounts, budgets } from "@/db/schema";
-import { getTranslations } from "@/i18n";
 import { parseBudgetPeriod } from "@/lib/budgets";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
 import { toMinorUnits } from "@/lib/money";
+import { currentSection } from "@/lib/current-request";
 
 export async function setBudgetAction(formData: FormData) {
-  const userId = await requireUserId();
-  const { locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section } = await currentSection();
 
   const accountId = formData.get("accountId");
   const periodParam = formData.get("period");

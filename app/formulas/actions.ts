@@ -5,10 +5,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { formulas, FORMULA_SCOPES, type FormulaScope } from "@/db/schema";
-import { getTranslations } from "@/i18n";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
 import { parseTermKey, serializeTerms, type FormulaTerm } from "@/lib/formulas";
+import { currentSection } from "@/lib/current-request";
 
 /** Field-name prefix for the per-item +/−/none radios. */
 const TERM_PREFIX = "t:";
@@ -21,9 +19,7 @@ function scopeOf(value: FormDataEntryValue | null): FormulaScope {
 const listHref = (scope: FormulaScope) => `/formulas?scope=${scope}`;
 
 export async function saveFormulaAction(formData: FormData) {
-  const userId = await requireUserId();
-  const { locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section } = await currentSection();
 
   const scope = scopeOf(formData.get("scope"));
   const id = formData.get("id");
@@ -75,9 +71,7 @@ export async function saveFormulaAction(formData: FormData) {
 }
 
 export async function deleteFormulaAction(formData: FormData) {
-  const userId = await requireUserId();
-  const { locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section } = await currentSection();
 
   const scope = scopeOf(formData.get("scope"));
   const id = formData.get("id");

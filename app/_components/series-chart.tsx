@@ -1,11 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import { niceScale } from "@/lib/chart-scale";
 import { formatMoney } from "@/lib/money";
+import { AXIS_GUTTER, ChartGrid } from "./chart-axis";
 
 const VIEW_WIDTH = 320;
 const CHART_HEIGHT = 150;
 const LABEL_HEIGHT = 24;
+/**
+ * Headroom above the top gridline, for that gridline's own label. SVG
+ * puts a text baseline at y, so a label on a rule at y=0 has its whole
+ * ascender outside the viewBox and renders sliced in half.
+ */
+const PLOT_TOP = 9;
 /**
  * Fewer ticks than the bar chart gets: a line's labels are period names
  * ('25.01', five glyphs) rather than a two-character month, so twelve of
@@ -109,37 +117,48 @@ export function SeriesChart({
   const money = (minor: number) => formatMoney(minor, currency, locale);
 
   const all = drawn.flatMap((s) => s.values);
-  const max = Math.max(0, ...all);
-  const min = Math.min(0, ...all);
-  const span = max - min || 1;
+  // The gridlines set the domain rather than being fitted to it
+  // afterwards. This is also what fixed the top of the chart being shaved
+  // off: with the domain ending exactly at the largest value, that point
+  // sat at y=0 and the upper half of its 2px stroke was outside the
+  // viewBox. Rounding out to the next whole step leaves headroom that is
+  // a round number the axis can name.
+  const scale = niceScale(Math.min(0, ...all), Math.max(0, ...all));
   const plotHeight = CHART_HEIGHT - LABEL_HEIGHT;
+  const plotLeft = AXIS_GUTTER;
   const x = (i: number) =>
-    periods.length === 1 ? VIEW_WIDTH / 2 : (i / (periods.length - 1)) * VIEW_WIDTH;
-  const y = (value: number) => plotHeight - ((value - min) / span) * plotHeight;
+    periods.length === 1
+      ? (plotLeft + VIEW_WIDTH) / 2
+      : plotLeft + (i / (periods.length - 1)) * (VIEW_WIDTH - plotLeft);
+  const y = (value: number) =>
+    plotHeight - ((value - scale.min) / (scale.max - scale.min)) * (plotHeight - PLOT_TOP);
 
-  // Evenly spaced including both ends, rather than "every k-th plus the
-  // last" — that rule puts the final two labels side by side whenever
-  // the count does not divide, which is most of the time.
-  const tickCount = Math.min(MAX_TICKS, periods.length);
-  const tickAt = new Set(
-    Array.from({ length: tickCount }, (_, k) =>
-      tickCount === 1 ? 0 : Math.round((k * (periods.length - 1)) / (tickCount - 1)),
-    ),
-  );
+  // A whole-number step from the start, with the last period always
+  // labelled — and its neighbour dropped when the step would leave the
+  // two side by side. Spacing the labels evenly across the range instead
+  // rounds to adjacent indices ('26.01 26.02' printed as one blur at
+  // either end), which is what the fractional version did here.
+  const lastPeriod = periods.length - 1;
+  const tickStep = Math.max(1, Math.ceil(lastPeriod / (MAX_TICKS - 1)));
+  const tickAt = new Set<number>();
+  for (let i = 0; i < lastPeriod; i += tickStep) tickAt.add(i);
+  const crowded = Math.max(...tickAt, 0);
+  if (lastPeriod - crowded < tickStep) tickAt.delete(crowded);
+  tickAt.add(lastPeriod);
   const showsTick = (i: number) => tickAt.has(i);
-  const zeroInside = min < 0 && max > 0;
 
   /**
    * The column that catches the pointer for period `i`: half a step
-   * either side of the point, clipped to the drawing.
+   * either side of the point, clipped to the plot.
    *
-   * Clipping is not tidiness — an end column that hangs past the viewBox
-   * has its centre outside the svg, which is where a pointer aimed at
-   * "the last month" would be sent.
+   * Clipping is not tidiness — an end column that hangs past the plot has
+   * its centre outside it, which is where a pointer aimed at "the last
+   * month" would be sent.
    */
   const hit = (i: number) => {
-    const step = periods.length > 1 ? VIEW_WIDTH / (periods.length - 1) : VIEW_WIDTH;
-    const left = Math.max(0, x(i) - step / 2);
+    const plotWidth = VIEW_WIDTH - plotLeft;
+    const step = periods.length > 1 ? plotWidth / (periods.length - 1) : plotWidth;
+    const left = Math.max(plotLeft, x(i) - step / 2);
     const right = Math.min(VIEW_WIDTH, x(i) + step / 2);
     return { x: left, width: right - left };
   };
@@ -153,12 +172,22 @@ export function SeriesChart({
           role="group"
           aria-label={caption}
         >
-          {zeroInside && (
+          <ChartGrid
+            ticks={scale.ticks}
+            y={y}
+            left={plotLeft}
+            right={VIEW_WIDTH}
+            currency={currency}
+            locale={locale}
+          />
+
+          {/* Under the lines, so the crosshair never cuts across a mark. */}
+          {active !== null && (
             <line
-              x1={0}
-              y1={y(0)}
-              x2={VIEW_WIDTH}
-              y2={y(0)}
+              x1={x(active)}
+              y1={0}
+              x2={x(active)}
+              y2={plotHeight}
               className="stroke-rule"
               strokeWidth={1}
             />
@@ -194,7 +223,7 @@ export function SeriesChart({
                     key={s.key}
                     cx={x(i)}
                     cy={y(s.values[i])}
-                    r={3}
+                    r={4}
                     className={`${SERIES_STROKE[s.slot]} fill-card`}
                     strokeWidth={2}
                   />

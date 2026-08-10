@@ -191,16 +191,37 @@ test.describe("accounts", () => {
       .first()
       .click();
 
+    // Wait for the move to land before leaving. `click()` returns when
+    // the click is dispatched, not when the server action it submitted
+    // has finished — navigating away at that moment cancels the request
+    // in flight, and the order never changes at all. 위로 goes disabled
+    // once 부채 is first, which is the page saying it applied the move.
+    await expect(
+      page
+        .locator("section")
+        .filter({ hasText: "부채" })
+        .first()
+        .getByRole("button", { name: "위로" })
+        .first(),
+    ).toBeDisabled();
+
     // The balance sheet follows. Asserted on the rendered order rather
     // than on the stored value, because the stored value agreeing while
     // the page ignores it is exactly the bug this guards against.
+    //
+    // Polled, not read once: `allInnerTexts` takes a single snapshot with
+    // no retry, and a route that is still streaming shows the loading
+    // spinner and no sections at all. Read at that instant the page has
+    // neither group on it, which is a red test about nothing.
     await page.goto("/assets");
-    const order = await page.locator("main section").allInnerTexts();
-    const assetAt = order.findIndex((text) => text.startsWith("자산"));
-    const liabilityAt = order.findIndex((text) => text.startsWith("부채"));
-    expect(liabilityAt).toBeGreaterThanOrEqual(0);
-    expect(assetAt).toBeGreaterThanOrEqual(0);
-    expect(liabilityAt).toBeLessThan(assetAt);
+    await expect
+      .poll(async () => {
+        const order = await page.locator("main section").allInnerTexts();
+        const assetAt = order.findIndex((text) => text.startsWith("자산"));
+        const liabilityAt = order.findIndex((text) => text.startsWith("부채"));
+        return assetAt >= 0 && liabilityAt >= 0 ? liabilityAt < assetAt : null;
+      })
+      .toBe(true);
   });
 
   test("a category groups expense accounts and subtotals them on the income statement", async ({

@@ -1,10 +1,9 @@
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { exchangeRates, transactions } from "@/db/schema";
-import { getTranslations, type TranslationKey } from "@/i18n";
+import type { TranslationKey } from "@/i18n";
+import { currentSection } from "@/lib/current-request";
 import { today } from "@/lib/date";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
 import { parseFavorites } from "@/lib/nav-favorites";
 import { CURRENCY_OPTIONS, TIMEZONE_OPTIONS } from "@/lib/options";
 import { NAV_ITEMS } from "../_components/nav-items";
@@ -43,9 +42,7 @@ export default async function SettingsPage({
 }: {
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
-  const userId = await requireUserId();
-  const { t, locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section, t } = await currentSection();
   const { saved, error } = await searchParams;
   const favorites = parseFavorites(section.navFavorites);
 

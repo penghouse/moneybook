@@ -2,12 +2,11 @@ import { asc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db/client";
 import { accounts, ACCOUNT_GROUPS, type Account, type AccountGroup } from "@/db/schema";
-import { getTranslations, type TranslationKey } from "@/i18n";
+import type { TranslationKey } from "@/i18n";
 import { canTrackCounterparties, isClosedBy } from "@/lib/accounts";
 import { parseGroupOrder } from "@/lib/account-groups";
 import { categoryBlocks } from "@/lib/account-order";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
+import { currentSection } from "@/lib/current-request";
 import { today } from "@/lib/date";
 import { CURRENCY_OPTIONS } from "@/lib/options";
 import {
@@ -65,9 +64,7 @@ export default async function AccountsPage({
 }: {
   searchParams: Promise<{ error?: string; showArchived?: string }>;
 }) {
-  const userId = await requireUserId();
-  const { t, locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section, t } = await currentSection();
   const { error, showArchived } = await searchParams;
   const asOf = today(section.timezone);
 

@@ -16,7 +16,8 @@ import {
   assertBalanced,
   getAccountBalances,
   getAccountFlows,
-  getCounterpartyBalances,
+  getTitleTotals,
+  getMonthlyAccountAmounts,
   getMonthlyBalanceSheet,
   getTitleSuggestions,
   getPeriodTotals,
@@ -859,7 +860,123 @@ describe("getMonthlyBalanceSheet", () => {
   });
 });
 
-describe("getCounterpartyBalances", () => {
+describe("getMonthlyAccountAmounts", () => {
+  let db: Db;
+  let ids: Record<string, string>;
+
+  beforeEach(async () => {
+    db = await createTestDb();
+    ids = await seedSection(db);
+  });
+
+  const krw = (accountId: string, side: LineSide, amount: number): TestLine => ({
+    accountId,
+    side,
+    currency: "KRW",
+    amount,
+    rate: 1,
+    baseAmount: amount,
+  });
+
+  const amountsFor = async (months: string[], mode: "balance" | "flow", accountId: string) => {
+    const byMonth = await getMonthlyAccountAmounts(db, { sectionId: SECTION_ID, months, mode });
+    // Absent means zero — an account with nothing on it contributes
+    // nothing, which is how buildFormulaItems reads the map.
+    return months.map((m) => byMonth.get(m)?.get(accountId) ?? 0);
+  };
+
+  it("carries a balance into window months that start before any activity", async () => {
+    // The window opens on months that are quiet but not empty-handed:
+    // the money was put in long before, and the chart has to show it
+    // standing there rather than starting the series at zero.
+    await postTransaction(db, {
+      date: "2025-01-10",
+      title: "기초잔액",
+      kind: "opening",
+      lines: [krw(ids.bank, "left", 1_000_000), krw(ids.opening, "right", 1_000_000)],
+    });
+    await postTransaction(db, {
+      date: "2026-08-05",
+      title: "입금",
+      lines: [krw(ids.bank, "left", 100_000), krw(ids.salary, "right", 100_000)],
+    });
+
+    expect(await amountsFor(["2026-06", "2026-07", "2026-08"], "balance", ids.bank)).toEqual([
+      1_000_000, 1_000_000, 1_100_000,
+    ]);
+  });
+
+  it("zeroes a flow in months it had no activity of its own", async () => {
+    // 식비 in June and nothing after. August has a transaction, but on
+    // another account — left standing, June's total was reported again
+    // for August, which reads as money spent twice.
+    await postTransaction(db, {
+      date: "2026-06-05",
+      title: "장보기",
+      lines: [krw(ids.food, "left", 30_000), krw(ids.card, "right", 30_000)],
+    });
+    await postTransaction(db, {
+      date: "2026-08-05",
+      title: "생활용품",
+      lines: [krw(ids.supplies, "left", 5_000), krw(ids.card, "right", 5_000)],
+    });
+
+    expect(await amountsFor(["2026-06", "2026-07", "2026-08"], "flow", ids.food)).toEqual([
+      30_000, 0, 0,
+    ]);
+    expect(await amountsFor(["2026-06", "2026-07", "2026-08"], "flow", ids.supplies)).toEqual([
+      0, 0, 5_000,
+    ]);
+  });
+
+  it("counts a month's own total, not a running one, for a flow", async () => {
+    await postTransaction(db, {
+      date: "2026-06-05",
+      title: "장보기",
+      lines: [krw(ids.food, "left", 30_000), krw(ids.card, "right", 30_000)],
+    });
+    await postTransaction(db, {
+      date: "2026-07-05",
+      title: "장보기",
+      lines: [krw(ids.food, "left", 20_000), krw(ids.card, "right", 20_000)],
+    });
+
+    expect(await amountsFor(["2026-06", "2026-07"], "flow", ids.food)).toEqual([30_000, 20_000]);
+  });
+
+  it("ignores transactions after the window", async () => {
+    await postTransaction(db, {
+      date: "2026-06-05",
+      title: "기초잔액",
+      kind: "opening",
+      lines: [krw(ids.bank, "left", 1_000_000), krw(ids.opening, "right", 1_000_000)],
+    });
+    // The 31st of a 30-day month: the upper bound is a string compare,
+    // so it has to be a date no real day of that month can exceed.
+    await postTransaction(db, {
+      date: "2026-07-31",
+      title: "나중 입금",
+      lines: [krw(ids.bank, "left", 500_000), krw(ids.salary, "right", 500_000)],
+    });
+
+    expect(await amountsFor(["2026-06"], "balance", ids.bank)).toEqual([1_000_000]);
+    expect(await amountsFor(["2026-06", "2026-07"], "balance", ids.bank)).toEqual([
+      1_000_000, 1_500_000,
+    ]);
+  });
+
+  it("returns a map keyed by every month asked for, even an empty book", async () => {
+    const byMonth = await getMonthlyAccountAmounts(db, {
+      sectionId: SECTION_ID,
+      months: ["2026-01", "2026-02"],
+      mode: "balance",
+    });
+    expect([...byMonth.keys()]).toEqual(["2026-01", "2026-02"]);
+    expect([...byMonth.values()].every((m) => m.size === 0)).toBe(true);
+  });
+});
+
+describe("getTitleTotals (거래처별 잔액)", () => {
   let db: Db;
   let ids: Record<string, string>;
 
@@ -889,12 +1006,12 @@ describe("getCounterpartyBalances", () => {
     });
 
   const balances = (params: { from?: string | null; asOf?: string } = {}) =>
-    getCounterpartyBalances(db, {
+    getTitleTotals(db, {
       sectionId: SECTION_ID,
       accountId: ids.receivable,
       group: "asset",
       from: params.from,
-      asOf: params.asOf ?? "2026-12-31",
+      to: params.asOf ?? "2026-12-31",
       untitledLabel: "미분류",
     });
 
@@ -967,11 +1084,11 @@ describe("getCounterpartyBalances", () => {
       lines: [line("left", ids.food, "KRW", 70_000, 1), line("right", ids.card, "KRW", 70_000, 1)],
     });
 
-    const owed = await getCounterpartyBalances(db, {
+    const owed = await getTitleTotals(db, {
       sectionId: SECTION_ID,
       accountId: ids.card,
       group: "liability",
-      asOf: "2026-12-31",
+      to: "2026-12-31",
       untitledLabel: "미분류",
     });
     expect(owed).toEqual([{ name: "형", amount: 70_000 }]);

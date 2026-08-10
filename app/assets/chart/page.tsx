@@ -2,9 +2,7 @@ import Link from "next/link";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, formulas } from "@/db/schema";
-import { getTranslations } from "@/i18n";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
+import { currentSection } from "@/lib/current-request";
 import { addMonths, monthsBetween, shiftWindow, today, yearMonthOf } from "@/lib/date";
 import { parseGroupOrder } from "@/lib/account-groups";
 import { getAccountBalances, getMonthlyBalanceSheet } from "@/lib/ledger";
@@ -34,9 +32,7 @@ export default async function AssetsChartPage({
 }: {
   searchParams: Promise<{ from?: string; to?: string }>;
 }) {
-  const userId = await requireUserId();
-  const { t, locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section, t, locale } = await currentSection();
   const { from: fromParam, to: toParam } = await searchParams;
 
   // The range was a fixed twelve months with only its end movable, which
@@ -46,11 +42,21 @@ export default async function AssetsChartPage({
 
   const start = from > to ? to : from;
   const months = monthsBetween(start, to);
-  const history = await getMonthlyBalanceSheet(db, { sectionId: section.id, months });
-
-  // The mix is a level, so it needs one instant rather than a span: the
-  // end of the range on screen.
-  const balances = await getAccountBalances(db, { sectionId: section.id, asOf: to });
+  const [history, balances, catalog, formulaRows] = await Promise.all([
+    getMonthlyBalanceSheet(db, { sectionId: section.id, months }),
+    // The mix is a level, so it needs one instant rather than a span:
+    // the end of the range on screen.
+    getAccountBalances(db, { sectionId: section.id, asOf: to }),
+    db.query.accounts.findMany({
+      where: eq(accounts.sectionId, section.id),
+      orderBy: asc(accounts.sortOrder),
+      columns: { id: true, name: true, group: true, category: true },
+    }),
+    db.query.formulas.findMany({
+      where: and(eq(formulas.sectionId, section.id), eq(formulas.scope, "assets")),
+      orderBy: asc(formulas.sortOrder),
+    }),
+  ]);
   // Only accounts actually holding something: a zero-length bar is a row
   // that says nothing and pushes the ones that matter down the page.
   const assetSlices = balances
@@ -60,15 +66,6 @@ export default async function AssetsChartPage({
 
   const hasHistory = history.some((h) => h.assets !== 0 || h.liabilities !== 0);
 
-  const catalog = await db.query.accounts.findMany({
-    where: eq(accounts.sectionId, section.id),
-    orderBy: asc(accounts.sortOrder),
-    columns: { id: true, name: true, group: true, category: true },
-  });
-  const formulaRows = await db.query.formulas.findMany({
-    where: and(eq(formulas.sectionId, section.id), eq(formulas.scope, "assets")),
-    orderBy: asc(formulas.sortOrder),
-  });
   const seriesMonths = months;
   const reportSeries = await buildReportSeries(db, {
     sectionId: section.id,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collectTags, hasTag, normalizeTag, parseTags } from "./tags";
+import { collectTags, hasTag, normalizeTag, parseTags, splitMemo } from "./tags";
 
 describe("parseTags", () => {
   it("reads tags out of ordinary memo text", () => {
@@ -69,5 +69,43 @@ describe("normalizeTag", () => {
     expect(normalizeTag("두 개")).toBeNull();
     expect(normalizeTag("#a#b")).toBeNull();
     expect(normalizeTag(null)).toBeNull();
+  });
+});
+
+describe("splitMemo", () => {
+  it("separates what a memo says from what it tags", () => {
+    expect(splitMemo("커피 #낭비")).toEqual([
+      { kind: "text", value: "커피 " },
+      { kind: "tag", value: "낭비", raw: "#낭비" },
+    ]);
+  });
+
+  it("keeps the text between and after tags", () => {
+    expect(splitMemo("#낭비 커피 #주말 두 잔")).toEqual([
+      { kind: "tag", value: "낭비", raw: "#낭비" },
+      { kind: "text", value: " 커피 " },
+      { kind: "tag", value: "주말", raw: "#주말" },
+      { kind: "text", value: " 두 잔" },
+    ]);
+  });
+
+  // What was typed stays on screen; what is compared is folded — the
+  // same pair normalizeTag already treats as one tag.
+  it("shows the tag as written and matches it lower-cased", () => {
+    expect(splitMemo("#Food")).toEqual([{ kind: "tag", value: "food", raw: "#Food" }]);
+  });
+
+  it("leaves a memo with no tags as one piece of text", () => {
+    expect(splitMemo("커피")).toEqual([{ kind: "text", value: "커피" }]);
+  });
+
+  it("has nothing to split when there is no memo", () => {
+    expect(splitMemo("")).toEqual([]);
+    expect(splitMemo(null)).toEqual([]);
+  });
+
+  // A bare '#' is not a tag, so it is text like any other character.
+  it("does not treat a lone hash as a tag", () => {
+    expect(splitMemo("# 커피")).toEqual([{ kind: "text", value: "# 커피" }]);
   });
 });

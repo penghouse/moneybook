@@ -1,12 +1,10 @@
-import { and, asc, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db/client";
 import { accounts, transactionLines, transactions } from "@/db/schema";
-import { getTranslations } from "@/i18n";
 import { interpolate } from "@/i18n/format";
 import { activeOn, isFlowGroup } from "@/lib/accounts";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
+import { currentSection } from "@/lib/current-request";
 import {
   addMonths,
   addYears,
@@ -19,7 +17,7 @@ import {
 } from "@/lib/date";
 import {
   findTaggedTransactionIds,
-  getCounterpartyBalances,
+  getTitleTotals,
   getRunningBalances,
   getTitleSuggestions,
 } from "@/lib/ledger";
@@ -30,6 +28,7 @@ import { DialogActionForm, RowDialog } from "./_components/dialog";
 import { EntryForm, type EntryFormLabels } from "./_components/entry-form";
 import { PeriodNav } from "./_components/period-nav";
 import { SubmitButton } from "./_components/submit-button";
+import { TransactionRowLinks } from "./_components/transaction-row-links";
 import {
   buttonClass,
   Card,
@@ -64,9 +63,7 @@ export default async function Home({
     duplicate?: string;
   }>;
 }) {
-  const userId = await requireUserId();
-  const { t, locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section, t, locale } = await currentSection();
   const {
     error,
     name: errorAccountName,
@@ -79,26 +76,29 @@ export default async function Home({
   } = await searchParams;
   const tag = normalizeTag(tagParam);
 
-  const allAccounts = await db.query.accounts.findMany({
-    // The picker offers what can be posted to *now*; a closed account
-    // stays out of it even though its past transactions still read and
-    // edit normally.
-    where: and(eq(accounts.sectionId, section.id), activeOn(today(section.timezone))),
-    orderBy: asc(accounts.sortOrder),
-  });
-
-  // The filter is about the past, so it lists every account — looking up
-  // a closed card's history is exactly what it is for. Only the entry
-  // form is restricted to what can be posted to today.
-  const filterAccounts = await db.query.accounts.findMany({
-    where: eq(accounts.sectionId, section.id),
-    orderBy: asc(accounts.sortOrder),
-  });
-
-  // Deliberately not narrowed by whatever the list is filtered to, nor
-  // by how far back it reaches: the suggestions are for what you are
-  // about to type, not for what you are looking at.
-  const suggestions = await getTitleSuggestions(db, { sectionId: section.id });
+  // Three reads that need nothing from each other, issued together: one
+  // after another they were three network round trips on a deployment
+  // where the database is not in this process.
+  const [allAccounts, filterAccounts, suggestions] = await Promise.all([
+    db.query.accounts.findMany({
+      // The picker offers what can be posted to *now*; a closed account
+      // stays out of it even though its past transactions still read and
+      // edit normally.
+      where: and(eq(accounts.sectionId, section.id), activeOn(today(section.timezone))),
+      orderBy: asc(accounts.sortOrder),
+    }),
+    // The filter is about the past, so it lists every account — looking
+    // up a closed card's history is exactly what it is for. Only the
+    // entry form is restricted to what can be posted to today.
+    db.query.accounts.findMany({
+      where: eq(accounts.sectionId, section.id),
+      orderBy: asc(accounts.sortOrder),
+    }),
+    // Deliberately not narrowed by whatever the list is filtered to, nor
+    // by how far back it reaches: the suggestions are for what you are
+    // about to type, not for what you are looking at.
+    getTitleSuggestions(db, { sectionId: section.id }),
+  ]);
 
   const labels: EntryFormLabels = {
     date: t("common.date"),
@@ -131,20 +131,34 @@ export default async function Home({
     conditions.push(or(like(transactions.title, pattern), like(transactions.memo, pattern))!);
   }
   if (accountId) {
-    // accountId comes straight from the query string, so the join is
-    // constrained to this section's own transactions — otherwise this
-    // reads every line of whichever account the caller names.
-    const matches = await db
-      .select({ transactionId: transactionLines.transactionId })
-      .from(transactionLines)
-      .innerJoin(transactions, eq(transactionLines.transactionId, transactions.id))
-      .where(
-        and(eq(transactionLines.accountId, accountId), eq(transactions.sectionId, section.id)),
-      );
+    // Correlated rather than a list of ids fetched first: an account with
+    // ten thousand transactions on it would otherwise be read out in full
+    // and posted back as a ten-thousand-term `IN (...)`. The subquery
+    // stops at the first matching line and the statement stays one line
+    // long however big the book gets.
+    //
+    // The outer query is already fenced to this section, which is what
+    // keeps `accountId` — straight off the query string — from naming
+    // somebody else's account and matching anything.
+    //
+    // Built with `exists()` rather than a raw sql`` template: this
+    // condition is handed to db.query.transactions, and the relational
+    // query builder rewrites every column it finds in a raw chunk to the
+    // outer table's alias — which silently turned the subquery's own
+    // `transaction_lines.transaction_id` into `transactions.transaction_id`
+    // and made the statement fail to parse. A subquery built through the
+    // builder keeps its own scope.
     conditions.push(
-      inArray(
-        transactions.id,
-        matches.map((m) => m.transactionId),
+      exists(
+        db
+          .select({ one: transactionLines.id })
+          .from(transactionLines)
+          .where(
+            and(
+              eq(transactionLines.transactionId, transactions.id),
+              eq(transactionLines.accountId, accountId),
+            ),
+          ),
       ),
     );
   }
@@ -186,32 +200,58 @@ export default async function Home({
   // captioned as one. Read from the book's beginning it would be the
   // lifetime sum, a number arriving from 예산 nobody could use.
   const isFlow = !!filtered && isFlowGroup(filtered.group);
-  const runningBalances = await getRunningBalances(db, {
-    sectionId: section.id,
-    baseCurrency: section.baseCurrency,
-    transactionIds: list.map((tx) => tx.id),
-    account: filtered
-      ? { id: filtered.id, group: filtered.group, currency: filtered.currency }
-      : undefined,
-    from: isFlow && from ? from : undefined,
-  });
+  // Everything the list needs *about* the list, in one round trip.
+  const [runningBalances, counterparties, titleShares] = await Promise.all([
+    getRunningBalances(db, {
+      sectionId: section.id,
+      baseCurrency: section.baseCurrency,
+      transactionIds: list.map((tx) => tx.id),
+      account: filtered
+        ? { id: filtered.id, group: filtered.group, currency: filtered.currency }
+        : undefined,
+      from: isFlow && from ? from : undefined,
+    }),
+    // 거래처관리 계정을 보고 있을 때만. Not bounded by the from/to filter
+    // above it on purpose — see getTitleTotals: who still owes what is a
+    // level, and reading it for August alone would report someone as
+    // settled up because they happened not to pay this month.
+    filtered?.tracksCounterparties
+      ? getTitleTotals(db, {
+          sectionId: section.id,
+          accountId: filtered.id,
+          group: filtered.group,
+          from: filtered.activeFrom,
+          to: today(section.timezone),
+          untitledLabel: t("accounts.uncategorized"),
+        })
+      : [],
+    /**
+     * What the period's money on this account went on, by 적요.
+     *
+     * Not "how does 식비 compare with 교통비" — that is the income
+     * statement, one screen back, and repeating it here would be the
+     * same answer twice. The question this screen can answer and that
+     * one cannot is what is *inside* the figure: 장보기 was two thirds
+     * of August's 식비, 커피 was a tenth.
+     *
+     * Grouped without parentheses, exactly like the 거래처별 잔액 — 「점심」
+     * and 「점심(회사 앞)」 are one line, or the biggest thing in the
+     * account arrives split into halves that each look small.
+     */
+    filtered && from && to
+      ? getTitleTotals(db, {
+          sectionId: section.id,
+          accountId: filtered.id,
+          group: filtered.group,
+          from,
+          to,
+          untitledLabel: t("accounts.uncategorized"),
+        })
+      : [],
+  ]);
   const balanceByTransactionId = new Map(runningBalances.map((b) => [b.transactionId, b] as const));
   const balanceCaption = `${isFlow ? t("entry.runningTotal") : t("entry.balance")} · ${filtered ? filtered.name : t("assets.netWorth")}`;
 
-  // 거래처관리 계정을 보고 있을 때만. Not bounded by the from/to filter
-  // above it on purpose — see getCounterpartyBalances: who still owes
-  // what is a level, and reading it for August alone would report
-  // someone as settled up because they happened not to pay this month.
-  const counterparties = filtered?.tracksCounterparties
-    ? await getCounterpartyBalances(db, {
-        sectionId: section.id,
-        accountId: filtered.id,
-        group: filtered.group,
-        from: filtered.activeFrom,
-        asOf: today(section.timezone),
-        untitledLabel: t("accounts.uncategorized"),
-      })
-    : [];
   const counterpartyTotal = counterparties.reduce((sum, c) => sum + c.amount, 0);
   const showShares = counterpartyTotal > 0 && counterparties.every((c) => c.amount > 0);
 
@@ -340,13 +380,8 @@ export default async function Home({
     return query ? `/?${query}` : "/";
   };
 
-  const andMore = (n: number) => t("entry.andMore").replace("{n}", String(n));
-  /** "식비 외 1" — the first account plus a count, so a split still reads
-   *  as one line in the list. */
-  const namesOf = (lines: { account: { name: string } }[]) =>
-    lines.length <= 1
-      ? (lines[0]?.account.name ?? "")
-      : `${lines[0].account.name} ${andMore(lines.length - 1)}`;
+  /** The period the list is reading, if it is filtered to one. */
+  const listPeriod = from && to ? { from, to } : undefined;
 
   return (
     <div className="space-y-4">
@@ -546,6 +581,23 @@ export default async function Home({
           </Card>
         )}
 
+        {/* A share is only defined over same-signed amounts, so a month
+            with a refund in it falls back to the list of figures rather
+            than drawing a bar whose length lies. */}
+        {titleShares.length > 1 && titleShares.every((s) => s.amount > 0) && (
+          <section className="mb-3">
+            <SectionLabel>{t("entry.share")}</SectionLabel>
+            <Card>
+              <CompositionChart
+                slices={titleShares.map((s) => ({ id: s.name, name: s.name, amount: s.amount }))}
+                currency={filtered!.currency}
+                locale={locale}
+                shareLabel={t("entry.share")}
+              />
+            </Card>
+          </section>
+        )}
+
         {isLedger && ledgerUnit !== "custom" && (
           <div className="mb-3">
             <PeriodNav
@@ -599,20 +651,6 @@ export default async function Home({
                               )}
                             </span>
                           </span>
-                          <span className="text-ink-muted mt-0.5 flex items-center gap-1.5 text-sm">
-                            <span className="min-w-0 truncate">{namesOf(leftLines)}</span>
-                            <span className="text-ink-faint shrink-0">←</span>
-                            <span className="min-w-0 truncate">{namesOf(rightLines)}</span>
-                          </span>
-                          {/* The memo was written on this transaction and
-                              then only ever visible by opening it. A row
-                              that hides what you typed is a row you have
-                              to open to trust. */}
-                          {memoOf(tx) && (
-                            <span className="text-ink-faint mt-0.5 block truncate text-xs">
-                              {memoOf(tx)}
-                            </span>
-                          )}
                         </>
                       }
                     >
@@ -649,6 +687,15 @@ export default async function Home({
                         </div>
                       </div>
                     </RowDialog>
+
+                    <TransactionRowLinks
+                      date={tx.date}
+                      memo={memoOf(tx)}
+                      left={leftLines}
+                      right={rightLines}
+                      period={listPeriod}
+                      tagHref={(tag) => withParam("tag", tag)}
+                    />
                   </li>
                 );
               })}

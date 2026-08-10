@@ -2,7 +2,7 @@ import Link from "next/link";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, formulas } from "@/db/schema";
-import { getTranslations } from "@/i18n";
+import { currentSection } from "@/lib/current-request";
 import {
   addMonths,
   addYears,
@@ -15,8 +15,6 @@ import {
 } from "@/lib/date";
 import { parseGroupOrder } from "@/lib/account-groups";
 import { PeriodNav } from "../_components/period-nav";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
 import { buildFormulaItems } from "@/lib/formula-items";
 import { getAccountFlows } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
@@ -38,9 +36,7 @@ export default async function IncomePage({
 }: {
   searchParams: Promise<{ from?: string; to?: string }>;
 }) {
-  const userId = await requireUserId();
-  const { t, locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section, t, locale } = await currentSection();
   const { from: fromParam, to: toParam } = await searchParams;
 
   const now = today(section.timezone);
@@ -52,11 +48,19 @@ export default async function IncomePage({
   // the unit on screen can never disagree with the dates it describes.
   const unit = rangeUnit(from, to);
 
-  const allAccounts = await db.query.accounts.findMany({
-    where: eq(accounts.sectionId, section.id),
-    orderBy: asc(accounts.sortOrder),
-  });
-  const flows = await getAccountFlows(db, { sectionId: section.id, from, to });
+  // The catalog, the period's flows and the saved formulas need nothing
+  // from each other, so they go together rather than in single file.
+  const [allAccounts, flows, formulaRows] = await Promise.all([
+    db.query.accounts.findMany({
+      where: eq(accounts.sectionId, section.id),
+      orderBy: asc(accounts.sortOrder),
+    }),
+    getAccountFlows(db, { sectionId: section.id, from, to }),
+    db.query.formulas.findMany({
+      where: and(eq(formulas.sectionId, section.id), eq(formulas.scope, "income")),
+      orderBy: asc(formulas.sortOrder),
+    }),
+  ]);
   const income = flows.filter((f) => f.group === "income");
   const expense = flows.filter((f) => f.group === "expense");
   const totalIncome = income.reduce((s, f) => s + f.baseAmount, 0);
@@ -76,10 +80,6 @@ export default async function IncomePage({
     accounts: allAccounts,
     amountByAccountId: new Map(flows.map((f) => [f.accountId, f.baseAmount])),
     labels: { totals: formulaTotalLabels("income", t) },
-  });
-  const formulaRows = await db.query.formulas.findMany({
-    where: and(eq(formulas.sectionId, section.id), eq(formulas.scope, "income")),
-    orderBy: asc(formulas.sortOrder),
   });
 
   const base = (minor: number) => formatMoney(minor, section.baseCurrency, locale);
@@ -130,6 +130,10 @@ export default async function IncomePage({
                 {rows.map((f) => (
                   <KeyValueRow
                     key={f.accountId}
+                    // The same move the budget rows make: "왜 이만큼이지"
+                    // is answered by the transactions behind the figure,
+                    // over exactly the period this statement is reading.
+                    href={`/?accountId=${f.accountId}&from=${from}&to=${to}`}
                     label={f.name}
                     value={
                       <Money

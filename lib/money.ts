@@ -45,3 +45,18 @@ export function formatMoney(minorAmount: number, currency: string, locale: strin
     currency,
   }).format(toMajorUnits(minorAmount, currency));
 }
+
+/**
+ * Shortened for an axis tick: '1200만' in Korean, '12M' in English.
+ *
+ * No currency symbol. A tick is a scale marker, not an amount, and
+ * repeating ₩ down the side of every chart is five characters of ink per
+ * gridline saying what the card above already said. The exact figures
+ * live in the readout and the table, both of which format in full.
+ */
+export function formatCompactMoney(minorAmount: number, currency: string, locale: string): string {
+  return new Intl.NumberFormat(locale, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(toMajorUnits(minorAmount, currency));
+}
