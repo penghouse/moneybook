@@ -194,6 +194,10 @@ export async function getMonthlyAccountAmounts(
   if (params.months.length === 0) return byMonth;
 
   const last = params.months[params.months.length - 1];
+  // '2026-06-31' is not a date, and that is the point: dates are stored
+  // as ISO strings and compared as strings, so this is simply a bound no
+  // real day of that month can be greater than. Working out the true
+  // last day would buy nothing and get February wrong.
   const lastDay = `${last}-31`;
   const net = sql<number>`sum(case when ${transactionLines.side} = 'left' then ${transactionLines.baseAmount} else -${transactionLines.baseAmount} end)`;
   const month = sql<string>`substr(${transactions.date}, 1, 7)`;
@@ -229,35 +233,30 @@ export async function getMonthlyAccountAmounts(
     inMonth.set(row.accountId, (inMonth.get(row.accountId) ?? 0) + Number(row.net));
   }
 
-  const running = new Map<string, number>();
   const wanted = new Set(params.months);
-  // Every month the data touches, in order — including ones before the
-  // window, which a balance has to walk through to carry forward.
-  for (const m of [...deltas.keys()].sort()) {
-    for (const [accountId, delta] of deltas.get(m)!) {
-      running.set(
-        accountId,
-        (params.mode === "balance" ? (running.get(accountId) ?? 0) : 0) + delta,
-      );
+  // Every month the data touches *and* every month asked for, in order.
+  // Both halves matter: the months before the window are what a balance
+  // accumulates from, and the asked-for months with nothing in them are
+  // where it has to be written down anyway.
+  const walk = [...new Set([...deltas.keys(), ...params.months])].sort();
+
+  const running = new Map<string, number>();
+  for (const m of walk) {
+    const inMonth = deltas.get(m);
+    if (params.mode === "balance") {
+      // Carried: last month's money is still there in a month nobody
+      // spent any.
+      if (inMonth) for (const [id, d] of inMonth) running.set(id, (running.get(id) ?? 0) + d);
+    } else {
+      // Cleared: a flow is the month's own total. Left standing, an
+      // account would repeat its last non-empty month for every later
+      // month that happened to have activity on some *other* account.
+      running.clear();
+      if (inMonth) for (const [id, d] of inMonth) running.set(id, d);
     }
     if (!wanted.has(m)) continue;
     const out = byMonth.get(m)!;
-    for (const [accountId, value] of running) {
-      out.set(accountId, normalBalance(groupOf.get(accountId)!, value));
-    }
-  }
-
-  // A balance carries into months with no transactions of their own.
-  if (params.mode === "balance") {
-    let carried = new Map<string, number>();
-    for (const m of params.months) {
-      const out = byMonth.get(m)!;
-      if (out.size === 0) {
-        for (const [id, v] of carried) out.set(id, v);
-      } else {
-        carried = new Map(out);
-      }
-    }
+    for (const [id, value] of running) out.set(id, normalBalance(groupOf.get(id)!, value));
   }
 
   return byMonth;
