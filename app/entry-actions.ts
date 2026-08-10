@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
@@ -52,8 +52,13 @@ async function buildLines(
     throw new Error("Malformed transaction lines");
   }
 
+  // Scoped to the section in the query, not only in the check below.
+  // The ids arrive in a form body, so naming somebody else's account has
+  // to come back empty rather than come back and be rejected — one
+  // fence in the database, one in the code, and neither relying on the
+  // other having been remembered.
   const accountRows = await db.query.accounts.findMany({
-    where: inArray(accounts.id, [...new Set(accountIds)]),
+    where: and(eq(accounts.sectionId, sectionId), inArray(accounts.id, [...new Set(accountIds)])),
   });
   const accountsById = new Map(accountRows.map((a) => [a.id, a]));
 
