@@ -5,12 +5,10 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { accounts, transactionLines, transactions } from "@/db/schema";
-import { getTranslations } from "@/i18n";
 import { isActiveOn } from "@/lib/accounts";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
 import { assertBalanced, type BalanceLineInput } from "@/lib/ledger";
 import { convertMinorUnits, toMinorUnits } from "@/lib/money";
+import { currentSection } from "@/lib/current-request";
 
 type LineWithAccount = BalanceLineInput & { accountId: string; memo: string | null };
 
@@ -111,9 +109,7 @@ function readHeader(formData: FormData) {
 }
 
 export async function createTransactionAction(formData: FormData) {
-  const userId = await requireUserId();
-  const { locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section } = await currentSection();
 
   const header = readHeader(formData);
   const lines = await buildLines(formData, section.id, section.baseCurrency, header.date);
@@ -153,9 +149,7 @@ export async function createTransactionAction(formData: FormData) {
 }
 
 export async function updateTransactionAction(formData: FormData) {
-  const userId = await requireUserId();
-  const { locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section } = await currentSection();
 
   const transactionId = formData.get("transactionId");
   if (typeof transactionId !== "string") throw new Error("Missing transactionId");
@@ -202,9 +196,7 @@ export async function updateTransactionAction(formData: FormData) {
 }
 
 export async function deleteTransactionAction(formData: FormData) {
-  const userId = await requireUserId();
-  const { locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section } = await currentSection();
 
   const transactionId = formData.get("transactionId");
   if (typeof transactionId !== "string") throw new Error("Missing transactionId");

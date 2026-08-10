@@ -2,9 +2,7 @@ import Link from "next/link";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, formulas } from "@/db/schema";
-import { getTranslations } from "@/i18n";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
+import { currentSection } from "@/lib/current-request";
 import { addMonths, monthsBetween, shiftWindow, today, yearMonthOf } from "@/lib/date";
 import { parseGroupOrder } from "@/lib/account-groups";
 import { getAccountBalances, getMonthlyBalanceSheet } from "@/lib/ledger";
@@ -34,9 +32,7 @@ export default async function AssetsChartPage({
 }: {
   searchParams: Promise<{ from?: string; to?: string }>;
 }) {
-  const userId = await requireUserId();
-  const { t, locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section, t, locale } = await currentSection();
   const { from: fromParam, to: toParam } = await searchParams;
 
   // The range was a fixed twelve months with only its end movable, which

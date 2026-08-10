@@ -2,11 +2,10 @@ import { and, asc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db/client";
 import { accounts, formulas } from "@/db/schema";
-import { getTranslations, type TranslationKey } from "@/i18n";
+import type { TranslationKey } from "@/i18n";
 import { isClosedBy } from "@/lib/accounts";
 import { parseGroupOrder } from "@/lib/account-groups";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
+import { currentSection } from "@/lib/current-request";
 import {
   addMonthsToDate,
   addYearsToDate,
@@ -47,9 +46,7 @@ export default async function AssetsPage({
 }: {
   searchParams: Promise<{ asOf?: string; revalued?: string; step?: string }>;
 }) {
-  const userId = await requireUserId();
-  const { t, locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section, t, locale } = await currentSection();
   const { asOf: asOfParam, revalued, step: stepParam } = await searchParams;
   const now = today(section.timezone);
   const asOf = asOfParam ?? now;

@@ -5,17 +5,13 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { sections, transactions } from "@/db/schema";
-import { getTranslations } from "@/i18n";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
 import { setManualRate } from "@/lib/exchange-rates";
 import { serializeFavorites } from "@/lib/nav-favorites";
 import { CURRENCY_OPTIONS, TIMEZONE_OPTIONS } from "@/lib/options";
+import { currentSection } from "@/lib/current-request";
 
 export async function updateSectionSettingsAction(formData: FormData) {
-  const userId = await requireUserId();
-  const { locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section } = await currentSection();
 
   const name = formData.get("name");
   const baseCurrency = formData.get("baseCurrency");
@@ -60,9 +56,7 @@ export async function updateSectionSettingsAction(formData: FormData) {
 }
 
 export async function updateNavFavoritesAction(formData: FormData) {
-  const userId = await requireUserId();
-  const { locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section } = await currentSection();
 
   // serializeFavorites drops anything that is not a real route and
   // enforces the cap, so a hand-posted form cannot put a dead tab — or
@@ -80,9 +74,7 @@ export async function updateNavFavoritesAction(formData: FormData) {
 }
 
 export async function setManualRateAction(formData: FormData) {
-  const userId = await requireUserId();
-  const { locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section } = await currentSection();
 
   const date = formData.get("date");
   const base = formData.get("base");

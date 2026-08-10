@@ -2,9 +2,7 @@ import Link from "next/link";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, formulas } from "@/db/schema";
-import { getTranslations } from "@/i18n";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
+import { currentSection } from "@/lib/current-request";
 import {
   addMonths,
   monthRange,
@@ -41,9 +39,7 @@ export default async function IncomeChartPage({
 }: {
   searchParams: Promise<{ from?: string; to?: string; unit?: string }>;
 }) {
-  const userId = await requireUserId();
-  const { t, locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section, t, locale } = await currentSection();
   const { from: fromParam, to: toParam, unit: unitParam } = await searchParams;
 
   const to = toParam ?? today(section.timezone);

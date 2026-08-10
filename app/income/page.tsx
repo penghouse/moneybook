@@ -2,7 +2,7 @@ import Link from "next/link";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, formulas } from "@/db/schema";
-import { getTranslations } from "@/i18n";
+import { currentSection } from "@/lib/current-request";
 import {
   addMonths,
   addYears,
@@ -15,8 +15,6 @@ import {
 } from "@/lib/date";
 import { parseGroupOrder } from "@/lib/account-groups";
 import { PeriodNav } from "../_components/period-nav";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
 import { buildFormulaItems } from "@/lib/formula-items";
 import { getAccountFlows } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
@@ -38,9 +36,7 @@ export default async function IncomePage({
 }: {
   searchParams: Promise<{ from?: string; to?: string }>;
 }) {
-  const userId = await requireUserId();
-  const { t, locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section, t, locale } = await currentSection();
   const { from: fromParam, to: toParam } = await searchParams;
 
   const now = today(section.timezone);

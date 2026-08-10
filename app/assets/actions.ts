@@ -5,15 +5,13 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { accounts, transactionLines, transactions, type Section } from "@/db/schema";
-import { getTranslations } from "@/i18n";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
 import {
   assertBalanced,
   getUnrealizedFx,
   type BalanceLineInput,
   type ResolvedUnrealizedFx,
 } from "@/lib/ledger";
+import { currentSection } from "@/lib/current-request";
 
 // Looked up by either localized name so switching the UI language
 // later doesn't spawn a second, duplicate FX account — see the plan's
@@ -51,9 +49,7 @@ async function ensureFxAccount(
 }
 
 export async function revalueAction(formData: FormData) {
-  const userId = await requireUserId();
-  const { t, locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section, t } = await currentSection();
 
   const asOf = formData.get("asOf");
   if (typeof asOf !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(asOf)) {

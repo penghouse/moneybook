@@ -11,7 +11,6 @@ import {
   transactions,
   type AccountGroup,
 } from "@/db/schema";
-import { getTranslations } from "@/i18n";
 import { interpolate } from "@/i18n/format";
 import { formatCsvFormatError, formatImportIssue } from "@/i18n/csv-errors";
 import { parseAccountsCsv, parseBudgetsCsv, parseRatesCsv, parseTransactionsCsv } from "@/lib/csv";
@@ -22,10 +21,9 @@ import {
   checkTransactionGroup,
   groupTransactionRows,
 } from "@/lib/csv-import";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
 import { toMinorUnits } from "@/lib/money";
 import { checkPairedRow, parsePairedCsv, planPairedAccounts } from "@/lib/paired-csv";
+import { currentSection } from "@/lib/current-request";
 import type { ImportState } from "./csv-types";
 
 /**
@@ -47,13 +45,6 @@ async function readCsv(formData: FormData): Promise<string | null> {
 
 function isCommit(formData: FormData): boolean {
   return formData.get("commit") === "1";
-}
-
-async function currentSection() {
-  const userId = await requireUserId();
-  const { t, locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
-  return { section, t };
 }
 
 /**

@@ -2,11 +2,9 @@ import { and, asc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db/client";
 import { accounts, formulas, FORMULA_SCOPES, type FormulaScope } from "@/db/schema";
-import { getTranslations } from "@/i18n";
 import { activeOn } from "@/lib/accounts";
 import { parseGroupOrder } from "@/lib/account-groups";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
+import { currentSection } from "@/lib/current-request";
 import { monthRange, today, yearMonthOf } from "@/lib/date";
 import { buildFormulaItems, formulaValues } from "@/lib/formula-items";
 import { evaluateFormula, parseTerms, termKey } from "@/lib/formulas";
@@ -35,9 +33,7 @@ export default async function FormulasPage({
 }: {
   searchParams: Promise<{ scope?: string; id?: string; new?: string; error?: string }>;
 }) {
-  const userId = await requireUserId();
-  const { t, locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section, t, locale } = await currentSection();
   const params = await searchParams;
 
   const scope: FormulaScope = FORMULA_SCOPES.includes(params.scope as FormulaScope)

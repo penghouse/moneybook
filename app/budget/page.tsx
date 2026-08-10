@@ -2,12 +2,10 @@ import Link from "next/link";
 import { and, asc, eq, like } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, budgets } from "@/db/schema";
-import { getTranslations } from "@/i18n";
+import { currentSection } from "@/lib/current-request";
 import { addMonths, addYears, monthRange, today, yearMonthOf, yearOf, yearRange } from "@/lib/date";
 import { activeDuring } from "@/lib/accounts";
 import { parseBudgetPeriod } from "@/lib/budgets";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
 import { getAccountFlows } from "@/lib/ledger";
 import { formatMoney, toMajorUnits } from "@/lib/money";
 import { PeriodNav } from "../_components/period-nav";
@@ -20,9 +18,7 @@ export default async function BudgetPage({
 }: {
   searchParams: Promise<{ period?: string }>;
 }) {
-  const userId = await requireUserId();
-  const { t, locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section, t, locale } = await currentSection();
   const { period: periodParam } = await searchParams;
 
   const now = today(section.timezone);

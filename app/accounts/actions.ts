@@ -15,6 +15,7 @@ import {
   type OrderableAccount,
 } from "@/lib/account-order";
 import { canTrackCounterparties } from "@/lib/accounts";
+import { currentSection } from "@/lib/current-request";
 import { getOrCreateSection } from "@/lib/current-section";
 import { requireUserId } from "@/lib/current-user";
 import { addDays, today } from "@/lib/date";
@@ -48,9 +49,7 @@ async function loadOwnedAccount(accountId: string, userId: string) {
 }
 
 export async function createAccountAction(formData: FormData) {
-  const userId = await requireUserId();
-  const { locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section } = await currentSection();
 
   const group = formData.get("group");
   const name = formData.get("name");
@@ -177,9 +176,7 @@ export async function toggleArchiveAction(formData: FormData) {
  * way in so a hand-posted form cannot drop a group or invent one.
  */
 export async function moveGroupAction(formData: FormData) {
-  const userId = await requireUserId();
-  const { locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section } = await currentSection();
 
   const group = formData.get("group");
   const direction = formData.get("direction");
@@ -266,9 +263,7 @@ export async function moveAccountAction(formData: FormData) {
 
 /** Moves a whole 상위 그룹 within its group, accounts and all. */
 export async function moveCategoryAction(formData: FormData) {
-  const userId = await requireUserId();
-  const { locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section } = await currentSection();
 
   const group = formData.get("group");
   const category = formData.get("category");

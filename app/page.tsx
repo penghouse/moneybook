@@ -2,11 +2,9 @@ import { and, asc, desc, eq, exists, gte, inArray, like, lte, or, sql } from "dr
 import Link from "next/link";
 import { db } from "@/db/client";
 import { accounts, transactionLines, transactions } from "@/db/schema";
-import { getTranslations } from "@/i18n";
 import { interpolate } from "@/i18n/format";
 import { activeOn, isFlowGroup } from "@/lib/accounts";
-import { getOrCreateSection } from "@/lib/current-section";
-import { requireUserId } from "@/lib/current-user";
+import { currentSection } from "@/lib/current-request";
 import {
   addMonths,
   addYears,
@@ -65,9 +63,7 @@ export default async function Home({
     duplicate?: string;
   }>;
 }) {
-  const userId = await requireUserId();
-  const { t, locale } = await getTranslations();
-  const section = await getOrCreateSection(db, { userId, locale });
+  const { section, t, locale } = await currentSection();
   const {
     error,
     name: errorAccountName,
