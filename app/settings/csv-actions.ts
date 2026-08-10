@@ -1,6 +1,6 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import {
@@ -54,6 +54,26 @@ async function currentSection() {
   const { t, locale } = await getTranslations();
   const section = await getOrCreateSection(db, { userId, locale });
   return { section, t };
+}
+
+/**
+ * A libSQL statement binds every value as a parameter and caps how many
+ * one statement may carry, so a multi-row insert of a whole ledger has
+ * to be split. Both numbers land near 3,000 parameters per statement —
+ * transactions bind 6 columns a row, lines 10 — which is well under the
+ * limit while keeping round trips down to tens rather than thousands.
+ * A five-year export is ~8,700 transactions, and inserting them
+ * one at a time is exactly what makes an import that size time out.
+ */
+const TX_CHUNK_ROWS = 500;
+const LINE_CHUNK_ROWS = 300;
+/** Budgets and rates, both five columns a row. */
+const UPSERT_CHUNK_ROWS = 500;
+
+function chunk<T>(items: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
 }
 
 function revalidateAll() {
@@ -190,32 +210,42 @@ export async function importTransactionsAction(
     };
   }
 
-  await db.transaction(async (tx) => {
-    for (const result of valid) {
-      const [inserted] = await tx
-        .insert(transactions)
-        .values({
-          sectionId: section.id,
-          date: result.date,
-          title: result.title,
-          memo: result.memo || null,
-          kind: result.kind,
-        })
-        .returning();
+  // Ids minted here rather than read back from `returning()`, which is
+  // what let this become two batched statements instead of two round
+  // trips per transaction — the same shape importPairedAction uses, and
+  // for the same reason: restoring a backup of a few thousand rows was
+  // otherwise thousands of round trips inside one open transaction.
+  const txValues: (typeof transactions.$inferInsert)[] = [];
+  const lineValues: (typeof transactionLines.$inferInsert)[] = [];
+  for (const result of valid) {
+    const id = crypto.randomUUID();
+    txValues.push({
+      id,
+      sectionId: section.id,
+      date: result.date,
+      title: result.title,
+      memo: result.memo || null,
+      kind: result.kind,
+    });
+    for (const [i, line] of result.lines.entries()) {
+      lineValues.push({
+        transactionId: id,
+        lineOrder: i,
+        side: line.side,
+        accountId: line.accountId,
+        currency: line.currency,
+        amount: line.amount,
+        rate: line.rate,
+        baseAmount: line.baseAmount,
+        memo: line.memo,
+      });
+    }
+  }
 
-      await tx.insert(transactionLines).values(
-        result.lines.map((line, i) => ({
-          transactionId: inserted.id,
-          lineOrder: i,
-          side: line.side,
-          accountId: line.accountId,
-          currency: line.currency,
-          amount: line.amount,
-          rate: line.rate,
-          baseAmount: line.baseAmount,
-          memo: line.memo,
-        })),
-      );
+  await db.transaction(async (tx) => {
+    for (const part of chunk(txValues, TX_CHUNK_ROWS)) await tx.insert(transactions).values(part);
+    for (const part of chunk(lineValues, LINE_CHUNK_ROWS)) {
+      await tx.insert(transactionLines).values(part);
     }
   });
 
@@ -231,24 +261,6 @@ export async function importTransactionsAction(
 }
 
 // ---- Paired-row CSV ----
-
-/**
- * A libSQL statement binds every value as a parameter and caps how many
- * one statement may carry, so a multi-row insert of a whole ledger has
- * to be split. Both numbers land near 3,000 parameters per statement —
- * transactions bind 6 columns a row, lines 10 — which is well under the
- * limit while keeping round trips down to tens rather than thousands.
- * A five-year export is ~8,700 transactions, and inserting them
- * one at a time is exactly what makes an import that size time out.
- */
-const TX_CHUNK_ROWS = 500;
-const LINE_CHUNK_ROWS = 300;
-
-function chunk<T>(items: readonly T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
-}
 
 export async function importPairedAction(
   _prev: ImportState,
@@ -445,21 +457,39 @@ export async function importBudgetsAction(
     };
   }
 
-  for (const row of valid) {
-    await db
-      .insert(budgets)
-      .values({
-        sectionId: section.id,
-        accountId: row.accountId,
-        period: row.period,
-        periodKey: row.periodKey,
-        amount: toMinorUnits(row.amountMajor, section.baseCurrency),
-      })
-      .onConflictDoUpdate({
-        target: [budgets.accountId, budgets.period, budgets.periodKey],
-        set: { amount: toMinorUnits(row.amountMajor, section.baseCurrency) },
-      });
-  }
+  // Deduped on the unique key, last row winning, which is what writing
+  // them one at a time amounted to — and is also what keeps a file that
+  // names the same budget twice from upserting a row against itself
+  // inside a single statement.
+  const budgetValues = [
+    ...new Map(
+      valid.map((row) => [
+        `${row.accountId}|${row.period}|${row.periodKey}`,
+        {
+          sectionId: section.id,
+          accountId: row.accountId,
+          period: row.period,
+          periodKey: row.periodKey,
+          amount: toMinorUnits(row.amountMajor, section.baseCurrency),
+        },
+      ]),
+    ).values(),
+  ];
+
+  await db.transaction(async (tx) => {
+    for (const part of chunk(budgetValues, UPSERT_CHUNK_ROWS)) {
+      await tx
+        .insert(budgets)
+        .values(part)
+        .onConflictDoUpdate({
+          target: [budgets.accountId, budgets.period, budgets.periodKey],
+          // `excluded` is the row that lost the conflict, so each row in
+          // the batch updates with its own amount. A literal here would
+          // give every conflicting row the same one.
+          set: { amount: sql`excluded.amount` },
+        });
+    }
+  });
 
   revalidateAll();
   return {
@@ -511,21 +541,26 @@ export async function importRatesAction(
     };
   }
 
-  for (const row of valid) {
-    await db
-      .insert(exchangeRates)
-      .values({
-        date: row.date,
-        base: row.base,
-        quote: row.quote,
-        rate: row.rate,
-        source: row.source,
-      })
-      .onConflictDoUpdate({
-        target: [exchangeRates.date, exchangeRates.base, exchangeRates.quote],
-        set: { rate: row.rate, source: row.source },
-      });
-  }
+  const rateValues = [
+    ...new Map(
+      valid.map((row) => [
+        `${row.date} ${row.base} ${row.quote}`,
+        { date: row.date, base: row.base, quote: row.quote, rate: row.rate, source: row.source },
+      ]),
+    ).values(),
+  ];
+
+  await db.transaction(async (tx) => {
+    for (const part of chunk(rateValues, UPSERT_CHUNK_ROWS)) {
+      await tx
+        .insert(exchangeRates)
+        .values(part)
+        .onConflictDoUpdate({
+          target: [exchangeRates.date, exchangeRates.base, exchangeRates.quote],
+          set: { rate: sql`excluded.rate`, source: sql`excluded.source` },
+        });
+    }
+  });
 
   revalidateAll();
   return {
