@@ -554,6 +554,75 @@ test.describe("reports", () => {
     await expect(share.locator("li")).toHaveCount(2);
   });
 
+  test("a row's account names open their own month, and its tags read as filters", async ({
+    page,
+  }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const food = await byName("식비");
+    const card = await byName("신용카드");
+
+    const [tx] = await db
+      .insert(transactions)
+      .values({ sectionId: section.id, date: "2026-08-11", title: "장보기", memo: "주말 #낭비" })
+      .returning();
+    await db.insert(transactionLines).values([
+      {
+        transactionId: tx.id,
+        side: "left",
+        accountId: food.id,
+        currency: "KRW",
+        amount: 84_000,
+        rate: 1,
+        baseAmount: 84_000,
+      },
+      {
+        transactionId: tx.id,
+        side: "right",
+        accountId: card.id,
+        currency: "KRW",
+        amount: 84_000,
+        rate: 1,
+        baseAmount: 84_000,
+      },
+    ]);
+
+    await page.goto("/?from=2026-08-01&to=2026-08-31");
+    const row = page.getByRole("listitem").filter({ hasText: "장보기" });
+
+    // The strip under the title goes somewhere; the title itself still
+    // opens the editor. Both live in the same row without fighting.
+    await row.getByRole("link", { name: "신용카드" }).click();
+    await expect(page).toHaveURL(new RegExp(`accountId=${card.id}&from=2026-08-01&to=2026-08-31`));
+    await expect(page.getByRole("heading", { name: "신용카드" })).toBeVisible();
+
+    await page.goBack();
+    await page
+      .getByRole("listitem")
+      .filter({ hasText: "장보기" })
+      .getByRole("link", { name: "식비" })
+      .click();
+    await expect(page).toHaveURL(new RegExp(`accountId=${food.id}`));
+
+    await page.goBack();
+    // A tag in a memo is a filter, so it reads as one and presses as one.
+    await page
+      .getByRole("listitem")
+      .filter({ hasText: "장보기" })
+      .getByRole("link", { name: "#낭비" })
+      .click();
+    await expect(page).toHaveURL(/tag=%EB%82%AD%EB%B9%84|tag=낭비/);
+    await expect(page.getByText("장보기")).toBeVisible();
+
+    // The title still opens the editor.
+    await page.goto("/?from=2026-08-01&to=2026-08-31");
+    await page.getByRole("button", { name: /장보기/ }).click();
+    await expect(page.getByRole("dialog", { name: "장보기" })).toBeVisible();
+  });
+
   test("the by-item chart is switched on and off from its legend", async ({ page }) => {
     const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
     const byName = async (name: string) =>

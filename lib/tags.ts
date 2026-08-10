@@ -57,3 +57,30 @@ export function normalizeTag(input: string | null | undefined): string | null {
     .match(/^[\p{L}\p{N}_]+$/u);
   return match ? match[0].toLowerCase() : null;
 }
+
+export type MemoSegment =
+  | { kind: "text"; value: string }
+  /** `value` is the tag as stored — no '#', lower-cased. */
+  | { kind: "tag"; value: string; raw: string };
+
+/**
+ * A memo split into what it says and what it tags, so a row can render
+ * 「커피 #낭비」 as text plus a chip rather than as one grey line.
+ *
+ * The tag keeps both forms: `value` is what a filter compares against,
+ * `raw` is what was typed — 「#Food」 stays 「#Food」 on screen while
+ * matching 「#food」, the same way `normalizeTag` treats them as one.
+ */
+export function splitMemo(text: string | null | undefined): MemoSegment[] {
+  if (!text) return [];
+  const segments: MemoSegment[] = [];
+  let last = 0;
+  for (const match of text.matchAll(TAG)) {
+    const at = match.index;
+    if (at > last) segments.push({ kind: "text", value: text.slice(last, at) });
+    segments.push({ kind: "tag", value: match[1].toLowerCase(), raw: match[0] });
+    last = at + match[0].length;
+  }
+  if (last < text.length) segments.push({ kind: "text", value: text.slice(last) });
+  return segments;
+}

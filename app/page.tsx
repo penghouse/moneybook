@@ -24,7 +24,7 @@ import {
   getTitleSuggestions,
 } from "@/lib/ledger";
 import { formatMoney, toMajorUnits } from "@/lib/money";
-import { collectTags, normalizeTag } from "@/lib/tags";
+import { collectTags, normalizeTag, splitMemo } from "@/lib/tags";
 import { CompositionChart } from "./_components/composition-chart";
 import { DialogActionForm, RowDialog } from "./_components/dialog";
 import { EntryForm, type EntryFormLabels } from "./_components/entry-form";
@@ -369,13 +369,42 @@ export default async function Home({
     return query ? `/?${query}` : "/";
   };
 
-  const andMore = (n: number) => t("entry.andMore").replace("{n}", String(n));
-  /** "식비 외 1" — the first account plus a count, so a split still reads
-   *  as one line in the list. */
-  const namesOf = (lines: { account: { name: string } }[]) =>
-    lines.length <= 1
-      ? (lines[0]?.account.name ?? "")
-      : `${lines[0].account.name} ${andMore(lines.length - 1)}`;
+  /**
+   * The account names on a row, each opening its own month.
+   *
+   * Every one of them is a link rather than "식비 외 1": on a split, the
+   * account you want to look at is as likely to be the second as the
+   * first, and a count cannot be pressed. The period follows whatever
+   * the list is reading, falling back to the month the transaction is
+   * in when nothing is filtered — an unfiltered list has no period of
+   * its own to inherit.
+   */
+  function AccountLinks({
+    date,
+    lines,
+  }: {
+    date: string;
+    lines: { account: { id: string; name: string } }[];
+  }) {
+    return (
+      <>
+        {lines.map((line, i) => {
+          const range = from && to ? { from, to } : monthRange(yearMonthOf(date));
+          return (
+            <span key={line.account.id} className="min-w-0">
+              {i > 0 && <span className="text-ink-faint">, </span>}
+              <Link
+                href={`/?accountId=${line.account.id}&from=${range.from}&to=${range.to}`}
+                className="hover:text-ink underline decoration-transparent underline-offset-2 hover:decoration-current"
+              >
+                {line.account.name}
+              </Link>
+            </span>
+          );
+        })}
+      </>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -645,20 +674,6 @@ export default async function Home({
                               )}
                             </span>
                           </span>
-                          <span className="text-ink-muted mt-0.5 flex items-center gap-1.5 text-sm">
-                            <span className="min-w-0 truncate">{namesOf(leftLines)}</span>
-                            <span className="text-ink-faint shrink-0">←</span>
-                            <span className="min-w-0 truncate">{namesOf(rightLines)}</span>
-                          </span>
-                          {/* The memo was written on this transaction and
-                              then only ever visible by opening it. A row
-                              that hides what you typed is a row you have
-                              to open to trust. */}
-                          {memoOf(tx) && (
-                            <span className="text-ink-faint mt-0.5 block truncate text-xs">
-                              {memoOf(tx)}
-                            </span>
-                          )}
                         </>
                       }
                     >
@@ -695,6 +710,42 @@ export default async function Home({
                         </div>
                       </div>
                     </RowDialog>
+
+                    {/* Outside the button on purpose: these are links,
+                        and a link inside a button is neither. The row's
+                        top line still opens the editor — this strip is
+                        the part that goes somewhere. */}
+                    <div className="-mt-1.5 px-4 pb-2.5">
+                      <div className="text-ink-muted flex flex-wrap items-center gap-x-1.5 text-sm">
+                        <AccountLinks date={tx.date} lines={leftLines} />
+                        <span className="text-ink-faint shrink-0">←</span>
+                        <AccountLinks date={tx.date} lines={rightLines} />
+                      </div>
+                      {/* The memo was written on this transaction and
+                          then only ever visible by opening it. A row that
+                          hides what you typed is a row you have to open
+                          to trust — and a tag in it is a filter, so it
+                          reads as one rather than as grey text. */}
+                      {memoOf(tx) && (
+                        <div className="text-ink-faint mt-0.5 flex flex-wrap items-center gap-x-1 text-xs">
+                          {splitMemo(memoOf(tx)).map((segment, i) =>
+                            segment.kind === "text" ? (
+                              <span key={i} className="min-w-0 break-keep">
+                                {segment.value.trim()}
+                              </span>
+                            ) : (
+                              <Link
+                                key={i}
+                                href={withParam("tag", segment.value)}
+                                className="bg-sunken text-ink-muted hover:bg-rule rounded-full px-2 py-0.5"
+                              >
+                                {segment.raw}
+                              </Link>
+                            ),
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </li>
                 );
               })}

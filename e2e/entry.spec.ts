@@ -116,12 +116,14 @@ test.describe("entry", () => {
     await expect(saveButton).toBeEnabled();
     await saveButton.click();
 
-    // The list shows one line per transaction: the first account plus a
-    // count, and the debit total.
+    // Every account on the row is named and pressable — on a split the
+    // one you want is as likely to be the second as the first.
+    const row = page.locator("main li").first();
+    await expect(row.getByRole("link", { name: "식비" })).toBeVisible();
+    await expect(row.getByRole("link", { name: "생활용품" })).toBeVisible();
     // The row is the button that opens its dialog; assert on that rather
     // than the list item, whose dialog is in the DOM too.
-    const summary = page.locator("main li").first().locator("button").first();
-    await expect(summary.getByText("식비 외 1")).toBeVisible();
+    const summary = row.locator("button").first();
     // Exact: the balance column beneath now reads "-₩45,000" (net worth
     // is negative with only a card debt on the books), which a substring
     // match would also hit.
@@ -384,7 +386,9 @@ test.describe("entry", () => {
 
     // Reached the way it is meant to be: the chip in the filter panel.
     await page.locator("main details", { hasText: "검색·필터" }).locator("summary").click();
-    await page.getByRole("link", { name: "#낭비", exact: true }).click();
+    // The chip row under the filter, not the ones now inside each memo —
+    // both go to the same place, but only one of them is "the filter".
+    await page.locator("main details").getByRole("link", { name: "#낭비", exact: true }).click();
 
     await expect(page).toHaveURL(/tag=/);
     await expect(page.getByText("2건")).toBeVisible();
