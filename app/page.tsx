@@ -79,26 +79,29 @@ export default async function Home({
   } = await searchParams;
   const tag = normalizeTag(tagParam);
 
-  const allAccounts = await db.query.accounts.findMany({
-    // The picker offers what can be posted to *now*; a closed account
-    // stays out of it even though its past transactions still read and
-    // edit normally.
-    where: and(eq(accounts.sectionId, section.id), activeOn(today(section.timezone))),
-    orderBy: asc(accounts.sortOrder),
-  });
-
-  // The filter is about the past, so it lists every account — looking up
-  // a closed card's history is exactly what it is for. Only the entry
-  // form is restricted to what can be posted to today.
-  const filterAccounts = await db.query.accounts.findMany({
-    where: eq(accounts.sectionId, section.id),
-    orderBy: asc(accounts.sortOrder),
-  });
-
-  // Deliberately not narrowed by whatever the list is filtered to, nor
-  // by how far back it reaches: the suggestions are for what you are
-  // about to type, not for what you are looking at.
-  const suggestions = await getTitleSuggestions(db, { sectionId: section.id });
+  // Three reads that need nothing from each other, issued together: one
+  // after another they were three network round trips on a deployment
+  // where the database is not in this process.
+  const [allAccounts, filterAccounts, suggestions] = await Promise.all([
+    db.query.accounts.findMany({
+      // The picker offers what can be posted to *now*; a closed account
+      // stays out of it even though its past transactions still read and
+      // edit normally.
+      where: and(eq(accounts.sectionId, section.id), activeOn(today(section.timezone))),
+      orderBy: asc(accounts.sortOrder),
+    }),
+    // The filter is about the past, so it lists every account — looking
+    // up a closed card's history is exactly what it is for. Only the
+    // entry form is restricted to what can be posted to today.
+    db.query.accounts.findMany({
+      where: eq(accounts.sectionId, section.id),
+      orderBy: asc(accounts.sortOrder),
+    }),
+    // Deliberately not narrowed by whatever the list is filtered to, nor
+    // by how far back it reaches: the suggestions are for what you are
+    // about to type, not for what you are looking at.
+    getTitleSuggestions(db, { sectionId: section.id }),
+  ]);
 
   const labels: EntryFormLabels = {
     date: t("common.date"),
@@ -186,32 +189,58 @@ export default async function Home({
   // captioned as one. Read from the book's beginning it would be the
   // lifetime sum, a number arriving from 예산 nobody could use.
   const isFlow = !!filtered && isFlowGroup(filtered.group);
-  const runningBalances = await getRunningBalances(db, {
-    sectionId: section.id,
-    baseCurrency: section.baseCurrency,
-    transactionIds: list.map((tx) => tx.id),
-    account: filtered
-      ? { id: filtered.id, group: filtered.group, currency: filtered.currency }
-      : undefined,
-    from: isFlow && from ? from : undefined,
-  });
+  // Everything the list needs *about* the list, in one round trip.
+  const [runningBalances, counterparties, titleShares] = await Promise.all([
+    getRunningBalances(db, {
+      sectionId: section.id,
+      baseCurrency: section.baseCurrency,
+      transactionIds: list.map((tx) => tx.id),
+      account: filtered
+        ? { id: filtered.id, group: filtered.group, currency: filtered.currency }
+        : undefined,
+      from: isFlow && from ? from : undefined,
+    }),
+    // 거래처관리 계정을 보고 있을 때만. Not bounded by the from/to filter
+    // above it on purpose — see getTitleTotals: who still owes what is a
+    // level, and reading it for August alone would report someone as
+    // settled up because they happened not to pay this month.
+    filtered?.tracksCounterparties
+      ? getTitleTotals(db, {
+          sectionId: section.id,
+          accountId: filtered.id,
+          group: filtered.group,
+          from: filtered.activeFrom,
+          to: today(section.timezone),
+          untitledLabel: t("accounts.uncategorized"),
+        })
+      : [],
+    /**
+     * What the period's money on this account went on, by 적요.
+     *
+     * Not "how does 식비 compare with 교통비" — that is the income
+     * statement, one screen back, and repeating it here would be the
+     * same answer twice. The question this screen can answer and that
+     * one cannot is what is *inside* the figure: 장보기 was two thirds
+     * of August's 식비, 커피 was a tenth.
+     *
+     * Grouped without parentheses, exactly like the 거래처별 잔액 — 「점심」
+     * and 「점심(회사 앞)」 are one line, or the biggest thing in the
+     * account arrives split into halves that each look small.
+     */
+    filtered && from && to
+      ? getTitleTotals(db, {
+          sectionId: section.id,
+          accountId: filtered.id,
+          group: filtered.group,
+          from,
+          to,
+          untitledLabel: t("accounts.uncategorized"),
+        })
+      : [],
+  ]);
   const balanceByTransactionId = new Map(runningBalances.map((b) => [b.transactionId, b] as const));
   const balanceCaption = `${isFlow ? t("entry.runningTotal") : t("entry.balance")} · ${filtered ? filtered.name : t("assets.netWorth")}`;
 
-  // 거래처관리 계정을 보고 있을 때만. Not bounded by the from/to filter
-  // above it on purpose — see getTitleTotals: who still owes
-  // what is a level, and reading it for August alone would report
-  // someone as settled up because they happened not to pay this month.
-  const counterparties = filtered?.tracksCounterparties
-    ? await getTitleTotals(db, {
-        sectionId: section.id,
-        accountId: filtered.id,
-        group: filtered.group,
-        from: filtered.activeFrom,
-        to: today(section.timezone),
-        untitledLabel: t("accounts.uncategorized"),
-      })
-    : [];
   const counterpartyTotal = counterparties.reduce((sum, c) => sum + c.amount, 0);
   const showShares = counterpartyTotal > 0 && counterparties.every((c) => c.amount > 0);
 
@@ -330,31 +359,6 @@ export default async function Home({
           .where(and(...conditions))
       )[0]
     : null;
-
-  /**
-   * What the period's money on this account went on, by 적요.
-   *
-   * Not "how does 식비 compare with 교통비" — that is the income
-   * statement, one screen back, and repeating it here would be the same
-   * answer twice. The question this screen can answer and that one
-   * cannot is what is *inside* the figure: 장보기 was two thirds of
-   * August's 식비, 커피 was a tenth.
-   *
-   * Grouped without parentheses, exactly like the 거래처별 잔액 above —
-   * 「점심」 and 「점심(회사 앞)」 are one line, or the biggest thing in
-   * the account arrives split into halves that each look small.
-   */
-  const titleShares =
-    filtered && from && to
-      ? await getTitleTotals(db, {
-          sectionId: section.id,
-          accountId: filtered.id,
-          group: filtered.group,
-          from,
-          to,
-          untitledLabel: t("accounts.uncategorized"),
-        })
-      : [];
 
   /** The same filter with one parameter changed — used by the tag chips. */
   const withParam = (key: string, value: string | null) => {

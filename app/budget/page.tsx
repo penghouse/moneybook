@@ -33,25 +33,27 @@ export default async function BudgetPage({
   const isYear = ref.period === "year";
   const { from, to } = isYear ? yearRange(ref.periodKey) : monthRange(ref.periodKey);
 
-  const expenseAccounts = await db.query.accounts.findMany({
-    where: and(
-      eq(accounts.sectionId, section.id),
-      eq(accounts.group, "expense"),
-      // Overlap with the period on screen, not with today — paging back
-      // to March should budget against the accounts that existed in
-      // March, including one closed since.
-      activeDuring(from, to),
-    ),
-    orderBy: asc(accounts.sortOrder),
-  });
-
-  const periodBudgets = await db.query.budgets.findMany({
-    where: and(
-      eq(budgets.sectionId, section.id),
-      eq(budgets.period, ref.period),
-      eq(budgets.periodKey, ref.periodKey),
-    ),
-  });
+  const [expenseAccounts, periodBudgets, flows] = await Promise.all([
+    db.query.accounts.findMany({
+      where: and(
+        eq(accounts.sectionId, section.id),
+        eq(accounts.group, "expense"),
+        // Overlap with the period on screen, not with today — paging
+        // back to March should budget against the accounts that existed
+        // in March, including one closed since.
+        activeDuring(from, to),
+      ),
+      orderBy: asc(accounts.sortOrder),
+    }),
+    db.query.budgets.findMany({
+      where: and(
+        eq(budgets.sectionId, section.id),
+        eq(budgets.period, ref.period),
+        eq(budgets.periodKey, ref.periodKey),
+      ),
+    }),
+    getAccountFlows(db, { sectionId: section.id, from, to }),
+  ]);
   const budgetByAccountId = new Map(periodBudgets.map((b) => [b.accountId, b.amount]));
 
   // On the year screen, what each account's twelve months add up to.
@@ -74,7 +76,6 @@ export default async function BudgetPage({
     }
   }
 
-  const flows = await getAccountFlows(db, { sectionId: section.id, from, to });
   const spentByAccountId = new Map(flows.map((f) => [f.accountId, f.baseAmount]));
 
   const base = (minor: number) => formatMoney(minor, section.baseCurrency, locale);

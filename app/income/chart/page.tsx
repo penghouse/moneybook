@@ -56,7 +56,18 @@ export default async function IncomeChartPage({
 
   const start = from > to ? to : from;
   const periods = byYear ? yearsBetween(start, to) : monthsBetween(start, to);
-  const totals = await getPeriodTotals(db, { sectionId: section.id, periods });
+  const [totals, catalog, formulaRows] = await Promise.all([
+    getPeriodTotals(db, { sectionId: section.id, periods }),
+    db.query.accounts.findMany({
+      where: eq(accounts.sectionId, section.id),
+      orderBy: asc(accounts.sortOrder),
+      columns: { id: true, name: true, group: true, category: true },
+    }),
+    db.query.formulas.findMany({
+      where: and(eq(formulas.sectionId, section.id), eq(formulas.scope, "income")),
+      orderBy: asc(formulas.sortOrder),
+    }),
+  ]);
   const points = totals.map((p) => ({
     label: p.period,
     // '2026-08' → '08', '2026' → '26'. Two characters is what the tick
@@ -76,15 +87,6 @@ export default async function IncomeChartPage({
   const unitHref = (next: "month" | "year") => `/income/chart?from=${from}&to=${to}&unit=${next}`;
   const trendLabel = byYear ? t("income.trendByYear") : t("income.trendByMonth");
 
-  const catalog = await db.query.accounts.findMany({
-    where: eq(accounts.sectionId, section.id),
-    orderBy: asc(accounts.sortOrder),
-    columns: { id: true, name: true, group: true, category: true },
-  });
-  const formulaRows = await db.query.formulas.findMany({
-    where: and(eq(formulas.sectionId, section.id), eq(formulas.scope, "income")),
-    orderBy: asc(formulas.sortOrder),
-  });
   // Always by month, whatever the bars above are set to: a line per
   // year over a five-year window is four segments, which is a table
   // wearing a chart's clothes.

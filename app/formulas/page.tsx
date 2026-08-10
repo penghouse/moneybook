@@ -45,12 +45,6 @@ export default async function FormulasPage({
     : "assets";
   const reportHref = scope === "assets" ? "/assets" : "/income";
 
-  const catalog = await db.query.accounts.findMany({
-    where: eq(accounts.sectionId, section.id),
-    orderBy: asc(accounts.sortOrder),
-    columns: { id: true, name: true, group: true, category: true },
-  });
-
   /**
    * The figures the menu shows next to each item.
    *
@@ -61,17 +55,32 @@ export default async function FormulasPage({
    * March. The report itself evaluates against whatever it is showing.
    */
   const now = today(section.timezone);
-  const amountByAccountId = new Map<string, number>();
-  if (scope === "assets") {
-    for (const b of await getAccountBalances(db, { sectionId: section.id, asOf: now })) {
-      amountByAccountId.set(b.accountId, b.baseAmount);
-    }
-  } else {
-    const { from, to } = monthRange(yearMonthOf(now));
-    for (const f of await getAccountFlows(db, { sectionId: section.id, from, to })) {
-      amountByAccountId.set(f.accountId, f.baseAmount);
-    }
-  }
+  const month = monthRange(yearMonthOf(now));
+  // Four reads that need nothing from each other. The two catalogs are
+  // separate queries rather than one filtered in JS because `activeOn`
+  // is the database's own predicate — see lib/accounts — and running the
+  // active-window rule twice, once here and once there, is how the two
+  // drift apart.
+  const [figures, catalog, liveCatalog, rows] = await Promise.all([
+    scope === "assets"
+      ? getAccountBalances(db, { sectionId: section.id, asOf: now })
+      : getAccountFlows(db, { sectionId: section.id, from: month.from, to: month.to }),
+    db.query.accounts.findMany({
+      where: eq(accounts.sectionId, section.id),
+      orderBy: asc(accounts.sortOrder),
+      columns: { id: true, name: true, group: true, category: true },
+    }),
+    db.query.accounts.findMany({
+      where: and(eq(accounts.sectionId, section.id), activeOn(now)),
+      orderBy: asc(accounts.sortOrder),
+      columns: { id: true, name: true, group: true, category: true },
+    }),
+    db.query.formulas.findMany({
+      where: and(eq(formulas.sectionId, section.id), eq(formulas.scope, scope)),
+      orderBy: asc(formulas.sortOrder),
+    }),
+  ]);
+  const amountByAccountId = new Map(figures.map((f) => [f.accountId, f.baseAmount]));
 
   const groupOrder = parseGroupOrder(section.groupOrder);
   const totals = formulaTotalLabels(scope, t);
@@ -98,22 +107,12 @@ export default async function FormulasPage({
   });
   const values = { byKey: formulaValues(items) };
 
-  const liveCatalog = await db.query.accounts.findMany({
-    where: and(eq(accounts.sectionId, section.id), activeOn(now)),
-    orderBy: asc(accounts.sortOrder),
-    columns: { id: true, name: true, group: true, category: true },
-  });
   const pickable = buildFormulaItems({
     scope,
     groupOrder,
     accounts: liveCatalog,
     amountByAccountId,
     labels: { totals },
-  });
-
-  const rows = await db.query.formulas.findMany({
-    where: and(eq(formulas.sectionId, section.id), eq(formulas.scope, scope)),
-    orderBy: asc(formulas.sortOrder),
   });
 
   const editing = params.id ? rows.find((r) => r.id === params.id) : undefined;

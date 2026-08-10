@@ -75,7 +75,7 @@ export default async function AssetsPage({
    * The catalog covers both the 상위 그룹 bands and the 계산식 menu,
    * which have to agree about which account is filed where.
    */
-  const [balances, sectionAccounts, catalog, fx] = await Promise.all([
+  const [balances, sectionAccounts, catalog, fx, formulaRows] = await Promise.all([
     getAccountBalances(db, { sectionId: section.id, asOf }),
     // Windows only — the balances themselves come from the ledger and
     // are never filtered by the catalog.
@@ -92,6 +92,10 @@ export default async function AssetsPage({
       sectionId: section.id,
       baseCurrency: section.baseCurrency,
       asOf,
+    }),
+    db.query.formulas.findMany({
+      where: and(eq(formulas.sectionId, section.id), eq(formulas.scope, "assets")),
+      orderBy: asc(formulas.sortOrder),
     }),
   ]);
   const windowOf = new Map(sectionAccounts.map((a) => [a.id, a]));
@@ -296,10 +300,6 @@ export default async function AssetsPage({
     accounts: catalog,
     amountByAccountId: new Map(balances.map((b) => [b.accountId, b.baseAmount])),
     labels: { totals: formulaTotalLabels("assets", t) },
-  });
-  const formulaRows = await db.query.formulas.findMany({
-    where: and(eq(formulas.sectionId, section.id), eq(formulas.scope, "assets")),
-    orderBy: asc(formulas.sortOrder),
   });
 
   const assetsHref = (date: string, unit: "month" | "year") => `/assets?asOf=${date}&step=${unit}`;
