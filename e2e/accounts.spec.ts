@@ -18,6 +18,37 @@ function accountRow(page: Page, name: string) {
   return page.locator("main li").filter({ has: page.locator("summary").filter({ hasText: name }) });
 }
 
+/**
+ * Sets a row's (or the new-account form's) 상위 그룹.
+ *
+ * The field is a menu of what the 분류 already has, with one option that
+ * opens a box for a new one — so filing under an existing 상위 그룹 and
+ * inventing one are two different gestures, and the test does whichever
+ * applies.
+ */
+async function setCategory(scope: Locator, name: string) {
+  const select = scope.locator('select[name="category"]');
+  if ((await select.count()) > 0) {
+    const offered = await select.locator("option").allInnerTexts();
+    if (offered.includes(name)) {
+      await select.selectOption({ label: name });
+      return;
+    }
+    await select.selectOption({ label: "+ 새 상위 그룹" });
+  }
+  await scope.locator('input[name="category"]').fill(name);
+}
+
+/** The 상위 그룹 the field offers, without 미분류 or the "new" option. */
+async function categoryOptions(scope: Locator): Promise<string[]> {
+  const values = await scope
+    .locator('select[name="category"] option')
+    .evaluateAll((options) => options.map((o) => (o as HTMLOptionElement).value));
+  // 미분류 and the "new" entry both carry an empty value, so what is
+  // left is exactly the 상위 그룹 on offer.
+  return values.filter((v) => v !== "");
+}
+
 test.describe("accounts", () => {
   let currentUserId = "";
 
@@ -233,7 +264,7 @@ test.describe("accounts", () => {
     for (const name of ["식비", "생활용품"]) {
       const row = page.locator("li").filter({ hasText: name }).first();
       await row.locator("summary").click();
-      await row.locator('input[name="category"]').fill("먹고사는 것");
+      await setCategory(row, "먹고사는 것");
       await row.getByRole("button", { name: "저장" }).click();
       await expect(page.getByRole("heading", { name: "먹고사는 것" }).first()).toBeVisible();
     }
@@ -278,30 +309,30 @@ test.describe("accounts", () => {
     // File an expense under 먹고사는 것.
     const food = accountRow(page, "식비");
     await food.locator("summary").click();
-    await food.locator('input[name="category"]').fill("먹고사는 것");
+    await setCategory(food, "먹고사는 것");
     await food.getByRole("button", { name: "저장" }).click();
     await expect(page.getByRole("heading", { name: "먹고사는 것" }).first()).toBeVisible();
 
-    const optionsFor = (input: Locator) =>
-      input.evaluate((el: HTMLInputElement) => {
-        const list = el.list;
-        return list ? [...list.options].map((o) => o.value) : null;
-      });
-
     // A 상위 그룹 groups accounts within one 분류, so an expense's
     // grouping has no business being offered on a 자산.
+    //
+    // Read off the <option> elements, which is the point of the field
+    // being a menu rather than a text box with a suggestion popup: the
+    // popup is browser UI, so a test could check the `list` attribute
+    // and never what was actually on offer — and what was on offer was
+    // the previous 분류's, pickable, which is how an asset account ends
+    // up filed under an expense's 상위 그룹.
     const bank = accountRow(page, "은행");
     await bank.locator("summary").click();
-    expect(await optionsFor(bank.locator('input[name="category"]'))).toEqual([]);
-    expect(await optionsFor(food.locator('input[name="category"]'))).toEqual(["먹고사는 것"]);
+    expect(await categoryOptions(bank)).toEqual([]);
+    expect(await categoryOptions(food)).toEqual(["먹고사는 것"]);
 
     // The new-account form follows whichever 분류 is selected.
     const newForm = page.locator("form").filter({ has: page.getByPlaceholder("예: 식비") });
-    const newCategory = newForm.locator('input[name="category"]');
     await newForm.locator('select[name="group"]').selectOption("expense");
-    expect(await optionsFor(newCategory)).toEqual(["먹고사는 것"]);
+    expect(await categoryOptions(newForm)).toEqual(["먹고사는 것"]);
     await newForm.locator('select[name="group"]').selectOption("asset");
-    expect(await optionsFor(newCategory)).toEqual([]);
+    expect(await categoryOptions(newForm)).toEqual([]);
   });
 
   test("moving an account up changes its order within the group", async ({ page }) => {
@@ -339,7 +370,7 @@ test.describe("accounts", () => {
     for (const name of ["식비", "생활용품"]) {
       const row = accountRow(page, name);
       await row.locator("summary").click();
-      await row.locator('input[name="category"]').fill("먹고사는 것");
+      await setCategory(row, "먹고사는 것");
       await row.getByRole("button", { name: "저장" }).click();
       await expect(page.getByRole("heading", { name: "먹고사는 것" }).first()).toBeVisible();
     }
@@ -361,7 +392,7 @@ test.describe("accounts", () => {
     for (const name of ["식비", "교통비"]) {
       const row = accountRow(page, name);
       await row.locator("summary").click();
-      await row.locator('input[name="category"]').fill("먹고사는 것");
+      await setCategory(row, "먹고사는 것");
       await row.getByRole("button", { name: "저장" }).click();
       await expect(page.getByRole("heading", { name: "먹고사는 것" }).first()).toBeVisible();
     }
@@ -385,7 +416,7 @@ test.describe("accounts", () => {
     ]) {
       const row = accountRow(page, name);
       await row.locator("summary").click();
-      await row.locator('input[name="category"]').fill(category);
+      await setCategory(row, category);
       await row.getByRole("button", { name: "저장" }).click();
       await expect(page.getByRole("heading", { name: category }).first()).toBeVisible();
     }

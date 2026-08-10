@@ -178,6 +178,7 @@ test("moneybook walkthrough", async ({ page, context }) => {
   for (const name of ["식비", "생활용품"]) {
     const row = main(page).locator("li").filter({ hasText: name }).first();
     await row.locator("summary").click();
+    await row.locator('select[name="category"]').selectOption({ label: "+ 새 상위 그룹" });
     await row.locator('input[name="category"]').fill("먹고사는 것");
     await row.getByRole("button", { name: "저장" }).click();
   }

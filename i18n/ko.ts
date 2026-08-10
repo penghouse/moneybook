@@ -76,6 +76,8 @@ const ko = {
   "accounts.group": "분류",
   "accounts.category": "상위 그룹",
   "accounts.categoryPlaceholder": "예: 먹는 것",
+  "accounts.categoryNew": "+ 새 상위 그룹",
+  "accounts.categoryPick": "목록에서 고르기",
   "accounts.uncategorized": "미분류",
   "accounts.activeTo": "사용 끝",
   "accounts.activeHint":
