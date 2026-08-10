@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db/client";
 import { accounts, transactionLines, transactions } from "@/db/schema";
@@ -134,20 +134,34 @@ export default async function Home({
     conditions.push(or(like(transactions.title, pattern), like(transactions.memo, pattern))!);
   }
   if (accountId) {
-    // accountId comes straight from the query string, so the join is
-    // constrained to this section's own transactions — otherwise this
-    // reads every line of whichever account the caller names.
-    const matches = await db
-      .select({ transactionId: transactionLines.transactionId })
-      .from(transactionLines)
-      .innerJoin(transactions, eq(transactionLines.transactionId, transactions.id))
-      .where(
-        and(eq(transactionLines.accountId, accountId), eq(transactions.sectionId, section.id)),
-      );
+    // Correlated rather than a list of ids fetched first: an account with
+    // ten thousand transactions on it would otherwise be read out in full
+    // and posted back as a ten-thousand-term `IN (...)`. The subquery
+    // stops at the first matching line and the statement stays one line
+    // long however big the book gets.
+    //
+    // The outer query is already fenced to this section, which is what
+    // keeps `accountId` — straight off the query string — from naming
+    // somebody else's account and matching anything.
+    //
+    // Built with `exists()` rather than a raw sql`` template: this
+    // condition is handed to db.query.transactions, and the relational
+    // query builder rewrites every column it finds in a raw chunk to the
+    // outer table's alias — which silently turned the subquery's own
+    // `transaction_lines.transaction_id` into `transactions.transaction_id`
+    // and made the statement fail to parse. A subquery built through the
+    // builder keeps its own scope.
     conditions.push(
-      inArray(
-        transactions.id,
-        matches.map((m) => m.transactionId),
+      exists(
+        db
+          .select({ one: transactionLines.id })
+          .from(transactionLines)
+          .where(
+            and(
+              eq(transactionLines.transactionId, transactions.id),
+              eq(transactionLines.accountId, accountId),
+            ),
+          ),
       ),
     );
   }
