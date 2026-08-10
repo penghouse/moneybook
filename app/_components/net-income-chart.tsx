@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { niceScale } from "@/lib/chart-scale";
 import { formatMoney } from "@/lib/money";
+import { AXIS_GUTTER, ChartGrid } from "./chart-axis";
 
 /**
  * The viewBox is a fixed box that the bars divide up, rather than a
@@ -19,6 +21,12 @@ const CHART_HEIGHT = 150;
 const LABEL_HEIGHT = 24;
 /** Enough ticks to read the axis by; more than this and they collide. */
 const MAX_TICKS = 12;
+/**
+ * Headroom above the top gridline, for that gridline's own label. SVG
+ * puts a text baseline at y, so a label on a rule at y=0 has its whole
+ * ascender outside the viewBox and renders sliced in half.
+ */
+const PLOT_TOP = 9;
 
 export interface NetIncomeChartPoint {
   /** The period's full name — '2026-08' or '2026'. Read out and tabulated. */
@@ -75,18 +83,30 @@ export function NetIncomeChart({
 
   if (points.length === 0) return null;
 
-  const maxAbs = Math.max(1, ...points.map((p) => Math.abs(p.net)));
-  const halfHeight = (CHART_HEIGHT - LABEL_HEIGHT) / 2;
-  const pxPerUnit = halfHeight / maxAbs;
-  const baseline = halfHeight;
+  // Zero is always on the axis — a bar chart of gains and losses has to
+  // show which side of nothing each month is on — but the axis only
+  // reaches as far the other way as the data does. Reserving a
+  // symmetric half for deficits, as this did, spent half the plot on
+  // empty space in a year that never had one, and halved every bar to
+  // pay for it.
+  const nets = points.map((p) => p.net);
+  const scale = niceScale(Math.min(0, ...nets), Math.max(0, ...nets));
+  const plotBottom = CHART_HEIGHT - LABEL_HEIGHT;
+  const pxPerUnit = (plotBottom - PLOT_TOP) / (scale.max - scale.min);
+  const y = (value: number) => plotBottom - (value - scale.min) * pxPerUnit;
+  const baseline = y(0);
 
-  // Each period gets an equal slice of the fixed box; the gap is a
-  // quarter of it, capped, so twelve bars breathe and sixty still have a
-  // hairline between them rather than reading as one block.
-  const slot = VIEW_WIDTH / points.length;
+  // Each period gets an equal slice of the plot; the gap is a quarter of
+  // it, capped, so twelve bars breathe and sixty still have a hairline
+  // between them rather than reading as one block.
+  const plotLeft = AXIS_GUTTER;
+  const plotWidth = VIEW_WIDTH - plotLeft;
+  const slot = plotWidth / points.length;
   const gap = Math.min(6, slot * 0.25);
-  const barWidth = slot - gap;
-  const leftOf = (i: number) => i * slot + gap / 2;
+  // Capped: a five-bar range would otherwise draw 50px slabs, which read
+  // as a different chart from the twelve-bar one beside it.
+  const barWidth = Math.min(24, slot - gap);
+  const leftOf = (i: number) => plotLeft + i * slot + (slot - barWidth) / 2;
 
   const extremeIndex = points.reduce(
     (best, p, i) => (Math.abs(p.net) > Math.abs(points[best].net) ? i : best),
@@ -124,13 +144,13 @@ export function NetIncomeChart({
           role="group"
           aria-label={tableCaption}
         >
-          <line
-            x1={0}
-            y1={baseline}
-            x2={VIEW_WIDTH}
-            y2={baseline}
-            className="stroke-rule"
-            strokeWidth={1}
+          <ChartGrid
+            ticks={scale.ticks}
+            y={y}
+            left={plotLeft}
+            right={VIEW_WIDTH}
+            currency={currency}
+            locale={locale}
           />
           {points.map((p, i) => {
             const x = leftOf(i);
@@ -181,7 +201,7 @@ export function NetIncomeChart({
                     month is a 0px bar, and aiming at painted pixels would
                     make it unreachable. */}
                 <rect
-                  x={i * slot}
+                  x={plotLeft + i * slot}
                   y={0}
                   width={slot}
                   height={CHART_HEIGHT}
