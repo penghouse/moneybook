@@ -21,6 +21,7 @@ import {
   SectionLabel,
 } from "../_components/ui";
 import { SubmitButton } from "../_components/submit-button";
+import { CategoryField, type CategoryFieldLabels } from "./category-field";
 import { NewAccountFields } from "./new-account-fields";
 import {
   createAccountAction,
@@ -87,15 +88,15 @@ export default async function AccountsPage({
     byGroup.get(account.group)!.push(account);
   }
 
-  // Suggestions for the category field. Free text is what makes a typo
-  // able to split "먹는 것" in two, and offering what already exists is
-  // the cheapest thing that stops it.
-  // Per 분류, not per book. A 상위 그룹 groups accounts *within* a
-  // 분류 — 「먹는 것」 is a way of arranging 비용 and means nothing under
-  // 자산 — so offering every book-wide value here was noise on the good
-  // days and, on a mistyped one, a 상위 그룹 straddling two 분류.
-  const categoriesByGroup = new Map<AccountGroup, string[]>(
-    groupOrder.map((group) => [
+  // What the 상위 그룹 menu offers, per 분류 — not per book. A 상위 그룹
+  // groups accounts *within* a 분류: 「먹는 것」 is a way of arranging
+  // 비용 and means nothing under 자산, so a book-wide list was noise on
+  // the good days and, on a mistyped one, a 상위 그룹 straddling two 분류.
+  //
+  // Picking from what exists is also what stops a typo splitting 「먹는 것」
+  // in two; a new one is still one option away.
+  const categoriesByGroup = Object.fromEntries(
+    ACCOUNT_GROUPS.map((group) => [
       group,
       [
         ...new Set(
@@ -106,9 +107,15 @@ export default async function AccountsPage({
         ),
       ].sort(),
     ]),
-  );
-  const CATEGORY_LIST_PREFIX = "account-categories-";
-  const categoryListId = (group: AccountGroup) => `${CATEGORY_LIST_PREFIX}${group}`;
+  ) as Record<AccountGroup, string[]>;
+
+  const categoryLabels: CategoryFieldLabels = {
+    category: t("accounts.category"),
+    uncategorized: t("accounts.uncategorized"),
+    addNew: t("accounts.categoryNew"),
+    backToList: t("accounts.categoryPick"),
+    placeholder: t("accounts.categoryPlaceholder"),
+  };
 
   // The dictionary lives on the server, so the labels travel as values.
   const groupLabels = Object.fromEntries(
@@ -136,9 +143,8 @@ export default async function AccountsPage({
           <NewAccountFields
             groups={groupOrder}
             groupLabels={groupLabels}
-            categoryListPrefix={CATEGORY_LIST_PREFIX}
-            labels={{ group: t("accounts.group"), category: t("accounts.category") }}
-            placeholder={t("accounts.categoryPlaceholder")}
+            categoriesByGroup={categoriesByGroup}
+            labels={{ group: t("accounts.group"), category: categoryLabels }}
           />
           <div className="min-w-0 md:order-[-1]">
             <Label>{t("common.name")}</Label>
@@ -165,15 +171,6 @@ export default async function AccountsPage({
           </SubmitButton>
         </form>
       </Card>
-
-      {/* One list per 분류; the fields above point at whichever applies. */}
-      {[...categoriesByGroup].map(([group, categories]) => (
-        <datalist key={group} id={categoryListId(group)}>
-          {categories.map((category) => (
-            <option key={category} value={category} />
-          ))}
-        </datalist>
-      ))}
 
       {groupOrder.map((group, groupIndex) => {
         const list = byGroup.get(group) ?? [];
@@ -218,7 +215,7 @@ export default async function AccountsPage({
                     <div key={category ?? "\u0000uncategorized"}>
                       {/* Only worth a heading once something is filed —
                         a lone "미분류" band over every account is noise. */}
-                      {(categoriesByGroup.get(group)?.length ?? 0) > 0 && (
+                      {categoriesByGroup[group].length > 0 && (
                         <h3 className="bg-sunken border-rule-soft flex items-center gap-2 border-t px-4 py-1.5 first:border-t-0">
                           <span className="text-ink-muted min-w-0 truncate text-xs font-semibold">
                             {category ?? t("accounts.uncategorized")}
@@ -343,17 +340,11 @@ export default async function AccountsPage({
                                         className={controlClass}
                                       />
                                     </div>
-                                    <div className="min-w-0">
-                                      <Label>{t("accounts.category")}</Label>
-                                      <input
-                                        type="text"
-                                        name="category"
-                                        list={categoryListId(account.group)}
-                                        defaultValue={account.category ?? ""}
-                                        placeholder={t("accounts.categoryPlaceholder")}
-                                        className={controlClass}
-                                      />
-                                    </div>
+                                    <CategoryField
+                                      categories={categoriesByGroup[account.group]}
+                                      defaultValue={account.category ?? ""}
+                                      labels={categoryLabels}
+                                    />
                                     <div className="min-w-0">
                                       <Label>{t("common.memo")}</Label>
                                       <input

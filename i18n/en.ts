@@ -78,6 +78,8 @@ const en: Record<keyof typeof ko, string> = {
   "accounts.group": "Group",
   "accounts.category": "Category",
   "accounts.categoryPlaceholder": "e.g. Eating out",
+  "accounts.categoryNew": "+ New category",
+  "accounts.categoryPick": "Pick from list",
   "accounts.uncategorized": "Uncategorized",
   "accounts.activeTo": "In use until",
   "accounts.activeHint":

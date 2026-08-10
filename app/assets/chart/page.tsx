@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
@@ -6,6 +7,7 @@ import { currentSection } from "@/lib/current-request";
 import { addMonths, monthsBetween, shiftWindow, today, yearMonthOf } from "@/lib/date";
 import { parseGroupOrder } from "@/lib/account-groups";
 import { getAccountBalances, getMonthlyBalanceSheet } from "@/lib/ledger";
+import { DEFAULT_SERIES, parseSeries, seriesCookieName } from "@/lib/chart-series";
 import { buildReportSeries } from "@/lib/report-series";
 import { formatMoney } from "@/lib/money";
 import { CompositionChart } from "../../_components/composition-chart";
@@ -85,6 +87,17 @@ export default async function AssetsChartPage({
     return `/assets/chart?from=${next.from}&to=${next.to}`;
   };
   const latest = history[history.length - 1];
+
+  // The legend's on/off choice, as it was left. Kept in a cookie and read
+  // here rather than restored on the client, so the page renders with the
+  // right series already on — 이전/다음 기간 is an ordinary navigation, and
+  // a chart that reset itself on every step was the complaint.
+  const seriesCookie = seriesCookieName("assets");
+  const stored = parseSeries(
+    (await cookies()).get(seriesCookie)?.value,
+    reportSeries.map((s) => s.key),
+  );
+  const initialSeries = stored ?? reportSeries.slice(0, DEFAULT_SERIES).map((s) => s.key);
 
   return (
     <div className="space-y-4">
@@ -174,7 +187,8 @@ export default async function AssetsChartPage({
                 periods={seriesMonths}
                 ticks={seriesMonths.map((m) => m.slice(2).replace("-", "."))}
                 series={reportSeries}
-                initial={reportSeries.slice(0, 2).map((s) => s.key)}
+                initial={initialSeries}
+                persistAs={seriesCookie}
                 currency={section.baseCurrency}
                 locale={locale}
                 caption={t("series.section")}

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { niceScale } from "@/lib/chart-scale";
+import { MAX_SERIES, serializeSeries } from "@/lib/chart-series";
 import { formatMoney } from "@/lib/money";
 import { AXIS_GUTTER, ChartGrid } from "./chart-axis";
 
@@ -20,17 +21,6 @@ const PLOT_TOP = 9;
  * them across a phone run into each other.
  */
 const MAX_TICKS = 6;
-
-/**
- * How many series can be on at once.
- *
- * The cap is the palette's, not a layout preference: four steps clear
- * every colour gate in both themes and a fifth could not be found that
- * clears the normal-vision floor against them. A chart cannot draw a
- * series it has no colour for, so the legend refuses the fifth rather
- * than reusing a colour and telling two stories with one line.
- */
-export const MAX_SERIES = 4;
 
 const SERIES_STROKE = [
   "stroke-series-1",
@@ -72,6 +62,7 @@ export function SeriesChart({
   ticks,
   series,
   initial,
+  persistAs,
   currency,
   locale,
   caption,
@@ -84,6 +75,11 @@ export function SeriesChart({
   series: SeriesChartSeries[];
   /** Keys drawn on first render, in colour order. */
   initial: string[];
+  /**
+   * Cookie the choice is written to, so it survives 이전/다음 기간 and a
+   * reload. The page reads it back and hands it in as `initial`.
+   */
+  persistAs: string;
   currency: string;
   locale: string;
   caption: string;
@@ -99,13 +95,21 @@ export function SeriesChart({
   const toggle = (key: string) => {
     setSlots((current) => {
       const next = new Map(current);
-      if (next.delete(key)) return next;
-      // The lowest colour nobody is using, so switching one off and
-      // another on reuses the freed slot rather than shuffling everyone.
-      const taken = new Set(next.values());
-      const free = SERIES_STROKE.findIndex((_, i) => !taken.has(i));
-      if (free < 0) return current;
-      next.set(key, free);
+      if (!next.delete(key)) {
+        // The lowest colour nobody is using, so switching one off and
+        // another on reuses the freed slot rather than shuffling everyone.
+        const taken = new Set(next.values());
+        const free = SERIES_STROKE.findIndex((_, i) => !taken.has(i));
+        if (free < 0) return current;
+        next.set(key, free);
+      }
+      // Written straight to the cookie rather than through a server
+      // action: the legend has to answer the press immediately, and the
+      // server only needs to know by the next navigation. In colour-slot
+      // order, so reopening the page restores the colours as well as the
+      // selection.
+      const chosen = [...next.entries()].sort((a, b) => a[1] - b[1]).map(([name]) => name);
+      document.cookie = `${persistAs}=${serializeSeries(chosen)}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
       return next;
     });
   };
