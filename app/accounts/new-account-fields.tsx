@@ -60,6 +60,16 @@ export function NewAccountFields({
       <div className="min-w-0">
         <Label>{labels.category}</Label>
         <input
+          // Keyed by 분류, so changing it builds a new input rather than
+          // re-pointing this one. Chromium binds an input to its datalist
+          // when the element is created and keeps showing that list after
+          // `list` changes — the attribute was right, the dropdown still
+          // offered 비용's 상위 그룹 under 자산, and nothing in the DOM said
+          // so. Remounting is what actually rebinds it.
+          //
+          // It also clears whatever was typed, which is the right thing
+          // here: a 상위 그룹 written for 비용 means nothing under 자산.
+          key={group}
           type="text"
           name="category"
           list={`${categoryListPrefix}${group}`}
