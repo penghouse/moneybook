@@ -32,7 +32,6 @@ const en: Record<keyof typeof ko, string> = {
   "common.cancel": "Cancel",
   "common.close": "Close",
   "common.delete": "Delete",
-  "common.edit": "Edit",
   "common.add": "Add",
   "common.date": "Date",
   "common.amount": "Amount",
@@ -40,7 +39,6 @@ const en: Record<keyof typeof ko, string> = {
   "common.memo": "Memo",
   "common.name": "Name",
   "common.currency": "Currency",
-  "common.loading": "Loading...",
   "common.moveUp": "Move up",
   "common.moveDown": "Move down",
   "common.prevMonth": "Previous month",
@@ -58,7 +56,6 @@ const en: Record<keyof typeof ko, string> = {
   "common.saving": "Saving…",
   "common.working": "Working…",
 
-  "auth.login": "Sign in",
   "auth.logout": "Sign out",
   "auth.loginWithGoogle": "Sign in with Google",
   "auth.loginWithNaver": "Sign in with Naver",
@@ -67,10 +64,6 @@ const en: Record<keyof typeof ko, string> = {
     "The allowlist (ALLOWED_EMAILS) is empty, so nobody can sign in. Set it in the deployment environment and redeploy.",
   "auth.error": "Sign-in failed. ({code})",
   "auth.allowlistHint": "Only accounts on the allowlist can use this book.",
-
-  "locale.toggle": "Language",
-  "locale.ko": "한국어",
-  "locale.en": "English",
 
   "theme.toggle": "Theme",
   "theme.light": "Light",
@@ -82,9 +75,6 @@ const en: Record<keyof typeof ko, string> = {
   "accounts.deleteError": "An account with transactions can't be deleted. Archive it instead.",
   "accounts.empty": "No accounts yet.",
   "accounts.showArchived": "Show closed accounts",
-  "accounts.groupOrder": "Group order",
-  "accounts.groupOrderHint":
-    "The balance sheet, income statement and budget all follow the order set here, and the account order with it.",
   "accounts.group": "Group",
   "accounts.category": "Category",
   "accounts.categoryPlaceholder": "e.g. Eating out",
@@ -108,7 +98,6 @@ const en: Record<keyof typeof ko, string> = {
   "settings.navFavoritesHint":
     "Pick up to 4 destinations to keep at the bottom of the phone screen.",
   "settings.exchangeRates": "Exchange rates",
-  "settings.manualRate": "Enter a rate manually",
   "settings.rate": "Rate",
   "settings.recentRates": "Recent rates",
   "settings.noRates": "No rates saved yet.",
@@ -171,7 +160,6 @@ const en: Record<keyof typeof ko, string> = {
   "entry.swap": "Swap sides",
   "entry.addLine": "Add line",
   "entry.difference": "Difference",
-  "entry.andMore": "+{n}",
   "entry.duplicate": "Duplicate",
   "entry.duplicateNotice": "A copy. Check it over — saving adds it as a new transaction.",
   "entry.counterparties": "By counterparty",
@@ -238,7 +226,6 @@ const en: Record<keyof typeof ko, string> = {
   "income.trendByMonth": "By month",
   "income.trendByYear": "By year",
   "income.period": "Period",
-  "income.thisMonth": "This month",
 
   "budget.setBudget": "Set budget",
   "budget.spent": "Spent",
@@ -279,7 +266,6 @@ const en: Record<keyof typeof ko, string> = {
   "formula.empty": "No formulas yet.",
   "formula.emptyHint": "Build a figure the chart of accounts doesn't keep out of the ones it does.",
   "formula.missingTerms": "{n} item(s) no longer exist and were left out.",
-  "formula.currentValue": "Now",
   "formula.snapshotHint":
     "Worked out from what this screen is showing. Revisit the formula when the items change.",
 };
