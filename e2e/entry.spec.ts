@@ -121,6 +121,9 @@ test.describe("entry", () => {
     const row = page.locator("main li").first();
     await expect(row.getByRole("link", { name: "식비" })).toBeVisible();
     await expect(row.getByRole("link", { name: "생활용품" })).toBeVisible();
+    // One link per account, not per line — a split that puts two lines on
+    // the same account must not name it twice.
+    await expect(row.getByRole("link", { name: "신용카드" })).toHaveCount(1);
     // The row is the button that opens its dialog; assert on that rather
     // than the list item, whose dialog is in the DOM too.
     const summary = row.locator("button").first();

@@ -386,18 +386,23 @@ export default async function Home({
     date: string;
     lines: { account: { id: string; name: string } }[];
   }) {
+    // One link per *account*, not per line: a transaction may put two
+    // lines on the same account — 식비 12,000 and 식비 8,000 in one
+    // split — and naming it twice says there were two accounts.
+    const shown = [...new Map(lines.map((l) => [l.account.id, l.account])).values()];
+    const range = from && to ? { from, to } : monthRange(yearMonthOf(date));
+
     return (
       <>
-        {lines.map((line, i) => {
-          const range = from && to ? { from, to } : monthRange(yearMonthOf(date));
+        {shown.map((account, i) => {
           return (
-            <span key={line.account.id} className="min-w-0">
+            <span key={account.id} className="min-w-0">
               {i > 0 && <span className="text-ink-faint">, </span>}
               <Link
-                href={`/?accountId=${line.account.id}&from=${range.from}&to=${range.to}`}
+                href={`/?accountId=${account.id}&from=${range.from}&to=${range.to}`}
                 className="hover:text-ink underline decoration-transparent underline-offset-2 hover:decoration-current"
               >
-                {line.account.name}
+                {account.name}
               </Link>
             </span>
           );
