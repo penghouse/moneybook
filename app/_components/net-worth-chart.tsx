@@ -1,10 +1,21 @@
+"use client";
+
+import { useState } from "react";
 import { formatMoney } from "@/lib/money";
+import { niceScale } from "@/lib/chart-scale";
+import { AXIS_GUTTER, ChartGrid } from "./chart-axis";
 
 const WIDTH = 320;
 const PLOT_HEIGHT = 150;
 const LABEL_HEIGHT = 22;
 const HEIGHT = PLOT_HEIGHT + LABEL_HEIGHT;
-const PAD_X = 6;
+const PAD_RIGHT = 6;
+/**
+ * Headroom above the top gridline, for that gridline's own label. SVG
+ * puts a text baseline at y, so a label on a rule at y=0 has its whole
+ * ascender outside the viewBox and renders sliced in half.
+ */
+const PLOT_TOP = 9;
 
 export interface NetWorthPoint {
   yearMonth: string;
@@ -27,8 +38,8 @@ export interface NetWorthPoint {
  * The cost of sharing the axis: liabilities usually sit near zero, so
  * the axis effectively starts there and the net worth line is less steep
  * than it would be alone. That is the price of the three being
- * comparable, and the labelled endpoint and the table carry the exact
- * numbers either way.
+ * comparable, and the readout, the labelled endpoint and the table carry
+ * the exact numbers either way.
  *
  * **Net worth is drawn in ink, not a third series colour.** It is not a
  * peer of the other two — it is what they add up to — and a total drawn
@@ -60,24 +71,31 @@ export function NetWorthChart({
   liabilitiesLabel: string;
   netWorthLabel: string;
 }) {
+  // Which month the pointer or the keyboard is on. Null is "none", which
+  // is also the server-rendered state — the chart reads the same before
+  // hydration as it does with the pointer away.
+  const [active, setActive] = useState<number | null>(null);
+
   if (points.length === 0) return null;
 
   const values = points.flatMap((p) => [p.assets, p.liabilities, p.netWorth]);
-  const rawMax = Math.max(...values);
-  const rawMin = Math.min(...values);
-  // A flat book would divide by zero; a nonzero span keeps the lines
-  // centred instead of collapsing onto an edge.
-  const padding = (rawMax - rawMin || Math.abs(rawMax) || 1) * 0.15;
-  const max = rawMax + padding;
-  const min = rawMin - padding;
-  const span = max - min;
+  // The gridlines set the domain, rather than the domain being padded and
+  // the gridlines fitted afterwards. Rounding out to whole steps is what
+  // puts headroom above the top line — enough that a 2px stroke at the
+  // maximum is not sliced by the edge — and the amount of it is a round
+  // number the axis can name.
+  const scale = niceScale(Math.min(...values), Math.max(...values));
 
-  const stepX = points.length > 1 ? (WIDTH - PAD_X * 2) / (points.length - 1) : 0;
-  const x = (i: number) => PAD_X + i * stepX;
-  const y = (value: number) => PLOT_HEIGHT - ((value - min) / span) * (PLOT_HEIGHT - 26) - 13;
+  const plotLeft = AXIS_GUTTER;
+  const plotRight = WIDTH - PAD_RIGHT;
+  const stepX = points.length > 1 ? (plotRight - plotLeft) / (points.length - 1) : 0;
+  const x = (i: number) =>
+    points.length === 1 ? (plotLeft + plotRight) / 2 : plotLeft + i * stepX;
+  const y = (value: number) =>
+    PLOT_HEIGHT - ((value - scale.min) / (scale.max - scale.min)) * (PLOT_HEIGHT - PLOT_TOP);
 
   const lastIndex = points.length - 1;
-  const zeroY = y(0);
+  const money = (minor: number) => formatMoney(minor, currency, locale);
 
   const path = (pick: (p: NetWorthPoint) => number) =>
     points.map((p, i) => `${i === 0 ? "M" : "L"}${x(i)},${y(pick(p))}`).join(" ");
@@ -117,12 +135,32 @@ export function NetWorthChart({
     },
   ] as const;
 
+  /**
+   * The column that catches the pointer for month `i`: half a step either
+   * side of the point, clipped to the plot.
+   *
+   * Clipping is not tidiness — an end column that hangs past the plot has
+   * its centre outside it, which is where a pointer aimed at "the last
+   * month" would be sent.
+   */
+  const hit = (i: number) => {
+    const step = points.length > 1 ? stepX : plotRight - plotLeft;
+    const left = Math.max(plotLeft, x(i) - step / 2);
+    const right = Math.min(plotRight, x(i) + step / 2);
+    return { x: left, width: right - left };
+  };
+
+  const shown = active !== null ? points[active] : null;
+
   return (
     <div>
       {/* Three series, so a legend is mandatory — identity never rests on
           colour matching alone. The text wears ink tokens; the coloured
           dot beside it carries the identity. */}
-      <div className="text-ink-muted mb-1 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+      <div
+        data-testid="net-worth-legend"
+        className="text-ink-muted mb-1 flex flex-wrap gap-x-4 gap-y-1 text-xs"
+      >
         {series.map((s) => (
           <span key={s.key} className="flex items-center gap-1.5">
             <span className={`${s.dot} inline-block size-2.5 rounded-full`} aria-hidden="true" />
@@ -131,86 +169,144 @@ export function NetWorthChart({
         ))}
       </div>
 
-      <svg
-        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-        className="w-full"
-        role="group"
-        aria-label={tableCaption}
-      >
-        {/* Hairline zero rule, only when the range actually crosses it. */}
-        {rawMin < 0 && rawMax > 0 && (
-          <line x1={0} y1={zeroY} x2={WIDTH} y2={zeroY} className="stroke-rule" strokeWidth={1} />
-        )}
-
-        {series.map((s) => (
-          <path
-            key={s.key}
-            d={path(s.pick)}
-            fill="none"
-            className={s.stroke}
-            strokeWidth={2}
-            strokeLinejoin="round"
-            strokeLinecap="round"
+      <div className="relative" onPointerLeave={() => setActive(null)}>
+        <svg
+          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+          className="block w-full"
+          role="group"
+          aria-label={tableCaption}
+        >
+          <ChartGrid
+            ticks={scale.ticks}
+            y={y}
+            left={plotLeft}
+            right={plotRight}
+            currency={currency}
+            locale={locale}
           />
-        ))}
 
-        {series.map((s) =>
-          points.map((p, i) => {
-            const isNetWorth = s.key === "netWorth";
-            const isEnd = i === lastIndex;
-            const label = `${p.yearMonth} ${s.label}: ${formatMoney(s.pick(p), currency, locale)}`;
-            return (
-              <g key={`${s.key}-${p.yearMonth}`}>
-                {/* The ring is the surface colour, so a dot stays legible
-                    where two lines cross. */}
-                <circle
-                  cx={x(i)}
-                  cy={y(s.pick(p))}
-                  r={isNetWorth && isEnd ? 4 : 2.5}
-                  className={`${s.fill} stroke-card`}
-                  strokeWidth={2}
-                  tabIndex={0}
-                  role="img"
-                  aria-label={label}
+          {/* Under the lines, so the crosshair never cuts across a mark. */}
+          {active !== null && (
+            <line
+              x1={x(active)}
+              y1={0}
+              x2={x(active)}
+              y2={PLOT_HEIGHT}
+              className="stroke-rule"
+              strokeWidth={1}
+            />
+          )}
+
+          {series.map((s) => (
+            <path
+              key={s.key}
+              d={path(s.pick)}
+              fill="none"
+              className={s.stroke}
+              strokeWidth={2}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          ))}
+
+          {/* Dots only where the reader is looking, plus the endpoint the
+              chart is about. A marker on every month of every series is
+              36 rings on a phone. */}
+          {series.map((s) => {
+            const marked = active !== null ? [active, lastIndex] : [lastIndex];
+            return [...new Set(marked)].map((i) => (
+              <circle
+                key={`${s.key}-${i}`}
+                cx={x(i)}
+                cy={y(s.pick(points[i]))}
+                r={4}
+                // The ring is the surface colour, so a dot stays legible
+                // where two lines cross.
+                className={`${s.fill} stroke-card`}
+                strokeWidth={2}
+              />
+            ));
+          })}
+
+          {/* No end label on the line. Three series converging at the
+              right edge leave nowhere to put one — under the net worth
+              point is exactly where the other two lines arrive, and the
+              text sat across them. The number is on the page three other
+              ways: the figure above this card, the axis beside it, and
+              the readout on hover. */}
+
+          {points.map((p, i) => (
+            <g key={p.yearMonth}>
+              {/* Every other month: twelve labels collide at 360px. */}
+              {i % 2 === lastIndex % 2 && (
+                <text
+                  x={x(i)}
+                  y={HEIGHT - 5}
+                  textAnchor={i === 0 ? "start" : i === lastIndex ? "end" : "middle"}
+                  className="fill-ink-faint text-[9px]"
                 >
-                  <title>{label}</title>
-                </circle>
-                {isNetWorth && isEnd && (
-                  <text
-                    x={x(i)}
-                    // Below the point, not above: net worth can never
-                    // exceed assets, so the space above the last point is
-                    // exactly where the assets line ends up and a label
-                    // there lands on top of it.
-                    y={Math.min(y(s.pick(p)) + 14, PLOT_HEIGHT - 2)}
-                    // Anchored inward: centred on the last point it would
-                    // hang off the viewBox and get cropped mid-digit.
-                    textAnchor="end"
-                    className="fill-ink text-[10px] font-semibold"
-                  >
-                    {formatMoney(s.pick(p), currency, locale)}
-                  </text>
-                )}
-              </g>
-            );
-          }),
-        )}
+                  {p.yearMonth.slice(2).replace("-", ".")}
+                </text>
+              )}
+              {/* One column per month, so the pointer only has to be near
+                  the right date rather than on a 2px line. */}
+              <rect
+                x={hit(i).x}
+                y={0}
+                width={hit(i).width}
+                height={HEIGHT}
+                fill="transparent"
+                tabIndex={0}
+                role="img"
+                aria-label={`${p.yearMonth} · ${series.map((s) => `${s.label} ${money(s.pick(p))}`).join(", ")}`}
+                data-testid="net-worth-hit"
+                className="cursor-pointer outline-none"
+                onPointerEnter={() => setActive(i)}
+                // Touch reports no hover, so the tap itself has to open
+                // the readout.
+                onPointerDown={() => setActive(i)}
+                onFocus={() => setActive(i)}
+                onBlur={() => setActive(null)}
+              />
+            </g>
+          ))}
+        </svg>
 
-        {points.map((p, i) =>
-          // Every other month: twelve labels collide at 360px.
-          i % 2 === lastIndex % 2 ? (
-            <text
-              key={`tick-${p.yearMonth}`}
-              x={x(i)}
-              y={HEIGHT - 5}
-              textAnchor={i === 0 ? "start" : i === lastIndex ? "end" : "middle"}
-              className="fill-ink-faint text-[9px]"
-            >
-              {p.yearMonth.slice(2).replace("-", ".")}
-            </text>
-          ) : null,
+        {shown && (
+          <div
+            role="status"
+            data-testid="net-worth-tooltip"
+            className="border-rule bg-card pointer-events-none absolute top-0 z-10 min-w-max rounded-lg border px-2.5 py-2 shadow-lg"
+            style={{
+              left: `${(x(active!) / WIDTH) * 100}%`,
+              // Swung inward at either end rather than off the side of
+              // the card.
+              transform: `translateX(${
+                x(active!) < WIDTH * 0.3 ? "0" : x(active!) > WIDTH * 0.7 ? "-100%" : "-50%"
+              })`,
+            }}
+          >
+            <div className="text-ink-faint mb-1 text-[11px] font-semibold">{shown.yearMonth}</div>
+            <dl className="grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5 text-xs">
+              {series.map((s) => (
+                <div key={s.key} className="contents">
+                  <dt className="text-ink-muted flex items-center gap-1.5">
+                    <span className={`${s.dot} size-2 rounded-full`} aria-hidden="true" />
+                    {s.label}
+                  </dt>
+                  <dd
+                    className={`tnum text-ink text-right ${
+                      s.key === "netWorth" ? "font-bold" : "font-normal"
+                    }`}
+                  >
+                    {money(s.pick(shown))}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         )}
-      </svg>
+      </div>
 
       <details className="mt-1">
         <summary className="text-ink-faint flex min-h-11 cursor-pointer items-center text-xs">

@@ -746,10 +746,24 @@ test.describe("reports", () => {
 
     // One chart carries all three lines, so the legend has to name all
     // three — colour matching alone is never the identity channel.
-    const legend = trend.locator("xpath=preceding-sibling::div[1]");
+    const legend = page.getByTestId("net-worth-legend");
     for (const name of ["자산", "부채", "순자산"]) {
       await expect(legend.getByText(name, { exact: true })).toBeVisible();
     }
+
+    // Gridlines carry the values nothing is directly labelled with, so
+    // the scale has to be readable without hovering anything.
+    await expect(trend.getByText("0", { exact: true }).first()).toBeVisible();
+
+    // Hovering a month reports all three figures for it at once —
+    // reading the gap between two lines is not a way to learn a number.
+    await page.getByTestId("net-worth-hit").last().hover();
+    const readout = page.getByTestId("net-worth-tooltip");
+    await expect(readout).toBeVisible();
+    for (const name of ["자산", "부채", "순자산"]) {
+      await expect(readout.getByText(name, { exact: true })).toBeVisible();
+    }
+    await expect(readout.getByText("₩5,000,000").first()).toBeVisible();
 
     // A chart nobody can read still has to give up its numbers.
     await page.getByText("표로 보기").first().click();
