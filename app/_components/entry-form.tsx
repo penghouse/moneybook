@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { AccountGroup } from "@/db/schema";
 import { AccountCombobox, type ComboboxAccount } from "./account-combobox";
 import { useDialogClose } from "./dialog";
 import { SubmitButton } from "./submit-button";
@@ -30,6 +31,8 @@ export interface EntryFormLabels {
   unbalanced: string;
   difference: string;
   namePlaceholder: string;
+  /** 분류 names, shown beside each account in the picker. */
+  groups: Record<AccountGroup, string>;
 }
 
 interface Line {
@@ -502,6 +505,7 @@ export function EntryForm({
                   placeholder={labels.namePlaceholder}
                   defaultAccountId={left.accountId}
                   side="left"
+                  groupLabels={labels.groups}
                   onSelect={(a) => handleAccountSelect(left.key, a)}
                 />
                 {hiddenLineFields(left)}
@@ -528,6 +532,7 @@ export function EntryForm({
                   placeholder={labels.namePlaceholder}
                   defaultAccountId={right.accountId}
                   side="right"
+                  groupLabels={labels.groups}
                   onSelect={(a) => handleAccountSelect(right.key, a)}
                 />
                 {hiddenLineFields(right)}
@@ -644,6 +649,7 @@ export function EntryForm({
                       placeholder={labels.namePlaceholder}
                       defaultAccountId={line.accountId}
                       side={line.side}
+                      groupLabels={labels.groups}
                       onSelect={(a) => handleAccountSelect(line.key, a)}
                     />
                     {hiddenLineFields(line, { rate: false, memo: false })}

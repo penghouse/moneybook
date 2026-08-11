@@ -1,8 +1,15 @@
 import { and, asc, desc, eq, exists, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db/client";
-import { accounts, transactionLines, transactions } from "@/db/schema";
+import {
+  ACCOUNT_GROUPS,
+  accounts,
+  transactionLines,
+  transactions,
+  type AccountGroup,
+} from "@/db/schema";
 import { interpolate } from "@/i18n/format";
+import { GROUP_LABEL_KEY } from "@/i18n/groups";
 import { activeOn, isFlowGroup } from "@/lib/accounts";
 import { currentSection } from "@/lib/current-request";
 import {
@@ -121,6 +128,10 @@ export default async function Home({
     unbalanced: t("entry.unbalanced"),
     difference: t("entry.difference"),
     namePlaceholder: t("entry.searchPlaceholder"),
+    groups: Object.fromEntries(ACCOUNT_GROUPS.map((g) => [g, t(GROUP_LABEL_KEY[g])])) as Record<
+      AccountGroup,
+      string
+    >,
   };
 
   const conditions = [eq(transactions.sectionId, section.id)];
