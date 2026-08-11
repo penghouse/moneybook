@@ -61,9 +61,12 @@ test.describe("entry", () => {
     await pickAccount(form, 0, "식비");
     await pickAccount(form, 1, "신용카드");
     await expect(tag(1)).toHaveAttribute("data-tag", "+");
-    // 비용 gets the same treatment as 수익, the other way round.
+    // 비용 gets the same treatment as 수익, the other way round —
+    // orange, not the P&L red, because against the income green red is
+    // the pair red-green colour blindness cannot separate (ΔE 1.7 in
+    // dark mode, where the two would be the same swatch).
     await expect(tag(0)).toHaveAttribute("data-tag", "none");
-    await expect(tag(0)).toHaveClass(/bg-negative/);
+    await expect(tag(0)).toHaveClass(/bg-series-2/);
 
     // Paying the card down lowers the debt, so now it is a minus.
     await pickAccount(form, 0, "신용카드");

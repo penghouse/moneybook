@@ -22,6 +22,8 @@
  * "below everything" a position you could lose by accident.
  */
 
+import type { AccountGroup } from "@/db/schema";
+
 export interface OrderableAccount {
   id: string;
   category: string | null;
@@ -125,4 +127,30 @@ export function renumber<T extends OrderableAccount>(
   return order
     .map((account, index) => ({ id: account.id, sortOrder: index }))
     .filter(({ id, sortOrder }) => order.find((a) => a.id === id)!.sortOrder !== sortOrder);
+}
+
+/**
+ * The whole catalog in the order every screen shows it: 분류 in the
+ * book's own order, and within each 분류 the order set on /accounts.
+ *
+ * `sortOrder` is assigned section-wide as accounts are created, so on
+ * its own it interleaves the 분류 — a picker sorted by it alone listed
+ * 은행, 식비, 신용카드, 급여 in whatever sequence they happened to be
+ * added, which is no order at all to hunt through.
+ *
+ * A stable sort, so accounts inside one 분류 keep the sequence
+ * `sortOrder` already puts them in — which is the sequence /accounts
+ * draws, categories and all.
+ */
+export function byGroupOrder<T extends { group: AccountGroup; sortOrder: number }>(
+  accounts: readonly T[],
+  groupOrder: readonly AccountGroup[],
+): T[] {
+  const rank = (group: AccountGroup) => {
+    const at = groupOrder.indexOf(group);
+    // A 분류 the stored order forgot goes last rather than first, which
+    // is what a -1 would do.
+    return at === -1 ? groupOrder.length : at;
+  };
+  return [...accounts].sort((a, b) => rank(a.group) - rank(b.group) || a.sortOrder - b.sortOrder);
 }

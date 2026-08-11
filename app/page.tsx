@@ -10,6 +10,8 @@ import {
 } from "@/db/schema";
 import { interpolate } from "@/i18n/format";
 import { GROUP_LABEL_KEY } from "@/i18n/groups";
+import { parseGroupOrder } from "@/lib/account-groups";
+import { byGroupOrder } from "@/lib/account-order";
 import { activeOn, isFlowGroup } from "@/lib/accounts";
 import { currentSection } from "@/lib/current-request";
 import {
@@ -86,7 +88,7 @@ export default async function Home({
   // Three reads that need nothing from each other, issued together: one
   // after another they were three network round trips on a deployment
   // where the database is not in this process.
-  const [allAccounts, filterAccounts, suggestions] = await Promise.all([
+  const [catalog, filterCatalog, suggestions] = await Promise.all([
     db.query.accounts.findMany({
       // The picker offers what can be posted to *now*; a closed account
       // stays out of it even though its past transactions still read and
@@ -106,6 +108,13 @@ export default async function Home({
     // about to type, not for what you are looking at.
     getTitleSuggestions(db, { sectionId: section.id }),
   ]);
+
+  // Both lists read in the book's own order — 분류 first, then the order
+  // set on /accounts inside each. `sortOrder` alone is section-wide and
+  // assigned as accounts are created, so it interleaves the 분류.
+  const groupOrder = parseGroupOrder(section.groupOrder);
+  const allAccounts = byGroupOrder(catalog, groupOrder);
+  const filterAccounts = byGroupOrder(filterCatalog, groupOrder);
 
   const labels: EntryFormLabels = {
     date: t("common.date"),

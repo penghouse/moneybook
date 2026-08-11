@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { AccountGroup } from "@/db/schema";
 import {
+  byGroupOrder,
   categoryBlocks,
   moveAccountWithinCategory,
   moveCategoryBlock,
@@ -140,5 +142,48 @@ describe("renumber", () => {
       { id: "식비", sortOrder: 1 },
       { id: "교통비", sortOrder: 2 },
     ]);
+  });
+});
+
+describe("byGroupOrder", () => {
+  const a = (id: string, group: AccountGroup, sortOrder: number) => ({ id, group, sortOrder });
+
+  it("lists 분류 in the book's own order, whatever sortOrder says", () => {
+    // sortOrder is assigned section-wide as accounts are created, so on
+    // its own it interleaves the 분류 — which is what made the picker
+    // read as an unsorted pile.
+    const catalog = [
+      a("bank", "asset", 0),
+      a("food", "expense", 1),
+      a("card", "liability", 2),
+      a("pay", "income", 3),
+    ];
+    expect(
+      byGroupOrder(catalog, ["asset", "liability", "expense", "income"]).map((x) => x.id),
+    ).toEqual(["bank", "card", "food", "pay"]);
+  });
+
+  it("follows a reordered book", () => {
+    const catalog = [a("bank", "asset", 0), a("card", "liability", 1)];
+    expect(byGroupOrder(catalog, ["liability", "asset"]).map((x) => x.id)).toEqual([
+      "card",
+      "bank",
+    ]);
+  });
+
+  it("keeps each 분류's own order, which is the one set on /accounts", () => {
+    const catalog = [a("b", "expense", 5), a("a", "expense", 2), a("c", "expense", 9)];
+    expect(byGroupOrder(catalog, ["expense"]).map((x) => x.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("puts a 분류 the stored order forgot at the end, not the front", () => {
+    const catalog = [a("pay", "income", 0), a("bank", "asset", 1)];
+    expect(byGroupOrder(catalog, ["asset"]).map((x) => x.id)).toEqual(["bank", "pay"]);
+  });
+
+  it("leaves the input array alone", () => {
+    const catalog = [a("food", "expense", 0), a("bank", "asset", 1)];
+    byGroupOrder(catalog, ["asset", "expense"]);
+    expect(catalog.map((x) => x.id)).toEqual(["food", "bank"]);
   });
 });
