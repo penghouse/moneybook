@@ -1,12 +1,46 @@
 "use client";
 
 import { useState } from "react";
+import type { AccountGroup } from "@/db/schema";
 import { matchesQuery } from "@/lib/hangul";
+// The leaf module, not the "@/lib/ledger" barrel: importing the barrel
+// from a client component would pull the whole query layer — drizzle and
+// all — into the browser bundle for one predicate.
+import { isCreditNormal } from "@/lib/ledger/normal-balance";
 
 export interface ComboboxAccount {
   id: string;
   name: string;
   currency: string;
+  group: AccountGroup;
+}
+
+/**
+ * The tag on the leading edge of the picker, worked out from the account
+ * rather than from which box it sits in.
+ *
+ * By side alone, the right-hand box always read 「−」: income arriving on
+ * the right looked like a loss, and a card charge — which *raises* what
+ * you owe — looked like a reduction. Both are the same mistake, the box
+ * describing its own position instead of what the leg does.
+ *
+ * 수익 and 비용 carry no sign at all. They only ever run one way, so a
+ * sign is a question nobody was asking; the colour says which of the two
+ * it is, and the account's own name is right beside it.
+ *
+ * Everything else — 자산, 부채, 자본 — gets the sign of what this leg
+ * does to *that account's* balance, which is the credit-normal rule the
+ * reports are built on.
+ */
+function tagFor(group: AccountGroup | undefined, side: "left" | "right" | undefined) {
+  if (group === "income") return { className: "bg-positive", glyph: "" };
+  if (group === "expense") return { className: "bg-negative", glyph: "" };
+
+  const raises = group ? (side === "left") !== isCreditNormal(group) : side === "left";
+  return {
+    className: raises ? "bg-accent" : "bg-ink-faint",
+    glyph: raises ? "+" : "−",
+  };
 }
 
 /**
@@ -25,6 +59,7 @@ export function AccountCombobox({
   defaultAccountId,
   placeholder,
   side,
+  groupLabels,
   onSelect,
 }: {
   name: string;
@@ -32,6 +67,8 @@ export function AccountCombobox({
   defaultAccountId?: string;
   placeholder?: string;
   side?: "left" | "right";
+  /** 분류 names, so a row can say what it is rather than only hint at it. */
+  groupLabels?: Record<AccountGroup, string>;
   onSelect?: (account: ComboboxAccount) => void;
 }) {
   const nameOf = (id: string | undefined) => accounts.find((a) => a.id === id)?.name ?? "";
@@ -50,6 +87,9 @@ export function AccountCombobox({
   }
 
   const filtered = accounts.filter((a) => matchesQuery(a.name, query));
+  // Before anything is picked there is no account to describe, so the tag
+  // falls back to the side — which is what the label above it says too.
+  const tag = tagFor(accounts.find((a) => a.id === selectedId)?.group, side);
 
   return (
     // min-w-0: the text input inside carries an intrinsic default width,
@@ -72,11 +112,10 @@ export function AccountCombobox({
         {side && (
           <span
             aria-hidden="true"
-            className={`text-accent-ink grid w-5 shrink-0 place-items-center self-stretch text-sm leading-none font-bold md:w-7 md:text-[15px] ${
-              side === "left" ? "bg-accent" : "bg-ink-faint"
-            }`}
+            data-tag={tag.glyph || "none"}
+            className={`text-accent-ink grid w-5 shrink-0 place-items-center self-stretch text-sm leading-none font-bold md:w-7 md:text-[15px] ${tag.className}`}
           >
-            {side === "left" ? "+" : "−"}
+            {tag.glyph}
           </span>
         )}
         <input
@@ -136,10 +175,33 @@ export function AccountCombobox({
                     setOpen(false);
                     onSelect?.(a);
                   }}
-                  className="hover:bg-sunken flex min-h-12 w-full items-center gap-2 px-3.5 text-left"
+                  className="hover:bg-sunken flex min-h-12 w-full items-center gap-2 py-2 pr-3.5 pl-2 text-left"
                 >
+                  {/* The same tag the box wears once this row is picked,
+                      so the direction is known before choosing rather
+                      than after. */}
+                  {side && (
+                    <span
+                      aria-hidden="true"
+                      className={`text-accent-ink grid size-5 shrink-0 place-items-center rounded text-xs leading-none font-bold ${tagFor(a.group, side).className}`}
+                    >
+                      {tagFor(a.group, side).glyph}
+                    </span>
+                  )}
                   <span className="min-w-0 truncate">{a.name}</span>
-                  <span className="text-ink-faint ml-auto shrink-0 text-xs">{a.currency}</span>
+                  {/* Named, not just coloured. The tag says which way the
+                      money goes; this says what the account *is*, which
+                      is the thing a colour cannot spell. */}
+                  {groupLabels && (
+                    <span className="text-ink-faint ml-auto shrink-0 text-xs">
+                      {groupLabels[a.group]}
+                    </span>
+                  )}
+                  <span
+                    className={`text-ink-faint shrink-0 text-xs ${groupLabels ? "" : "ml-auto"}`}
+                  >
+                    {a.currency}
+                  </span>
                 </button>
               </li>
             ))

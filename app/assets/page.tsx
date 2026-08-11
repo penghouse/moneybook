@@ -2,7 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db/client";
 import { accounts, formulas } from "@/db/schema";
-import type { TranslationKey } from "@/i18n";
+import { GROUP_LABEL_KEY } from "@/i18n/groups";
 import { isClosedBy } from "@/lib/accounts";
 import { parseGroupOrder } from "@/lib/account-groups";
 import { currentSection } from "@/lib/current-request";
@@ -35,11 +35,6 @@ import {
   SectionLabel,
 } from "../_components/ui";
 import { revalueAction } from "./actions";
-
-const GROUP_LABEL_KEY: Record<"asset" | "liability", TranslationKey> = {
-  asset: "group.asset",
-  liability: "group.liability",
-};
 
 export default async function AssetsPage({
   searchParams,

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { db } from "@/db/client";
 import { accounts, ACCOUNT_GROUPS, type Account, type AccountGroup } from "@/db/schema";
 import type { TranslationKey } from "@/i18n";
+import { GROUP_LABEL_KEY } from "@/i18n/groups";
 import { canTrackCounterparties, isClosedBy } from "@/lib/accounts";
 import { parseGroupOrder } from "@/lib/account-groups";
 import { categoryBlocks } from "@/lib/account-order";
@@ -32,14 +33,6 @@ import {
   toggleArchiveAction,
   updateAccountAction,
 } from "./actions";
-
-const GROUP_LABEL_KEY: Record<AccountGroup, TranslationKey> = {
-  asset: "group.asset",
-  liability: "group.liability",
-  equity: "group.equity",
-  expense: "group.expense",
-  income: "group.income",
-};
 
 const ERROR_KEY: Record<string, TranslationKey> = {
   delete_restricted: "accounts.deleteError",

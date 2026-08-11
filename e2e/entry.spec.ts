@@ -40,6 +40,38 @@ test.describe("entry", () => {
     await scope.getByRole("button", { name }).first().click();
   }
 
+  test("each picker's tag says what the leg does to that account", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+    const tag = (i: number) => form.locator("[data-tag]").nth(i);
+
+    // By side alone the right-hand box always read 「−」. Two things were
+    // wrong with that, and they are the same thing: the box was
+    // describing its own position rather than what the leg does.
+    await pickAccount(form, 0, "은행");
+    await pickAccount(form, 1, "이자수익");
+    // Money in: the bank balance rises.
+    await expect(tag(0)).toHaveAttribute("data-tag", "+");
+    // 수익 only ever runs one way, so no sign — green says which it is.
+    await expect(tag(1)).toHaveAttribute("data-tag", "none");
+    await expect(tag(1)).toHaveClass(/bg-positive/);
+
+    // A card charge *raises* what is owed, so the right-hand box is a
+    // plus here — the credit-normal rule the reports are built on.
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await expect(tag(1)).toHaveAttribute("data-tag", "+");
+    // 비용 gets the same treatment as 수익, the other way round.
+    await expect(tag(0)).toHaveAttribute("data-tag", "none");
+    await expect(tag(0)).toHaveClass(/bg-negative/);
+
+    // Paying the card down lowers the debt, so now it is a minus.
+    await pickAccount(form, 0, "신용카드");
+    await pickAccount(form, 1, "은행");
+    await expect(tag(0)).toHaveAttribute("data-tag", "−");
+    await expect(tag(1)).toHaveAttribute("data-tag", "−");
+  });
+
   test("creates a simple same-currency transaction and shows it in the list", async ({ page }) => {
     await page.goto("/");
     const form = createForm(page);
