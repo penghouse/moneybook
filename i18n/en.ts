@@ -32,6 +32,7 @@ const en: Record<keyof typeof ko, string> = {
   "common.save": "Save",
   "common.cancel": "Cancel",
   "common.close": "Close",
+  "common.edit": "Edit",
   "common.delete": "Delete",
   "common.add": "Add",
   "common.date": "Date",

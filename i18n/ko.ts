@@ -30,6 +30,7 @@ const ko = {
   "common.save": "저장",
   "common.cancel": "취소",
   "common.close": "닫기",
+  "common.edit": "수정",
   "common.delete": "삭제",
   "common.add": "추가",
   "common.date": "날짜",

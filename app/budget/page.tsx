@@ -9,9 +9,9 @@ import { parseBudgetPeriod } from "@/lib/budgets";
 import { getAccountFlows } from "@/lib/ledger";
 import { formatMoney, toMajorUnits } from "@/lib/money";
 import { PeriodNav } from "../_components/period-nav";
-import { SubmitButton } from "../_components/submit-button";
-import { Card, Chip, controlClass, EmptyState, KeyValueRow, PageHeader } from "../_components/ui";
+import { Card, Chip, EmptyState, KeyValueRow, PageHeader } from "../_components/ui";
 import { setBudgetAction } from "./actions";
+import { BudgetField } from "./budget-field";
 
 export default async function BudgetPage({
   searchParams,
@@ -294,32 +294,17 @@ export default async function BudgetPage({
                       </Link>
 
                       {budget !== undefined && (
-                        <>
-                          <div className="bg-rule-soft my-2 h-1.5 overflow-hidden rounded-full">
-                            <div
-                              className={`h-full rounded-full ${isOver ? "bg-negative" : "bg-accent"}`}
-                              // Clamped at both ends: a refund can make spend
-                              // negative, and a zero budget that has been spent
-                              // against is fully over rather than 0% used.
-                              style={{
-                                width: `${isOver ? 100 : Math.max(0, Math.min(100, percent ?? 0))}%`,
-                              }}
-                            />
-                          </div>
-                          <div className="text-ink-faint flex flex-wrap gap-x-3 gap-y-1 text-xs">
-                            <span className="tnum">
-                              {t("budget.setBudget")} {base(budget)}
-                              {percent !== null && ` (${percent}%)`}
-                            </span>
-                            <span
-                              className={`tnum ml-auto ${isOver ? "text-negative font-semibold" : ""}`}
-                            >
-                              {isOver
-                                ? `${t("budget.over")} ${base(-remaining)}`
-                                : `${t("budget.remaining")} ${base(remaining ?? 0)}`}
-                            </span>
-                          </div>
-                        </>
+                        <div className="bg-rule-soft my-2 h-1.5 overflow-hidden rounded-full">
+                          <div
+                            className={`h-full rounded-full ${isOver ? "bg-negative" : "bg-accent"}`}
+                            // Clamped at both ends: a refund can make spend
+                            // negative, and a zero budget that has been spent
+                            // against is fully over rather than 0% used.
+                            style={{
+                              width: `${isOver ? 100 : Math.max(0, Math.min(100, percent ?? 0))}%`,
+                            }}
+                          />
+                        </div>
                       )}
 
                       {isYear && monthlySum > 0 && (
@@ -335,31 +320,43 @@ export default async function BudgetPage({
                         </div>
                       )}
 
-                      <form
+                      {/* The figures ride inside the field so a settled
+                          row can fold the box away behind 수정 and still
+                          say what it is set to. */}
+                      <BudgetField
                         action={setBudgetAction}
-                        className="mt-2 grid grid-cols-[1fr_auto] gap-2"
+                        accountId={account.id}
+                        period={ref.periodKey}
+                        amountMajor={
+                          budget !== undefined
+                            ? toMajorUnits(budget, section.baseCurrency)
+                            : undefined
+                        }
+                        labels={{
+                          field: isYear ? t("budget.setYearBudget") : t("budget.setBudget"),
+                          edit: t("common.edit"),
+                          cancel: t("common.cancel"),
+                          save: t("common.save"),
+                          saving: t("common.saving"),
+                          noBudget: t("budget.noBudget"),
+                        }}
                       >
-                        <input type="hidden" name="accountId" value={account.id} />
-                        <input type="hidden" name="period" value={ref.periodKey} />
-                        <input
-                          type="number"
-                          name="amount"
-                          step="any"
-                          min="0"
-                          inputMode="decimal"
-                          aria-label={isYear ? t("budget.setYearBudget") : t("budget.setBudget")}
-                          placeholder={budget === undefined ? t("budget.noBudget") : undefined}
-                          defaultValue={
-                            budget !== undefined
-                              ? toMajorUnits(budget, section.baseCurrency)
-                              : undefined
-                          }
-                          className={`${controlClass} tnum text-right`}
-                        />
-                        <SubmitButton variant="primary" pendingLabel={t("common.saving")}>
-                          {t("common.save")}
-                        </SubmitButton>
-                      </form>
+                        {budget !== undefined && (
+                          <div className="text-ink-faint flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                            <span className="tnum">
+                              {t("budget.setBudget")} {base(budget)}
+                              {percent !== null && ` (${percent}%)`}
+                            </span>
+                            <span
+                              className={`tnum ml-auto ${isOver ? "text-negative font-semibold" : ""}`}
+                            >
+                              {isOver
+                                ? `${t("budget.over")} ${base(-remaining)}`
+                                : `${t("budget.remaining")} ${base(remaining ?? 0)}`}
+                            </span>
+                          </div>
+                        )}
+                      </BudgetField>
                     </div>
                   );
                 })}

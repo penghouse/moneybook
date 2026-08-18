@@ -1,7 +1,6 @@
 "use server";
 
 import { eq } from "drizzle-orm";
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { accounts, budgets } from "@/db/schema";
@@ -39,6 +38,9 @@ export async function setBudgetAction(formData: FormData) {
       set: { amount },
     });
 
+  // Revalidated, not redirected. The redirect went to the page the
+  // reader was already on, and it throws — which a `useActionState`
+  // reducer never settles, so the row's own 저장 would sit on 저장 중…
+  // for good and never fold the box back up. See budget-field.tsx.
   revalidatePath("/budget");
-  redirect(`/budget?period=${ref.periodKey}`);
 }
