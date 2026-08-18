@@ -8,9 +8,11 @@ import { toMajorUnits } from "./money";
  * loud, and it is what makes a roadmap of forty years comparable at a
  * glance rather than digit by digit.
  *
- * The units follow the *language*, not the currency: Korean counts in
- * powers of ten thousand (만·억·조) and English in powers of a thousand
- * (K·M·B), and that is true of a Korean reader looking at dollars.
+ * The units follow the *currency*, not the reader's language. 원 counts
+ * in powers of ten thousand (만·억·조) because that is how the amount
+ * itself is spoken and written; every other currency here counts in
+ * powers of a thousand. A Korean reader looking at dollars still reads
+ * 32.47M, because that is what the figure is called.
  */
 interface Unit {
   /** In major units — 억 is 100,000,000 won, M is 1,000,000 dollars. */
@@ -19,18 +21,17 @@ interface Unit {
 }
 
 /** Largest first, which is the order the search wants. */
-const UNITS: Readonly<Record<string, readonly Unit[]>> = {
-  ko: [
-    { value: 1e12, suffix: "조" },
-    { value: 1e8, suffix: "억" },
-    { value: 1e4, suffix: "만" },
-  ],
-  en: [
-    { value: 1e9, suffix: "B" },
-    { value: 1e6, suffix: "M" },
-    { value: 1e3, suffix: "K" },
-  ],
-};
+const KRW_UNITS: readonly Unit[] = [
+  { value: 1e12, suffix: "조" },
+  { value: 1e8, suffix: "억" },
+  { value: 1e4, suffix: "만" },
+];
+
+const SI_UNITS: readonly Unit[] = [
+  { value: 1e9, suffix: "B" },
+  { value: 1e6, suffix: "M" },
+  { value: 1e3, suffix: "K" },
+];
 
 /**
  * Two decimals at most, and no trailing zeros: 1.5억 rather than 1.50억,
@@ -49,14 +50,10 @@ function round2(value: number): string {
  * point: 3,000원 is not 0.3만, and saying so would be less readable than
  * the plain number the caller already has.
  */
-export function formatShortMoney(
-  minorAmount: number,
-  currency: string,
-  locale: string,
-): string | null {
+export function formatShortMoney(minorAmount: number, currency: string): string | null {
   const major = toMajorUnits(minorAmount, currency);
   const size = Math.abs(major);
-  const units = UNITS[locale] ?? UNITS.en;
+  const units = currency.toUpperCase() === "KRW" ? KRW_UNITS : SI_UNITS;
 
   for (const unit of units) {
     // Rounded first, so 99,999,999원 reads as 1억 rather than falling

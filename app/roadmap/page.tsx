@@ -70,7 +70,7 @@ export default async function RoadmapPage({
    * what makes one year comparable to the next at a glance. Null when
    * the figure is too small to have a unit worth naming.
    */
-  const short = (minor: number) => formatShortMoney(minor, section.baseCurrency, locale);
+  const short = (minor: number) => formatShortMoney(minor, section.baseCurrency);
   const major = (minor: number) => String(toMajorUnits(minor, section.baseCurrency));
 
   if (isNew || editing) {
