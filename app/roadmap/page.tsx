@@ -4,9 +4,10 @@ import { db } from "@/db/client";
 import { accounts, formulas, roadmaps, roadmapYears, transactions } from "@/db/schema";
 import { parseGroupOrder } from "@/lib/account-groups";
 import { currentSection } from "@/lib/current-request";
-import { today, yearOf } from "@/lib/date";
+import { monthsBetween, today, yearMonthOf, yearOf } from "@/lib/date";
 import { formatMoney, toMajorUnits } from "@/lib/money";
 import { buildReportSeries } from "@/lib/report-series";
+import { getMonthlySavings, sumSavings, type MonthlySaving } from "@/lib/savings";
 import { buildRoadmap, MAX_ROADMAP_YEARS, roadmapYearList, type RoadmapRow } from "@/lib/roadmap";
 import { formulaTotalLabels } from "../_components/formula-section";
 import { DialogActionForm, RowDialog } from "../_components/dialog";
@@ -14,10 +15,12 @@ import { SubmitButton } from "../_components/submit-button";
 import {
   buttonClass,
   Card,
+  Chip,
   controlClass,
   EmptyState,
   Hint,
   Label,
+  Money,
   PageHeader,
 } from "../_components/ui";
 import { deleteRoadmapAction, saveRoadmapAction, setRoadmapYearAction } from "./actions";
@@ -29,7 +32,13 @@ const asPercent = (rate: number) => Math.round(rate * 10000) / 100;
 export default async function RoadmapPage({
   searchParams,
 }: {
-  searchParams: Promise<{ id?: string; new?: string; edit?: string; error?: string }>;
+  searchParams: Promise<{
+    id?: string;
+    new?: string;
+    edit?: string;
+    year?: string;
+    error?: string;
+  }>;
 }) {
   const { section, t, locale } = await currentSection();
   const params = await searchParams;
@@ -227,13 +236,56 @@ export default async function RoadmapPage({
   }
 
   const years = roadmapYearList(selected.startYear, selected.endYear);
-  const [overrides, actualByYear] = await Promise.all([
+
+  // The book's own beginning, asked for once and used twice: it is what
+  // separates "the year was zero" from "the year is outside the book",
+  // and both the actuals and the savings need that line drawn.
+  const [{ first: firstEntry }] = await db
+    .select({ first: sql<string | null>`min(${transactions.date})` })
+    .from(transactions)
+    .where(eq(transactions.sectionId, section.id));
+  const firstLedgerMonth = firstEntry?.slice(0, 7) ?? null;
+  const currentMonth = yearMonthOf(today(section.timezone));
+
+  const [overrides, actualByYear, savings] = await Promise.all([
     db.query.roadmapYears.findMany({
       where: eq(roadmapYears.roadmapId, selected.id),
       orderBy: asc(roadmapYears.year),
     }),
     loadActuals(),
+    years.length === 0
+      ? Promise.resolve([])
+      : getMonthlySavings(db, {
+          sectionId: section.id,
+          months: monthsBetween(`${years[0]}-01-01`, `${years[years.length - 1]}-12-31`),
+          currentMonth,
+          firstLedgerMonth,
+        }),
   ]);
+
+  /**
+   * 연저축액, worked out rather than typed.
+   *
+   * A flat "I will save this much every year" is wrong the moment the
+   * first year is over, and it was wrong about the past from the start.
+   * The months know better: the ones behind us have real income and
+   * spending in the ledger, and the ones ahead have budgets. So each
+   * year is the sum of its twelve months, and only a year not one month
+   * of which could be spoken for falls back to the flat figure — which
+   * is what `sumSavings` returning null is for.
+   */
+  const savingsByYear = new Map<string, MonthlySaving[]>();
+  for (const row of savings) {
+    const year = row.month.slice(0, 4);
+    const list = savingsByYear.get(year);
+    if (list) list.push(row);
+    else savingsByYear.set(year, [row]);
+  }
+  const contributionByYear = new Map<string, number>();
+  for (const [year, months] of savingsByYear) {
+    const total = sumSavings(months);
+    if (total !== null) contributionByYear.set(year, total);
+  }
 
   /**
    * What the book says each year actually ended at.
@@ -250,16 +302,10 @@ export default async function RoadmapPage({
    * carry forward, so what comes back is where things stand today.
    */
   async function loadActuals(): Promise<Map<string, number>> {
-    if (!selected?.actualFormulaId) return new Map();
-
-    const [{ first }] = await db
-      .select({ first: sql<string | null>`min(${transactions.date})` })
-      .from(transactions)
-      .where(eq(transactions.sectionId, section.id));
-    if (!first) return new Map();
+    if (!selected?.actualFormulaId || !firstLedgerMonth) return new Map();
 
     const thisYear = yearOf(today(section.timezone));
-    const known = years.filter((y) => y >= first.slice(0, 4) && y <= thisYear);
+    const known = years.filter((y) => y >= firstLedgerMonth.slice(0, 4) && y <= thisYear);
     if (known.length === 0) return new Map();
 
     const catalog = await db.query.accounts.findMany({
@@ -291,15 +337,129 @@ export default async function RoadmapPage({
     defaultReturnRate: selected.defaultReturnRate,
     overrides,
     actualByYear,
+    contributionByYear,
   });
+
+  const cell = "px-3 py-2 whitespace-nowrap";
+  const num = `${cell} tnum text-right`;
+
+  const asked = params.year;
+  if (asked && savingsByYear.has(asked)) {
+    const months = savingsByYear.get(asked)!;
+    const total = sumSavings(months);
+
+    return (
+      <div className="space-y-4">
+        <PageHeader title={`${asked} ${t("roadmap.monthly")}`} />
+
+        <Card className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-rule-soft text-ink-faint border-b text-left">
+                <th scope="col" className={`${cell} font-medium`}>
+                  {t("roadmap.month")}
+                </th>
+                <th scope="col" className={`${cell} text-right font-medium`}>
+                  {t("roadmap.saving")}
+                </th>
+                <th scope="col" className={`${cell} text-right font-medium`}>
+                  {t("budget.earned")}
+                </th>
+                <th scope="col" className={`${cell} text-right font-medium`}>
+                  {t("budget.spent")}
+                </th>
+                <th scope="col" className={`${cell} font-medium`}>
+                  {t("roadmap.source")}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {months.map((month) => (
+                <tr
+                  key={month.month}
+                  data-testid="roadmap-month"
+                  className="border-rule-soft border-t"
+                >
+                  <td className={`${cell} tnum p-0`}>
+                    {/* Straight to the month it is short of a budget for
+                        — the one thing a blank row wants doing about it. */}
+                    <Link
+                      href={`/budget?period=${month.month}`}
+                      className="hover:bg-sunken flex min-h-12 items-center px-3 font-semibold"
+                    >
+                      {month.month}
+                    </Link>
+                  </td>
+                  <td className={num}>
+                    {month.blank ? (
+                      <span className="text-ink-faint">—</span>
+                    ) : (
+                      <Money
+                        amount={month.saving}
+                        currency={section.baseCurrency}
+                        locale={locale}
+                        tone="signed"
+                        showPlus
+                      />
+                    )}
+                  </td>
+                  <td className={`${num} text-ink-muted`}>
+                    {month.blank ? "" : money(month.income)}
+                  </td>
+                  <td className={`${num} text-ink-muted`}>
+                    {month.blank ? "" : money(month.expense)}
+                  </td>
+                  <td className={cell}>
+                    {month.blank ? (
+                      <Chip tone="warning">{t("roadmap.sourceNone")}</Chip>
+                    ) : (
+                      <Chip tone={month.source === "actual" ? "positive" : "default"}>
+                        {t(
+                          month.source === "actual"
+                            ? "roadmap.sourceActual"
+                            : "roadmap.sourceBudget",
+                        )}
+                      </Chip>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-rule border-t-2">
+                <td className={`${cell} font-bold`}>{t("roadmap.total")}</td>
+                <td className={num} data-testid="roadmap-month-total">
+                  {total === null ? (
+                    <span className="text-ink-faint">—</span>
+                  ) : (
+                    <Money
+                      amount={total}
+                      currency={section.baseCurrency}
+                      locale={locale}
+                      tone="signed"
+                      showPlus
+                    />
+                  )}
+                </td>
+                <td colSpan={3} />
+              </tr>
+            </tfoot>
+          </table>
+        </Card>
+
+        <Hint>{t("roadmap.monthlyHint")}</Hint>
+
+        <Link href={`/roadmap?id=${selected.id}`} className={buttonClass("nav")}>
+          ← {t("roadmap.backToYears")}
+        </Link>
+      </div>
+    );
+  }
 
   // With nothing from the ledger, 실적 is 계획 copied out a second time
   // — two columns of the same numbers, on the screen least able to
   // spare the width.
   const hasActuals = actualByYear.size > 0;
-
-  const cell = "px-3 py-2 whitespace-nowrap";
-  const num = `${cell} tnum text-right`;
 
   return (
     <div className="space-y-4">
@@ -340,12 +500,15 @@ export default async function RoadmapPage({
             {t("roadmap.startingAmount")}{" "}
             <span className="tnum text-ink-muted">{money(selected.startingAmount)}</span>
           </span>
+          {/* 「기본」, not 「연저축액」: most years now work their own out
+              from the months, and this is only what a year with nothing
+              to go on falls back to. */}
           <span>
-            {t("roadmap.contribution")}{" "}
+            {t("roadmap.defaultContribution")}{" "}
             <span className="tnum text-ink-muted">{money(selected.defaultContribution)}</span>
           </span>
           <span>
-            {t("roadmap.returnRate")}{" "}
+            {t("roadmap.defaultReturnRate")}{" "}
             <span className="tnum text-ink-muted">{asPercent(selected.defaultReturnRate)}%</span>
           </span>
         </div>
@@ -460,7 +623,21 @@ export default async function RoadmapPage({
                       </td>
                     </>
                   )}
-                  <td className={num}>{money(row.contribution)}</td>
+                  {/* Straight through to the twelve months it came
+                      from, where a year that looks wrong can be read one
+                      month at a time and the gaps filled in. Faint when
+                      the roadmap's flat default was all there was —
+                      nothing stands behind that figure but a guess. */}
+                  <td className="p-0">
+                    <Link
+                      href={`/roadmap?id=${selected.id}&year=${row.year}`}
+                      className={`hover:bg-sunken tnum flex min-h-12 items-center justify-end px-3 whitespace-nowrap ${
+                        row.contributionSource === "default" ? "text-ink-faint" : ""
+                      }`}
+                    >
+                      {money(row.contribution)}
+                    </Link>
+                  </td>
                   <td className={num}>{asPercent(row.returnRate)}%</td>
                   <td className={`${cell} max-w-40 truncate`}>{row.note}</td>
                 </tr>
@@ -471,6 +648,7 @@ export default async function RoadmapPage({
       </TurnToRead>
 
       <Hint>{t("roadmap.tableHint")}</Hint>
+      <Hint>{t("roadmap.contributionHint")}</Hint>
     </div>
   );
 }

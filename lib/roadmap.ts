@@ -32,10 +32,15 @@ export interface RoadmapOverride {
   note: string | null;
 }
 
+/** Where a year's 저축액 came from, most specific first. */
+export type ContributionSource = "override" | "derived" | "default";
+
 export interface RoadmapRow {
   year: string;
   /** After the override, so this is what the row was actually computed with. */
   contribution: number;
+  /** Whether the reader typed it, the book worked it out, or it fell back. */
+  contributionSource: ContributionSource;
   returnRate: number;
   /** Whether a stored row spoke for this year — the edit affordance keys off it. */
   overridden: boolean;
@@ -89,6 +94,19 @@ export function buildRoadmap(params: {
   overrides: readonly RoadmapOverride[];
   /** Year -> the book's figure for that year end, in minor units. */
   actualByYear?: ReadonlyMap<string, number>;
+  /**
+   * Year -> what the ledger and the budgets say went in that year.
+   *
+   * Beats the roadmap's flat default, because a figure the book worked
+   * out from months that actually happened is better than one typed
+   * once and never revisited. Beaten by a year's own override, because
+   * the reader saying "this year is different" has to be the last word.
+   *
+   * A year nothing could be worked out for is simply absent — see
+   * sumSavings in lib/savings, which returns null rather than zero for
+   * exactly this reason.
+   */
+  contributionByYear?: ReadonlyMap<string, number>;
 }): RoadmapRow[] {
   const years = roadmapYearList(params.startYear, params.endYear);
   const overrideByYear = new Map(params.overrides.map((o) => [o.year, o]));
@@ -99,7 +117,10 @@ export function buildRoadmap(params: {
 
   for (const year of years) {
     const override = overrideByYear.get(year);
-    const contribution = override?.contribution ?? params.defaultContribution;
+    const derived = params.contributionByYear?.get(year);
+    const contribution = override?.contribution ?? derived ?? params.defaultContribution;
+    const contributionSource: ContributionSource =
+      override?.contribution != null ? "override" : derived !== undefined ? "derived" : "default";
     const returnRate = override?.returnRate ?? params.defaultReturnRate;
 
     // Rounded once per year, not once at the end. This figure is both
@@ -116,6 +137,7 @@ export function buildRoadmap(params: {
     rows.push({
       year,
       contribution,
+      contributionSource,
       returnRate,
       overridden: override !== undefined,
       planStart,

@@ -74,6 +74,46 @@ describe("buildRoadmap", () => {
     expect(rows[2].returnRate).toBe(0.1);
   });
 
+  it("prefers what the book worked out over the figure typed once", () => {
+    const rows = buildRoadmap({
+      ...base,
+      contributionByYear: new Map([["2026", 9_000_000]]),
+    });
+
+    expect(rows[0].contribution).toBe(6_000_000);
+    expect(rows[0].contributionSource).toBe("default");
+    expect(rows[1].contribution).toBe(9_000_000);
+    expect(rows[1].contributionSource).toBe("derived");
+    // And it is the figure the year actually compounds on.
+    expect(rows[1].planEnd).toBe(Math.round((rows[1].planStart + 9_000_000) * 1.1));
+  });
+
+  it("still lets the reader have the last word over a derived year", () => {
+    const rows = buildRoadmap({
+      ...base,
+      contributionByYear: new Map([["2026", 9_000_000]]),
+      overrides: [{ year: "2026", contribution: 1_000_000, returnRate: null, note: null }],
+    });
+
+    expect(rows[1].contribution).toBe(1_000_000);
+    expect(rows[1].contributionSource).toBe("override");
+  });
+
+  it("keeps the derived figure when a year overrides only its rate", () => {
+    // A null field is "say nothing about this", not "set it to nothing",
+    // so overriding the rate must not throw away what the book knows
+    // about the saving.
+    const rows = buildRoadmap({
+      ...base,
+      contributionByYear: new Map([["2026", 9_000_000]]),
+      overrides: [{ year: "2026", contribution: null, returnRate: 0.03, note: null }],
+    });
+
+    expect(rows[1].contribution).toBe(9_000_000);
+    expect(rows[1].contributionSource).toBe("derived");
+    expect(rows[1].returnRate).toBe(0.03);
+  });
+
   it("falls back per field, so a year may override the note alone", () => {
     const rows = buildRoadmap({
       ...base,

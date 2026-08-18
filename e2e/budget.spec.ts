@@ -139,7 +139,7 @@ test.describe("budget", () => {
     }
 
     await page.goto("/budget");
-    const total = page.getByTestId("budget-total");
+    const total = page.getByTestId("budget-total-expense");
 
     // Nothing budgeted anywhere yet: spend alone, no share to report.
     await expect(total).toContainText("₩180,000");
@@ -279,6 +279,69 @@ test.describe("budget", () => {
 
     await food().getByRole("button", { name: "취소" }).click();
     await expect(food().locator('input[name="amount"]')).toBeHidden();
+  });
+
+  test("수입 is budgeted too, and 저축 is what the two sides leave over", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = (name: string) =>
+      db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      });
+    const salary = await byName("급여");
+    const food = await byName("식비");
+    const bank = await byName("은행");
+    const asOf = today(section.timezone);
+
+    const post = async (left: string, right: string, amount: number, title: string) => {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date: asOf, title })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: left,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: right,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+      ]);
+    };
+    // 급여 3,000,000 in, 식비 800,000 out — so 2,200,000 stayed.
+    await post(bank!.id, salary!.id, 3_000_000, "월급");
+    await post(food!.id, bank!.id, 800_000, "장보기");
+
+    await page.goto("/budget");
+
+    // An income account is budgetable, in its own section.
+    const salaryRow = page.getByTestId("budget-row").filter({ hasText: "급여" });
+    await expect(salaryRow.getByRole("button", { name: "저장" })).toBeVisible();
+    await expect(page.getByTestId("budget-total-income")).toContainText("₩3,000,000");
+    await expect(page.getByTestId("budget-total-expense")).toContainText("₩800,000");
+
+    // What actually stayed, before anything is planned.
+    await expect(page.getByTestId("budget-saving")).toContainText("₩2,200,000");
+
+    await setRowBudget(salaryRow, "2500000");
+    await setRowBudget(page.getByTestId("budget-row").filter({ hasText: "식비" }), "1000000");
+
+    // Earning past the plan is the good direction, so the income side
+    // reads 초과 without the alarm the spending side wears.
+    await expect(page.getByTestId("budget-total-income")).toContainText("초과");
+    await expect(salaryRow).toContainText("초과 ₩500,000");
+    // And the plan's own leftover: 2,500,000 − 1,000,000.
+    await expect(page.getByTestId("budget-saving")).toContainText("₩1,500,000");
   });
 
   test("a budget row opens that month's transactions for the account", async ({ page }) => {

@@ -245,7 +245,15 @@ const en: Record<keyof typeof ko, string> = {
   "budget.setYearBudget": "Set yearly budget",
   "budget.monthlySum": "Monthly budgets",
   "budget.monthlySumOver": "Over yearly budget by",
-  "budget.empty": "No expense accounts.",
+  "budget.incomeSide": "Income budget",
+  "budget.expenseSide": "Spending budget",
+  "budget.earned": "Earned",
+  "budget.toGo": "Left to earn",
+  "budget.saving": "Saved",
+  "budget.savingPlanned": "On plan",
+  "budget.savingHint":
+    "What is saved is income less spending. The roadmap's yearly figure fills itself in from this.",
+  "budget.empty": "No income or expense accounts.",
   "series.section": "By item",
   "series.hint":
     "Categories and formulas over the same months. Tap a name below to turn it on or off.",
@@ -294,7 +302,7 @@ const en: Record<keyof typeof ko, string> = {
   "roadmap.endYear": "Last year",
   "roadmap.startingAmount": "Starting assets",
   "roadmap.defaultContribution": "Saved per year",
-  "roadmap.defaultReturnRate": "Return rate (%)",
+  "roadmap.defaultReturnRate": "Return rate",
   "roadmap.actualFormula": "Formula for the actuals",
   "roadmap.actualFormulaNone": "None (plan only)",
   "roadmap.actualFormulaHint":
@@ -312,6 +320,19 @@ const en: Record<keyof typeof ko, string> = {
   "roadmap.rotateHint": "Now turn the phone anticlockwise.",
   "roadmap.tableHint":
     "The plan compounds from the starting figure untouched; the standing column picks the ledger's own number up wherever it has one. Tap a year to give it different figures.",
+  "roadmap.monthly": "saved by month",
+  "roadmap.month": "Month",
+  "roadmap.saving": "Saved",
+  "roadmap.source": "From",
+  "roadmap.sourceActual": "Actual",
+  "roadmap.sourceBudget": "Budget",
+  "roadmap.sourceNone": "Nothing",
+  "roadmap.total": "Total",
+  "roadmap.backToYears": "Back to the years",
+  "roadmap.monthlyHint":
+    "Months behind us come from the ledger, this month and later from the budgets. Tap a month marked Nothing to give it one.",
+  "roadmap.contributionHint":
+    "The yearly figure is worked out from the months. Only a year with nothing to go on falls back to the roadmap's own number.",
   "roadmap.empty": "No roadmap yet.",
   "roadmap.emptyHint":
     "Set a starting figure, what goes in each year and a return rate, and the years fill themselves in.",

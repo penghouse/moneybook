@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, transactionLines, transactions } from "../db/schema";
 import { getOrCreateSection } from "../lib/current-section";
-import { today, yearOf } from "../lib/date";
+import { addMonths, today, yearMonthOf, yearOf } from "../lib/date";
 import { seedSession, SESSION_COOKIE_NAME } from "./auth-helper";
 
 test.describe("roadmap", () => {
@@ -141,6 +141,91 @@ test.describe("roadmap", () => {
     await expect(page.getByTestId("formula-result").filter({ hasText: "총자산" })).toContainText(
       "₩70,000,000",
     );
+  });
+
+  test("연저축액 comes from the months — the ledger behind, the budget ahead", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const bank = await byName("은행");
+    const salary = await byName("급여");
+    const food = await byName("식비");
+
+    const now = today(section.timezone);
+    const thisYear = yearOf(now);
+    const thisMonth = yearMonthOf(now);
+    const post = async (date: string, left: string, right: string, amount: number) => {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date, title: "월" })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: left,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: right,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+      ]);
+    };
+
+    // One month that has already happened: earned 3,000,000, spent
+    // 1,000,000, so 2,000,000 stayed.
+    const lastMonth = addMonths(thisMonth, -1);
+    await post(`${lastMonth}-15`, bank.id, salary.id, 3_000_000);
+    await post(`${lastMonth}-20`, food.id, bank.id, 1_000_000);
+
+    // And this month, which has not finished, planned instead.
+    await page.goto(`/budget?period=${thisMonth}`);
+    const row = (name: string) => page.getByTestId("budget-row").filter({ hasText: name });
+    await row("급여").locator('input[name="amount"]').fill("4000000");
+    await row("급여").getByRole("button", { name: "저장" }).click();
+    await expect(row("급여").locator('input[name="amount"]')).toBeHidden();
+    await row("식비").locator('input[name="amount"]').fill("1500000");
+    await row("식비").getByRole("button", { name: "저장" }).click();
+    await expect(row("식비").locator('input[name="amount"]')).toBeHidden();
+
+    await addVersion(page, {
+      name: "산출",
+      start: thisYear,
+      end: thisYear,
+      starting: "0",
+      // A default nobody should ever see, because the months speak first.
+      saved: "999999999",
+      rate: "0",
+    });
+
+    // 2,000,000 from the month behind us plus 2,500,000 planned for this
+    // one. Every other month of the year is blank and adds nothing.
+    await expect(rowFor(page, thisYear)).toContainText("₩4,500,000");
+    await expect(rowFor(page, thisYear)).not.toContainText("₩999,999,999");
+
+    // And the twelve months it was worked out from, one row each.
+    await rowFor(page, thisYear).getByRole("link").first().click();
+    await expect(page).toHaveURL(new RegExp(`year=${thisYear}`));
+    await expect(page.getByTestId("roadmap-month")).toHaveCount(12);
+    await expect(page.getByTestId("roadmap-month-total")).toContainText("₩4,500,000");
+
+    const past = page.getByTestId("roadmap-month").filter({ hasText: lastMonth });
+    await expect(past).toContainText("실적");
+    await expect(past).toContainText("₩2,000,000");
+    const current = page.getByTestId("roadmap-month").filter({ hasText: thisMonth });
+    await expect(current).toContainText("예산");
+    await expect(current).toContainText("₩2,500,000");
   });
 
   test("versions are switched by tab, and each keeps its own figures", async ({ page }) => {
