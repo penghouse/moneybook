@@ -239,7 +239,7 @@ export default async function IncomeChartPage({
           one answers a different question than the chart just did. */}
       <Link
         href={`/income?${new URLSearchParams(monthRange(yearMonthOf(to)))}`}
-        className={buttonClass("ghost")}
+        className={buttonClass("nav")}
       >
         ← {t("assets.backToList")}
       </Link>

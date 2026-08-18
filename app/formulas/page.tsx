@@ -354,7 +354,7 @@ export default async function FormulasPage({
       </Card>
       <Hint>{t("formula.snapshotHint")}</Hint>
 
-      <Link href={reportHref} className={buttonClass("ghost")}>
+      <Link href={reportHref} className={buttonClass("nav")}>
         ← {t("assets.backToList")}
       </Link>
     </div>
