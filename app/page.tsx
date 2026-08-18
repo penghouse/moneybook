@@ -640,6 +640,8 @@ export default async function Home({
                       }
                     >
                       <RowEditor
+                        editTitle={t("entry.editTitle")}
+                        copyTitle={t("entry.duplicate")}
                         notice={t("entry.duplicateNotice")}
                         copyLabel={t("entry.duplicate")}
                         backLabel={t("entry.backToEdit")}

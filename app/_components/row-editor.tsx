@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { useDialogHeading } from "./dialog";
 import { buttonClass } from "./ui";
 
 /**
@@ -31,6 +32,8 @@ export function RowEditor({
   notice,
   copyLabel,
   backLabel,
+  editTitle,
+  copyTitle,
   children,
 }: {
   /** The form that updates this transaction. */
@@ -40,10 +43,21 @@ export function RowEditor({
   notice: string;
   copyLabel: string;
   backLabel: string;
+  /** What the dialog's header says in each mode. */
+  editTitle: string;
+  copyTitle: string;
   /** 삭제 — anything that belongs to the record rather than the form. */
   children: ReactNode;
 }) {
   const [copying, setCopying] = useState(false);
+
+  // The header said the transaction's own 적요, which the form below
+  // repeats in its first field — so the one line that could have said
+  // what this panel *does* said something already on screen instead.
+  const setHeading = useDialogHeading();
+  useEffect(() => {
+    setHeading?.(copying ? copyTitle : editTitle);
+  }, [copying, copyTitle, editTitle, setHeading]);
 
   return (
     <div className="space-y-3">

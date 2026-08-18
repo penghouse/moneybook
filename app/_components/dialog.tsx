@@ -20,6 +20,19 @@ export function useDialogClose(): (() => void) | null {
 }
 
 /**
+ * Lets the panel's contents name the header.
+ *
+ * The header says what this dialog is for, and what it is for can change
+ * without the dialog closing — the edit panel becomes a copy panel on a
+ * press. Only the contents know that, so they get to say it.
+ */
+const DialogHeadingContext = createContext<((text: string) => void) | null>(null);
+
+export function useDialogHeading(): ((text: string) => void) | null {
+  return useContext(DialogHeadingContext);
+}
+
+/**
  * A row that opens its details in a modal instead of unfolding beneath
  * itself.
  *
@@ -46,6 +59,7 @@ export function RowDialog({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
+  const [heading, setHeading] = useState<string | null>(null);
   const close = () => ref.current?.close();
 
   return (
@@ -66,7 +80,12 @@ export function RowDialog({
         aria-label={title}
         // Escape and the form's own close both land here, so this is the
         // one place that knows the dialog is shut.
-        onClose={() => setOpen(false)}
+        onClose={() => {
+          setOpen(false);
+          // Next opening starts from the title it was given, not from
+          // whatever the last panel left behind.
+          setHeading(null);
+        }}
         // Clicks land on the <dialog> itself only when they miss the
         // panel inside it — that is the backdrop, and dismissing there is
         // what everything else on a phone does.
@@ -83,7 +102,7 @@ export function RowDialog({
           {open && (
             <>
               <div className="bg-card border-rule-soft sticky top-0 z-10 flex min-h-12 items-center gap-2 border-b px-4">
-                <h2 className="min-w-0 flex-1 truncate font-semibold">{title}</h2>
+                <h2 className="min-w-0 flex-1 truncate font-semibold">{heading ?? title}</h2>
                 <button
                   type="button"
                   onClick={close}
@@ -103,7 +122,9 @@ export function RowDialog({
                   if ((e.target as HTMLElement).closest("a")) close();
                 }}
               >
-                <DialogCloseContext value={close}>{children}</DialogCloseContext>
+                <DialogCloseContext value={close}>
+                  <DialogHeadingContext value={setHeading}>{children}</DialogHeadingContext>
+                </DialogCloseContext>
               </div>
             </>
           )}

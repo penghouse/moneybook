@@ -103,6 +103,31 @@ test.describe("entry", () => {
     await expect(form.getByRole("button", { name: "저장" })).toBeVisible();
   });
 
+  test("the picker lists 분류 together, in the order the book is set to", async ({ page }) => {
+    // A 비용 account created after everything else. `sortOrder` is
+    // assigned section-wide as accounts are created, so ordering by it
+    // alone put this one last — 비용, 자산, 부채… and 비용 again, which
+    // is no order to hunt through.
+    await page.goto("/accounts");
+    const newForm = page.locator("form").filter({ has: page.getByPlaceholder("예: 식비") });
+    await newForm.locator('select[name="group"]').selectOption("expense");
+    await newForm.locator('input[name="name"]').fill("경조사비");
+    await newForm.getByRole("button", { name: "추가" }).click();
+    await expect(page.getByText("경조사비")).toBeVisible();
+
+    await page.goto("/");
+    const form = createForm(page);
+    await form.locator('input[placeholder="계정 검색"]').first().click();
+
+    const groups = await form.locator("ul li button span:nth-child(3)").allInnerTexts();
+    expect(groups.length).toBeGreaterThan(5);
+    // Each 분류 appears as one run, not scattered through the list.
+    const runs = groups.filter((g, i) => g !== groups[i - 1]);
+    expect(runs).toEqual([...new Set(runs)]);
+    // And the runs follow the book's own order, which /accounts sets.
+    expect(runs).toEqual(["자산", "부채", "자본", "비용", "수익"]);
+  });
+
   test("creates a simple same-currency transaction and shows it in the list", async ({ page }) => {
     await page.goto("/");
     const form = createForm(page);
@@ -336,7 +361,11 @@ test.describe("entry", () => {
 
     await page.getByText("정기 결제").click();
     const dialog = page.getByRole("dialog");
+    // The header says what the panel does. It used to say the
+    // transaction's own 적요, which the field right below it repeats.
+    await expect(dialog.getByRole("heading")).toHaveText("거래 수정");
     await dialog.getByTestId("duplicate").click();
+    await expect(dialog.getByRole("heading")).toHaveText("복제");
 
     // Filled in without leaving the dialog. It used to navigate to
     // `/?duplicate=<id>`, which re-ran every query the page makes to
