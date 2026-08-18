@@ -254,6 +254,8 @@ const ko = {
   "budget.savingPlanned": "예산대로면",
   "budget.savingHint":
     "저축은 수입에서 지출을 뺀 값입니다. 자산 로드맵의 연저축액이 이 값으로 채워집니다.",
+  "budget.pickMonth": "월 고르기",
+  "budget.pickYear": "연도 고르기",
   "budget.empty": "수입·비용 계정이 없습니다.",
   "series.section": "항목별 추이",
   "series.hint": "상위 그룹과 계산식을 겹쳐 봅니다. 아래 이름을 눌러 켜고 끄세요.",

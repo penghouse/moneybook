@@ -317,6 +317,35 @@ test.describe("roadmap", () => {
     await expect(rowFor(page, "2030")).toContainText("₩103,000,000");
   });
 
+  test("the table really scrolls sideways rather than clipping", async ({ page }) => {
+    await addVersion(page, {
+      name: "넓은 표",
+      start: "2030",
+      end: "2045",
+      starting: "100000000",
+      saved: "20000000",
+      rate: "10",
+    });
+    await page.setViewportSize({ width: 393, height: 852 });
+
+    const scroller = page.locator("table").locator("xpath=..");
+    const state = await scroller.evaluate((el) => ({
+      overflowX: getComputedStyle(el).overflowX,
+      wider: el.scrollWidth > el.clientWidth,
+    }));
+
+    // `scrollWidth > clientWidth` alone proves only that the content is
+    // too wide — it reports the same number when overflow is hidden and
+    // the columns are simply cut off, which is how a card's own
+    // overflow-hidden once silently won this argument.
+    expect(state.wider).toBe(true);
+    expect(["auto", "scroll"]).toContain(state.overflowX);
+
+    // And it moves when pushed.
+    await scroller.evaluate((el) => el.scrollTo({ left: 400 }));
+    expect(await scroller.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+  });
+
   test("a range running backwards is refused rather than stored", async ({ page }) => {
     await page.goto("/roadmap?new=1");
     await page.getByLabel("버전 이름").fill("거꾸로");

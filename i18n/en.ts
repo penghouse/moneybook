@@ -259,6 +259,8 @@ const en: Record<keyof typeof ko, string> = {
   "budget.savingPlanned": "On plan",
   "budget.savingHint":
     "What is saved is income less spending. The roadmap's yearly figure fills itself in from this.",
+  "budget.pickMonth": "Pick a month",
+  "budget.pickYear": "Pick a year",
   "budget.empty": "No income or expense accounts.",
   "series.section": "By item",
   "series.hint":

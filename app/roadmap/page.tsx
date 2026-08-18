@@ -361,50 +361,95 @@ export default async function RoadmapPage({
       <div className="space-y-4">
         <PageHeader title={`${asked} ${t("roadmap.monthly")}`} />
 
-        <Card className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-rule-soft text-ink-faint border-b text-left">
-                <th scope="col" className={`${cell} font-medium`}>
-                  {t("roadmap.month")}
-                </th>
-                <th scope="col" className={`${cell} text-right font-medium`}>
-                  {t("roadmap.saving")}
-                </th>
-                <th scope="col" className={`${cell} text-right font-medium`}>
-                  {t("budget.earned")}
-                </th>
-                <th scope="col" className={`${cell} text-right font-medium`}>
-                  {t("budget.spent")}
-                </th>
-                <th scope="col" className={`${cell} font-medium`}>
-                  {t("roadmap.source")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {months.map((month) => (
-                <tr
-                  key={month.month}
-                  data-testid="roadmap-month"
-                  className="border-rule-soft border-t"
-                >
-                  <td className={`${cell} tnum p-0`}>
-                    {/* Straight to the month it is short of a budget for
+        <Card>
+          {/* The scroller is inside the card, not the card itself. A
+              Card always carries overflow-hidden — that is what clips
+              its rounded corners — so an overflow utility added
+              alongside is two declarations of one property, and which
+              of them wins is decided by Tailwind's emit order rather
+              than by anything written here. */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-rule-soft text-ink-faint border-b text-left">
+                  <th scope="col" className={`${cell} font-medium`}>
+                    {t("roadmap.month")}
+                  </th>
+                  <th scope="col" className={`${cell} text-right font-medium`}>
+                    {t("roadmap.saving")}
+                  </th>
+                  <th scope="col" className={`${cell} text-right font-medium`}>
+                    {t("budget.earned")}
+                  </th>
+                  <th scope="col" className={`${cell} text-right font-medium`}>
+                    {t("budget.spent")}
+                  </th>
+                  <th scope="col" className={`${cell} font-medium`}>
+                    {t("roadmap.source")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {months.map((month) => (
+                  <tr
+                    key={month.month}
+                    data-testid="roadmap-month"
+                    className="border-rule-soft border-t"
+                  >
+                    <td className={`${cell} tnum p-0`}>
+                      {/* Straight to the month it is short of a budget for
                         — the one thing a blank row wants doing about it. */}
-                    <Link
-                      href={`/budget?period=${month.month}`}
-                      className="hover:bg-sunken flex min-h-12 items-center px-3 font-semibold"
-                    >
-                      {month.month}
-                    </Link>
-                  </td>
-                  <td className={num}>
-                    {month.blank ? (
+                      <Link
+                        href={`/budget?period=${month.month}`}
+                        className="hover:bg-sunken flex min-h-12 items-center px-3 font-semibold"
+                      >
+                        {month.month}
+                      </Link>
+                    </td>
+                    <td className={num}>
+                      {month.blank ? (
+                        <span className="text-ink-faint">—</span>
+                      ) : (
+                        <Money
+                          amount={month.saving}
+                          currency={section.baseCurrency}
+                          locale={locale}
+                          tone="signed"
+                          showPlus
+                        />
+                      )}
+                    </td>
+                    <td className={`${num} text-ink-muted`}>
+                      {month.blank ? "" : money(month.income)}
+                    </td>
+                    <td className={`${num} text-ink-muted`}>
+                      {month.blank ? "" : money(month.expense)}
+                    </td>
+                    <td className={cell}>
+                      {month.blank ? (
+                        <Chip tone="warning">{t("roadmap.sourceNone")}</Chip>
+                      ) : (
+                        <Chip tone={month.source === "actual" ? "positive" : "default"}>
+                          {t(
+                            month.source === "actual"
+                              ? "roadmap.sourceActual"
+                              : "roadmap.sourceBudget",
+                          )}
+                        </Chip>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-rule border-t-2">
+                  <td className={`${cell} font-bold`}>{t("roadmap.total")}</td>
+                  <td className={num} data-testid="roadmap-month-total">
+                    {total === null ? (
                       <span className="text-ink-faint">—</span>
                     ) : (
                       <Money
-                        amount={month.saving}
+                        amount={total}
                         currency={section.baseCurrency}
                         locale={locale}
                         tone="signed"
@@ -412,48 +457,11 @@ export default async function RoadmapPage({
                       />
                     )}
                   </td>
-                  <td className={`${num} text-ink-muted`}>
-                    {month.blank ? "" : money(month.income)}
-                  </td>
-                  <td className={`${num} text-ink-muted`}>
-                    {month.blank ? "" : money(month.expense)}
-                  </td>
-                  <td className={cell}>
-                    {month.blank ? (
-                      <Chip tone="warning">{t("roadmap.sourceNone")}</Chip>
-                    ) : (
-                      <Chip tone={month.source === "actual" ? "positive" : "default"}>
-                        {t(
-                          month.source === "actual"
-                            ? "roadmap.sourceActual"
-                            : "roadmap.sourceBudget",
-                        )}
-                      </Chip>
-                    )}
-                  </td>
+                  <td colSpan={3} />
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="border-rule border-t-2">
-                <td className={`${cell} font-bold`}>{t("roadmap.total")}</td>
-                <td className={num} data-testid="roadmap-month-total">
-                  {total === null ? (
-                    <span className="text-ink-faint">—</span>
-                  ) : (
-                    <Money
-                      amount={total}
-                      currency={section.baseCurrency}
-                      locale={locale}
-                      tone="signed"
-                      showPlus
-                    />
-                  )}
-                </td>
-                <td colSpan={3} />
-              </tr>
-            </tfoot>
-          </table>
+              </tfoot>
+            </table>
+          </div>
         </Card>
 
         <Hint>{t("roadmap.monthlyHint")}</Hint>
@@ -539,131 +547,140 @@ export default async function RoadmapPage({
           hint: t("roadmap.rotateHint"),
         }}
       >
-        <Card className="h-full overflow-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-rule-soft text-ink-faint border-b text-left">
-                <th scope="col" className={`${cell} bg-card sticky left-0 z-10 font-medium`}>
-                  {t("roadmap.year")}
-                </th>
-                {/* The closing figures come first, right beside the year.
+        <Card className="h-full">
+          {/* Inside the card for the same reason as the month table —
+              and h-full on both so the quarter-turned view can give the
+              scroller the whole box. */}
+          <div className="h-full overflow-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-rule-soft text-ink-faint border-b text-left">
+                  <th scope="col" className={`${cell} bg-card sticky left-0 z-10 font-medium`}>
+                    {t("roadmap.year")}
+                  </th>
+                  {/* The closing figures come first, right beside the year.
                   They are what the table is read for, and at 393px only
                   the first money column is on screen without scrolling
                   — so it had better be this one and not an input. */}
-                <th scope="col" className={`${cell} text-right font-medium`}>
-                  {t("roadmap.planEnd")}
-                </th>
-                {hasActuals && (
                   <th scope="col" className={`${cell} text-right font-medium`}>
-                    {t("roadmap.liveEnd")}
+                    {t("roadmap.planEnd")}
                   </th>
-                )}
-                {/* Next to 실적 기말, because it is the number that
+                  {hasActuals && (
+                    <th scope="col" className={`${cell} text-right font-medium`}>
+                      {t("roadmap.liveEnd")}
+                    </th>
+                  )}
+                  {/* Next to 실적 기말, because it is the number that
                     explains the gap between the two closing figures
                     beside it — and because on a phone that puts it two
                     columns from the year rather than at the far end. */}
-                {hasActuals && (
+                  {hasActuals && (
+                    <th scope="col" className={`${cell} text-right font-medium`}>
+                      {t("roadmap.actualReturnRate")}
+                    </th>
+                  )}
                   <th scope="col" className={`${cell} text-right font-medium`}>
-                    {t("roadmap.actualReturnRate")}
+                    {t("roadmap.returnRate")}
                   </th>
-                )}
-                <th scope="col" className={`${cell} text-right font-medium`}>
-                  {t("roadmap.returnRate")}
-                </th>
-                <th scope="col" className={`${cell} text-right font-medium`}>
-                  {t("roadmap.contribution")}
-                </th>
-                <th scope="col" className={`${cell} font-medium`}>
-                  {t("roadmap.note")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.year} data-testid="roadmap-row" className="border-rule-soft border-t">
-                  <td className="bg-card sticky left-0 z-10 p-0">
-                    <RowDialog
-                      title={`${row.year}`}
-                      closeLabel={t("common.close")}
-                      trigger={
-                        <span className="tnum flex items-center gap-1.5 font-semibold">
-                          {row.year}
-                          {row.overridden && <span className="text-accent text-xs">●</span>}
-                        </span>
-                      }
-                    >
-                      <YearForm
-                        roadmapId={selected.id}
-                        row={row}
-                        currency={section.baseCurrency}
-                        labels={{
-                          contribution: t("roadmap.contribution"),
-                          returnRate: t("roadmap.returnRate"),
-                          note: t("roadmap.note"),
-                          save: t("common.save"),
-                          saving: t("common.saving"),
-                          hint: t("roadmap.overrideHint"),
-                        }}
-                      />
-                    </RowDialog>
-                  </td>
-                  <td className={`${num} ${hasActuals ? "text-ink-muted" : "font-semibold"}`}>
-                    {money(row.planEnd)}
-                  </td>
-                  {hasActuals && (
-                    <td className={`${num} font-semibold`}>
-                      {money(row.liveEnd)}
-                      {row.actual !== null && (
-                        <span
-                          className="text-positive ml-1 text-xs"
-                          title={t("roadmap.fromLedger")}
-                        >
-                          ✓
-                        </span>
-                      )}
+                  <th scope="col" className={`${cell} text-right font-medium`}>
+                    {t("roadmap.contribution")}
+                  </th>
+                  <th scope="col" className={`${cell} font-medium`}>
+                    {t("roadmap.note")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr
+                    key={row.year}
+                    data-testid="roadmap-row"
+                    className="border-rule-soft border-t"
+                  >
+                    <td className="bg-card sticky left-0 z-10 p-0">
+                      <RowDialog
+                        title={`${row.year}`}
+                        closeLabel={t("common.close")}
+                        trigger={
+                          <span className="tnum flex items-center gap-1.5 font-semibold">
+                            {row.year}
+                            {row.overridden && <span className="text-accent text-xs">●</span>}
+                          </span>
+                        }
+                      >
+                        <YearForm
+                          roadmapId={selected.id}
+                          row={row}
+                          currency={section.baseCurrency}
+                          labels={{
+                            contribution: t("roadmap.contribution"),
+                            returnRate: t("roadmap.returnRate"),
+                            note: t("roadmap.note"),
+                            save: t("common.save"),
+                            saving: t("common.saving"),
+                            hint: t("roadmap.overrideHint"),
+                          }}
+                        />
+                      </RowDialog>
                     </td>
-                  )}
-                  {hasActuals && (
-                    <td className={num} data-testid="roadmap-rate">
-                      {row.actualReturnRate === null ? (
-                        <span className="text-ink-faint">—</span>
-                      ) : (
-                        // Coloured only when it fell short of the target,
-                        // because a year that beat it needs no marking
-                        // beyond the number itself.
-                        <span
-                          className={`font-semibold ${
-                            row.actualReturnRate < row.returnRate ? "text-negative" : ""
-                          }`}
-                        >
-                          {asPercent(row.actualReturnRate)}%
-                        </span>
-                      )}
+                    <td className={`${num} ${hasActuals ? "text-ink-muted" : "font-semibold"}`}>
+                      {money(row.planEnd)}
                     </td>
-                  )}
-                  <td className={`${num} text-ink-muted`} data-testid="roadmap-target-rate">
-                    {asPercent(row.returnRate)}%
-                  </td>
-                  {/* Straight through to the twelve months it came
+                    {hasActuals && (
+                      <td className={`${num} font-semibold`}>
+                        {money(row.liveEnd)}
+                        {row.actual !== null && (
+                          <span
+                            className="text-positive ml-1 text-xs"
+                            title={t("roadmap.fromLedger")}
+                          >
+                            ✓
+                          </span>
+                        )}
+                      </td>
+                    )}
+                    {hasActuals && (
+                      <td className={num} data-testid="roadmap-rate">
+                        {row.actualReturnRate === null ? (
+                          <span className="text-ink-faint">—</span>
+                        ) : (
+                          // Coloured only when it fell short of the target,
+                          // because a year that beat it needs no marking
+                          // beyond the number itself.
+                          <span
+                            className={`font-semibold ${
+                              row.actualReturnRate < row.returnRate ? "text-negative" : ""
+                            }`}
+                          >
+                            {asPercent(row.actualReturnRate)}%
+                          </span>
+                        )}
+                      </td>
+                    )}
+                    <td className={`${num} text-ink-muted`} data-testid="roadmap-target-rate">
+                      {asPercent(row.returnRate)}%
+                    </td>
+                    {/* Straight through to the twelve months it came
                       from, where a year that looks wrong can be read one
                       month at a time and the gaps filled in. Faint when
                       the roadmap's flat default was all there was —
                       nothing stands behind that figure but a guess. */}
-                  <td className="p-0">
-                    <Link
-                      href={`/roadmap?id=${selected.id}&year=${row.year}`}
-                      className={`hover:bg-sunken tnum flex min-h-12 items-center justify-end px-3 whitespace-nowrap ${
-                        row.contributionSource === "default" ? "text-ink-faint" : ""
-                      }`}
-                    >
-                      {money(row.contribution)}
-                    </Link>
-                  </td>
-                  <td className={`${cell} max-w-40 truncate`}>{row.note}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <td className="p-0">
+                      <Link
+                        href={`/roadmap?id=${selected.id}&year=${row.year}`}
+                        className={`hover:bg-sunken tnum flex min-h-12 items-center justify-end px-3 whitespace-nowrap ${
+                          row.contributionSource === "default" ? "text-ink-faint" : ""
+                        }`}
+                      >
+                        {money(row.contribution)}
+                      </Link>
+                    </td>
+                    <td className={`${cell} max-w-40 truncate`}>{row.note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
       </TurnToRead>
 
