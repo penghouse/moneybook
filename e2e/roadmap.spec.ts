@@ -62,7 +62,7 @@ test.describe("roadmap", () => {
     await rowFor(page, "2031").getByRole("button").first().click();
     const dialog = page.getByRole("dialog");
     await dialog.getByLabel("연저축액").fill("50000000");
-    await dialog.getByLabel("인생목표").fill("이사");
+    await dialog.getByLabel("메모").fill("이사");
     await dialog.getByRole("button", { name: "저장" }).click();
 
     // (121,000,000 + 50,000,000) × 1.1
