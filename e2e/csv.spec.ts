@@ -221,7 +221,7 @@ test.describe("csv", () => {
       "budgets.csv",
       "account,period,amount\n식비,2026-07,450000\n식비,2026,5400000\n",
     );
-    await expect(form.getByText(/가져올 거래 2 · 오류 0/)).toBeVisible();
+    await expect(form.getByText(/가져올 예산 2 · 오류 0/)).toBeVisible();
     await form.getByRole("button", { name: "가져오기 확정" }).click();
     await expect(form.getByText(/갱신 2/)).toBeVisible();
 
@@ -330,7 +330,7 @@ test.describe("csv", () => {
       "rates.csv",
       "date,base,quote,rate,source\n2026-07-31,USD,KRW,1380,manual\n",
     );
-    await expect(form.getByText(/가져올 거래 1 · 오류 0/)).toBeVisible();
+    await expect(form.getByText(/가져올 환율 1 · 오류 0/)).toBeVisible();
     await form.getByRole("button", { name: "가져오기 확정" }).click();
     await expect(form.getByText(/갱신 1/)).toBeVisible();
 
@@ -373,7 +373,7 @@ test.describe("csv", () => {
 
     // Four of the eight rows name an account; the rest are the format's
     // own headings, a 상위 그룹, and an item this book does not keep.
-    await expect(form).toContainText("4");
+    await expect(form).toContainText("가져올 예산 4");
     await expect(form).toContainText("총");
     await expect(form).toContainText("생활");
     await expect(form).toContainText("없는항목");

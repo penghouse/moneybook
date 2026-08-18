@@ -195,7 +195,7 @@ export async function importTransactionsAction(
       status: "preview",
       counts: [
         { label: t("csv.total"), value: groups.length },
-        { label: t("csv.importable"), value: valid.length },
+        { label: t("csv.importableTransactions"), value: valid.length },
         { label: t("csv.errors"), value: issues.length },
       ],
       issues: issues.slice(0, MAX_REPORTED_ISSUES),
@@ -315,7 +315,7 @@ export async function importPairedAction(
       counts: [
         { label: t("csv.total"), value: rows.length },
         { label: t("csv.newAccounts"), value: newAccounts.length },
-        { label: t("csv.importable"), value: importable.length },
+        { label: t("csv.importableTransactions"), value: importable.length },
         { label: t("csv.skipped"), value: rows.length - importable.length },
       ],
       issues: issues.slice(0, MAX_REPORTED_ISSUES),
@@ -442,7 +442,7 @@ export async function importBudgetsAction(
       status: "preview",
       counts: [
         { label: t("csv.total"), value: rows.length },
-        { label: t("csv.importable"), value: valid.length },
+        { label: t("csv.importableBudgets"), value: valid.length },
         { label: t("csv.errors"), value: issues.length },
       ],
       issues: issues.slice(0, MAX_REPORTED_ISSUES),
@@ -547,7 +547,7 @@ export async function importPeriodBudgetsAction(
       status: "preview",
       counts: [
         { label: t("csv.total"), value: rows.length },
-        { label: t("csv.importable"), value: valid.length },
+        { label: t("csv.importableBudgets"), value: valid.length },
         { label: t("csv.skipped"), value: rows.length - valid.length - issues.length },
         { label: t("csv.errors"), value: issues.length },
       ],
@@ -635,7 +635,7 @@ export async function importRatesAction(
       status: "preview",
       counts: [
         { label: t("csv.total"), value: rows.length },
-        { label: t("csv.importable"), value: valid.length },
+        { label: t("csv.importableRates"), value: valid.length },
         { label: t("csv.errors"), value: issues.length },
       ],
       issues: issues.slice(0, MAX_REPORTED_ISSUES),
