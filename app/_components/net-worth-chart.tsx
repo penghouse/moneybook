@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { formatMoney } from "@/lib/money";
 import { niceScale } from "@/lib/chart-scale";
+import type { NetWorthPoint } from "@/lib/net-worth-projection";
 import { AXIS_GUTTER, ChartGrid } from "./chart-axis";
 
 const WIDTH = 320;
@@ -16,13 +17,6 @@ const PAD_RIGHT = 6;
  * ascender outside the viewBox and renders sliced in half.
  */
 const PLOT_TOP = 9;
-
-export interface NetWorthPoint {
-  yearMonth: string;
-  assets: number;
-  liabilities: number;
-  netWorth: number;
-}
 
 /**
  * The balance sheet over the last twelve months: assets, liabilities and
@@ -59,6 +53,8 @@ export function NetWorthChart({
   assetsLabel,
   liabilitiesLabel,
   netWorthLabel,
+  projectedLabel,
+  projectedMarker,
 }: {
   points: NetWorthPoint[];
   currency: string;
@@ -70,6 +66,10 @@ export function NetWorthChart({
   assetsLabel: string;
   liabilitiesLabel: string;
   netWorthLabel: string;
+  /** Names the dotted stretch — '예상 순자산'. */
+  projectedLabel: string;
+  /** The short form, for marking a row of the table — '예상'. */
+  projectedMarker: string;
 }) {
   // Which month the pointer or the keyboard is on. Null is "none", which
   // is also the server-rendered state — the chart reads the same before
@@ -78,7 +78,12 @@ export function NetWorthChart({
 
   if (points.length === 0) return null;
 
-  const values = points.flatMap((p) => [p.assets, p.liabilities, p.netWorth]);
+  // Only the figures that will be drawn: a null is a month with nothing
+  // to say, and letting it near the domain would anchor the axis at zero.
+  const values = points
+    .flatMap((p) => [p.assets, p.liabilities, p.netWorth])
+    .filter((v): v is number => v !== null);
+  if (values.length === 0) return null;
   // The gridlines set the domain, rather than the domain being padded and
   // the gridlines fitted afterwards. Rounding out to whole steps is what
   // puts headroom above the top line — enough that a 2px stroke at the
@@ -96,9 +101,37 @@ export function NetWorthChart({
 
   const lastIndex = points.length - 1;
   const money = (minor: number) => formatMoney(minor, currency, locale);
+  /** An em dash, not a zero: nothing was said about this month. */
+  const cell = (minor: number | null) => (minor === null ? "—" : money(minor));
 
-  const path = (pick: (p: NetWorthPoint) => number) =>
-    points.map((p, i) => `${i === 0 ? "M" : "L"}${x(i)},${y(pick(p))}`).join(" ");
+  /**
+   * A stroke over `from..to`, lifting the pen wherever a month has no
+   * figure. Joining across a null would draw a straight line through
+   * months nothing was said about, which is exactly the invented
+   * forecast this chart stopped drawing.
+   */
+  const path = (pick: (p: NetWorthPoint) => number | null, from = 0, to = lastIndex) => {
+    const parts: string[] = [];
+    let down = false;
+    for (let i = from; i <= to; i++) {
+      const value = pick(points[i]);
+      if (value === null) {
+        down = false;
+        continue;
+      }
+      parts.push(`${down ? "L" : "M"}${x(i)},${y(value)}`);
+      down = true;
+    }
+    return parts.join(" ");
+  };
+
+  // Where the ledger hands over to the budget. The month itself belongs
+  // to both paths, so the solid line and the dotted one meet at a shared
+  // point instead of at a gap.
+  const handover = points.findIndex((p) => p.projected) - 1;
+  const solidTo = handover >= 0 ? handover : points.some((p) => p.projected) ? -1 : lastIndex;
+  const projectedFrom = solidTo >= 0 ? solidTo : 0;
+  const hasProjection = points.some((p) => p.projected && p.netWorth !== null);
 
   // Net worth last, so it sits on top where the lines cross. Only it
   // carries an end label: three values stacked at the right edge would
@@ -135,6 +168,19 @@ export function NetWorthChart({
     },
   ] as const;
 
+  // What the readout and the table name for a given month: ahead of now
+  // only the total is left, and calling it 순자산 would claim the ledger
+  // said so.
+  const readable = (p: NetWorthPoint) =>
+    p.projected
+      ? [{ key: "netWorth" as const, label: projectedLabel, value: p.netWorth, total: true }]
+      : series.map((s) => ({
+          key: s.key,
+          label: s.label,
+          value: s.pick(p),
+          total: s.key === "netWorth",
+        }));
+
   /**
    * The column that catches the pointer for month `i`: half a step either
    * side of the point, clipped to the plot.
@@ -167,6 +213,24 @@ export function NetWorthChart({
             {s.label}
           </span>
         ))}
+        {hasProjection && (
+          <span className="flex items-center gap-1.5">
+            {/* A dashed rule, not a dot: the swatch has to carry the one
+                thing that tells this series apart from the solid one. */}
+            <svg width="14" height="3" viewBox="0 0 14 3" aria-hidden="true" className="shrink-0">
+              <line
+                x1="0"
+                y1="1.5"
+                x2="14"
+                y2="1.5"
+                className="stroke-ink"
+                strokeWidth={2}
+                strokeDasharray="4 4"
+              />
+            </svg>
+            {projectedLabel}
+          </span>
+        )}
       </div>
 
       <div className="relative" onPointerLeave={() => setActive(null)}>
@@ -200,7 +264,9 @@ export function NetWorthChart({
           {series.map((s) => (
             <path
               key={s.key}
-              d={path(s.pick)}
+              // Net worth stops where the ledger does; the dotted path
+              // below carries it the rest of the way.
+              d={path(s.pick, 0, s.key === "netWorth" ? solidTo : lastIndex)}
               fill="none"
               className={s.stroke}
               strokeWidth={2}
@@ -209,23 +275,40 @@ export function NetWorthChart({
             />
           ))}
 
+          {hasProjection && (
+            <path
+              d={path((p) => p.netWorth, projectedFrom, lastIndex)}
+              fill="none"
+              data-testid="net-worth-projected"
+              className="stroke-ink"
+              strokeWidth={2}
+              strokeDasharray="4 4"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          )}
+
           {/* Dots only where the reader is looking, plus the endpoint the
               chart is about. A marker on every month of every series is
               36 rings on a phone. */}
           {series.map((s) => {
             const marked = active !== null ? [active, lastIndex] : [lastIndex];
-            return [...new Set(marked)].map((i) => (
-              <circle
-                key={`${s.key}-${i}`}
-                cx={x(i)}
-                cy={y(s.pick(points[i]))}
-                r={4}
-                // The ring is the surface colour, so a dot stays legible
-                // where two lines cross.
-                className={`${s.fill} stroke-card`}
-                strokeWidth={2}
-              />
-            ));
+            return [...new Set(marked)].map((i) => {
+              const value = s.pick(points[i]);
+              if (value === null) return null;
+              return (
+                <circle
+                  key={`${s.key}-${i}`}
+                  cx={x(i)}
+                  cy={y(value)}
+                  r={4}
+                  // The ring is the surface colour, so a dot stays legible
+                  // where two lines cross.
+                  className={`${s.fill} stroke-card`}
+                  strokeWidth={2}
+                />
+              );
+            });
           })}
 
           {/* No end label on the line. Three series converging at the
@@ -258,7 +341,10 @@ export function NetWorthChart({
                 fill="transparent"
                 tabIndex={0}
                 role="img"
-                aria-label={`${p.yearMonth} · ${series.map((s) => `${s.label} ${money(s.pick(p))}`).join(", ")}`}
+                aria-label={`${p.yearMonth} · ${readable(p)
+                  .filter((r) => r.value !== null)
+                  .map((r) => `${r.label} ${money(r.value!)}`)
+                  .join(", ")}`}
                 data-testid="net-worth-hit"
                 className="cursor-pointer outline-none"
                 onPointerEnter={() => setActive(i)}
@@ -288,18 +374,19 @@ export function NetWorthChart({
           >
             <div className="text-ink-faint mb-1 text-[11px] font-semibold">{shown.yearMonth}</div>
             <dl className="grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5 text-xs">
-              {series.map((s) => (
-                <div key={s.key} className="contents">
+              {readable(shown).map((r) => (
+                <div key={r.key} className="contents">
                   <dt className="text-ink-muted flex items-center gap-1.5">
-                    <span className={`${s.dot} size-2 rounded-full`} aria-hidden="true" />
-                    {s.label}
+                    <span
+                      className={`${r.key === "assets" ? "bg-series-1" : r.key === "liabilities" ? "bg-series-2" : "bg-ink"} size-2 rounded-full`}
+                      aria-hidden="true"
+                    />
+                    {r.label}
                   </dt>
                   <dd
-                    className={`tnum text-ink text-right ${
-                      s.key === "netWorth" ? "font-bold" : "font-normal"
-                    }`}
+                    className={`tnum text-ink text-right ${r.total ? "font-bold" : "font-normal"}`}
                   >
-                    {money(s.pick(shown))}
+                    {r.value === null ? "—" : money(r.value)}
                   </dd>
                 </div>
               ))}
@@ -333,13 +420,16 @@ export function NetWorthChart({
               <tr key={p.yearMonth} className="border-rule-soft border-t">
                 <th scope="row" className="tnum py-2 text-left font-normal">
                   {p.yearMonth}
+                  {p.projected && (
+                    // Said in the row rather than left to the dashes: a
+                    // table has no strokes to carry the distinction.
+                    <span className="text-ink-faint ml-1.5 text-xs">{projectedMarker}</span>
+                  )}
                 </th>
-                <td className="tnum py-2 text-right">{formatMoney(p.assets, currency, locale)}</td>
-                <td className="tnum py-2 text-right">
-                  {formatMoney(p.liabilities, currency, locale)}
-                </td>
-                <td className="tnum py-2 text-right">
-                  {formatMoney(p.netWorth, currency, locale)}
+                <td className="tnum py-2 text-right">{cell(p.assets)}</td>
+                <td className="tnum py-2 text-right">{cell(p.liabilities)}</td>
+                <td className={`tnum py-2 text-right ${p.projected ? "text-ink-muted" : ""}`}>
+                  {cell(p.netWorth)}
                 </td>
               </tr>
             ))}

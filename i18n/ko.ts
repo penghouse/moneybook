@@ -223,6 +223,10 @@ const ko = {
   "assets.noHistory": "그릴 거래가 아직 없습니다.",
   "assets.backToList": "목록으로",
   "assets.viewCharts": "그래프 보기",
+  "assets.projected": "예상",
+  "assets.projectedNetWorth": "예상 순자산",
+  "assets.projectedHint":
+    "이번 달까지는 장부의 실제값이고, 그 뒤 점선은 수입예산 − 지출예산으로 이어 그린 예상 순자산입니다. 예산이 있는 달까지만 그립니다.",
   "assets.rangeFrom": "시작",
   "assets.rangeTo": "끝",
   "assets.compositionAsOf": "구성은 끝 시점 기준입니다.",

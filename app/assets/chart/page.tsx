@@ -5,6 +5,8 @@ import { db } from "@/db/client";
 import { accounts, formulas } from "@/db/schema";
 import { currentSection } from "@/lib/current-request";
 import { addMonths, monthsBetween, shiftWindow, today, yearMonthOf } from "@/lib/date";
+import { getMonthlySavings } from "@/lib/savings";
+import { projectNetWorth } from "@/lib/net-worth-projection";
 import { parseGroupOrder } from "@/lib/account-groups";
 import { getAccountBalances, getMonthlyBalanceSheet } from "@/lib/ledger";
 import { DEFAULT_SERIES, parseSeries, seriesCookieName } from "@/lib/chart-series";
@@ -42,8 +44,20 @@ export default async function AssetsChartPage({
 
   const start = from > to ? to : from;
   const months = monthsBetween(start, to);
-  const [history, balances, catalog, formulaRows] = await Promise.all([
+  const currentMonth = yearMonthOf(today(section.timezone));
+  // Only the months ahead. The balance sheet already speaks for the rest,
+  // and since every month asked for here is in the future, none of them
+  // reads the ledger — which is why the book's first month never comes
+  // into it.
+  const aheadMonths = months.filter((m) => m > currentMonth);
+  const [history, savings, balances, catalog, formulaRows] = await Promise.all([
     getMonthlyBalanceSheet(db, { sectionId: section.id, months }),
+    getMonthlySavings(db, {
+      sectionId: section.id,
+      months: aheadMonths,
+      currentMonth,
+      firstLedgerMonth: null,
+    }),
     // The mix is a level, so it needs one instant rather than a span:
     // the end of the range on screen.
     getAccountBalances(db, { sectionId: section.id, asOf: to }),
@@ -64,7 +78,15 @@ export default async function AssetsChartPage({
     .sort((a, b) => b.baseAmount - a.baseAmount)
     .map((b) => ({ id: b.accountId, name: b.name, amount: b.baseAmount }));
 
-  const hasHistory = history.some((h) => h.assets !== 0 || h.liabilities !== 0);
+  // The balance sheet behind us, the budget ahead of us. Past now the
+  // ledger's carry-forward would draw a flat line off the right edge,
+  // which reads as a forecast and is the absence of one.
+  const points = projectNetWorth({ history, savings, currentMonth });
+  const hasHistory = points.some(
+    (p) =>
+      (p.assets ?? 0) !== 0 || (p.liabilities ?? 0) !== 0 || (p.projected && p.netWorth !== null),
+  );
+  const hasProjection = points.some((p) => p.projected && p.netWorth !== null);
 
   const seriesMonths = months;
   const reportSeries = await buildReportSeries(db, {
@@ -138,7 +160,7 @@ export default async function AssetsChartPage({
           {hasHistory ? (
             <div className="px-2 py-3 md:px-4">
               <NetWorthChart
-                points={history}
+                points={points}
                 currency={section.baseCurrency}
                 locale={locale}
                 tableCaption={t("assets.netWorthTrend")}
@@ -146,12 +168,18 @@ export default async function AssetsChartPage({
                 assetsLabel={t("group.asset")}
                 liabilitiesLabel={t("group.liability")}
                 netWorthLabel={t("assets.netWorth")}
+                projectedLabel={t("assets.projectedNetWorth")}
+                projectedMarker={t("assets.projected")}
               />
             </div>
           ) : (
             <EmptyState>{t("assets.noHistory")}</EmptyState>
           )}
         </Card>
+        {/* Only when there is a dotted stretch to explain. A standing note
+            about the budget under a chart that is entirely history is one
+            more line to read past. */}
+        {hasProjection && <Hint>{t("assets.projectedHint")}</Hint>}
       </section>
 
       <section>
