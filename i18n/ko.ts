@@ -284,7 +284,8 @@ const ko = {
   "roadmap.returnRate": "수익률",
   "roadmap.planEnd": "계획 기말",
   "roadmap.liveEnd": "실적 기말",
-  "roadmap.actualReturnRate": "실제수익률",
+  "roadmap.rateHint":
+    "수익률은 장부가 아는 해에는 기말에서 역산한 실제 수익률(✓)이고, 모르는 해에는 계획한 수익률입니다. 올해는 아직 진행 중이라 지금까지 넣은 저축액 기준입니다.",
   "roadmap.note": "인생목표",
   "roadmap.fromLedger": "장부에서 가져온 값",
   "roadmap.addVersion": "새 버전",

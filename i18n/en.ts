@@ -291,7 +291,8 @@ const en: Record<keyof typeof ko, string> = {
   "roadmap.returnRate": "Return",
   "roadmap.planEnd": "Planned end",
   "roadmap.liveEnd": "Standing end",
-  "roadmap.actualReturnRate": "Actual return",
+  "roadmap.rateHint":
+    "The rate is what a year actually earned (\u2713), read back out of its closing figure, wherever the book knows it — and the planned rate everywhere else. This year is still running, so it stands on the saving made so far.",
   "roadmap.note": "Milestone",
   "roadmap.fromLedger": "From the ledger",
   "roadmap.addVersion": "New version",

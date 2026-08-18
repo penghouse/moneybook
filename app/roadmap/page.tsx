@@ -282,9 +282,17 @@ export default async function RoadmapPage({
     else savingsByYear.set(year, [row]);
   }
   const contributionByYear = new Map<string, number>();
+  const settledContributionByYear = new Map<string, number>();
   for (const [year, months] of savingsByYear) {
     const total = sumSavings(months);
     if (total !== null) contributionByYear.set(year, total);
+    // Only the months already lived. The year in progress carries a
+    // closing figure that is today's, so the rate read back out of it
+    // has to stand on the saving actually made by today.
+    settledContributionByYear.set(
+      year,
+      months.filter((m) => m.source === "actual").reduce((sum, m) => sum + m.saving, 0),
+    );
   }
 
   /**
@@ -338,6 +346,7 @@ export default async function RoadmapPage({
     overrides,
     actualByYear,
     contributionByYear,
+    settledContributionByYear,
   });
 
   const cell = "px-3 py-2 whitespace-nowrap";
@@ -545,20 +554,21 @@ export default async function RoadmapPage({
                   {t("roadmap.planEnd")}
                 </th>
                 {hasActuals && (
-                  <>
-                    <th scope="col" className={`${cell} text-right font-medium`}>
-                      {t("roadmap.liveEnd")}
-                    </th>
-                    <th scope="col" className={`${cell} text-right font-medium`}>
-                      {t("roadmap.actualReturnRate")}
-                    </th>
-                  </>
+                  <th scope="col" className={`${cell} text-right font-medium`}>
+                    {t("roadmap.liveEnd")}
+                  </th>
                 )}
-                <th scope="col" className={`${cell} text-right font-medium`}>
-                  {t("roadmap.contribution")}
-                </th>
+                {/* One rate column, not two. A year the book can speak
+                    for shows the rate it actually earned, worked back
+                    out of its own closing figure; a year it cannot shows
+                    what the plan assumes. Two columns would have printed
+                    the same number twice for every settled year and
+                    pushed the one that matters off a phone. */}
                 <th scope="col" className={`${cell} text-right font-medium`}>
                   {t("roadmap.returnRate")}
+                </th>
+                <th scope="col" className={`${cell} text-right font-medium`}>
+                  {t("roadmap.contribution")}
                 </th>
                 <th scope="col" className={`${cell} font-medium`}>
                   {t("roadmap.note")}
@@ -598,31 +608,40 @@ export default async function RoadmapPage({
                     {money(row.planEnd)}
                   </td>
                   {hasActuals && (
-                    <>
-                      <td className={`${num} font-semibold`}>
-                        {money(row.liveEnd)}
-                        {row.actual !== null && (
-                          <span
-                            className="text-positive ml-1 text-xs"
-                            title={t("roadmap.fromLedger")}
-                          >
-                            ✓
-                          </span>
-                        )}
-                      </td>
-                      <td className={num}>
-                        {row.actualReturnRate === null ? (
-                          <span className="text-ink-faint">—</span>
-                        ) : (
-                          <span
-                            className={row.actualReturnRate < row.returnRate ? "text-negative" : ""}
-                          >
-                            {asPercent(row.actualReturnRate)}%
-                          </span>
-                        )}
-                      </td>
-                    </>
+                    <td className={`${num} font-semibold`}>
+                      {money(row.liveEnd)}
+                      {row.actual !== null && (
+                        <span
+                          className="text-positive ml-1 text-xs"
+                          title={t("roadmap.fromLedger")}
+                        >
+                          ✓
+                        </span>
+                      )}
+                    </td>
                   )}
+                  <td className={num} data-testid="roadmap-rate">
+                    {row.actualReturnRate === null ? (
+                      <span className="text-ink-faint">{asPercent(row.returnRate)}%</span>
+                    ) : (
+                      // Earned, not assumed — and coloured only when it
+                      // fell short of the plan, because a year that beat
+                      // it needs no marking beyond the number.
+                      <span
+                        className={
+                          row.actualReturnRate < row.returnRate ? "text-negative" : "text-ink"
+                        }
+                      >
+                        {asPercent(row.actualReturnRate)}%
+                        <span
+                          className="text-positive ml-1 text-xs"
+                          title={t("roadmap.fromLedger")}
+                        >
+                          ✓
+                        </span>
+                      </span>
+                    )}
+                  </td>
                   {/* Straight through to the twelve months it came
                       from, where a year that looks wrong can be read one
                       month at a time and the gaps filled in. Faint when
@@ -638,7 +657,6 @@ export default async function RoadmapPage({
                       {money(row.contribution)}
                     </Link>
                   </td>
-                  <td className={num}>{asPercent(row.returnRate)}%</td>
                   <td className={`${cell} max-w-40 truncate`}>{row.note}</td>
                 </tr>
               ))}
@@ -649,6 +667,7 @@ export default async function RoadmapPage({
 
       <Hint>{t("roadmap.tableHint")}</Hint>
       <Hint>{t("roadmap.contributionHint")}</Hint>
+      <Hint>{t("roadmap.rateHint")}</Hint>
     </div>
   );
 }

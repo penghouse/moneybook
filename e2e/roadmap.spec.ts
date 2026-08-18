@@ -228,6 +228,72 @@ test.describe("roadmap", () => {
     await expect(current).toContainText("₩2,500,000");
   });
 
+  test("this year's rate is read back out of what the book actually did", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const bank = await byName("은행");
+    const opening = await byName("기초자본");
+
+    const now = today(section.timezone);
+    const thisYear = yearOf(now);
+    const [tx] = await db
+      .insert(transactions)
+      .values({ sectionId: section.id, date: now, title: "기초" })
+      .returning();
+    await db.insert(transactionLines).values([
+      {
+        transactionId: tx.id,
+        side: "left",
+        accountId: bank.id,
+        currency: "KRW",
+        amount: 55_000_000,
+        rate: 1,
+        baseAmount: 55_000_000,
+      },
+      {
+        transactionId: tx.id,
+        side: "right",
+        accountId: opening.id,
+        currency: "KRW",
+        amount: 55_000_000,
+        rate: 1,
+        baseAmount: 55_000_000,
+      },
+    ]);
+
+    await page.goto("/formulas?scope=assets&new=1");
+    await page.getByLabel("계산식 이름").fill("총자산");
+    await page
+      .getByTestId("formula-item")
+      .filter({ has: page.getByText("자산 합계", { exact: true }) })
+      .getByRole("radio", { name: /더하기/ })
+      .check();
+    await page.getByRole("button", { name: "저장" }).click();
+
+    // Opened at 50,000,000, nothing saved in yet, standing at
+    // 55,000,000 — so the year has earned 10%, whatever the plan said.
+    await addVersion(page, {
+      name: "역산",
+      start: thisYear,
+      end: thisYear,
+      starting: "50000000",
+      saved: "0",
+      rate: "3",
+    });
+    await page.getByRole("link", { name: "버전 설정" }).click();
+    await page.getByLabel("실제값으로 쓸 계산식").selectOption({ label: "총자산" });
+    await page.getByRole("button", { name: "저장" }).click();
+
+    const rate = rowFor(page, thisYear).getByTestId("roadmap-rate");
+    await expect(rate).toContainText("10%");
+    // The plan's own 3% is gone from the row: one rate column, and the
+    // book outranks the assumption wherever it can speak.
+    await expect(rate).not.toContainText("3%");
+  });
+
   test("versions are switched by tab, and each keeps its own figures", async ({ page }) => {
     await addVersion(page, {
       name: "보수적",

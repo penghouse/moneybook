@@ -39,6 +39,16 @@ export interface RoadmapRow {
   year: string;
   /** After the override, so this is what the row was actually computed with. */
   contribution: number;
+  /**
+   * How much of `contribution` has actually gone in already.
+   *
+   * The same figure for a year that is over. For the year in progress it
+   * is only the months that have been lived, because the actual closing
+   * figure beside it is today's — dividing today's balance by a whole
+   * year's saving would credit the year with money that has not been put
+   * in yet, and report a return far below the real one.
+   */
+  settledContribution: number;
   /** Whether the reader typed it, the book worked it out, or it fell back. */
   contributionSource: ContributionSource;
   returnRate: number;
@@ -107,6 +117,14 @@ export function buildRoadmap(params: {
    * exactly this reason.
    */
   contributionByYear?: ReadonlyMap<string, number>;
+  /**
+   * Year -> how much of that year's saving has actually happened.
+   *
+   * Only differs from `contributionByYear` for the year in progress, and
+   * only matters for working the real return rate back out. Absent means
+   * "all of it", which is true of every year that is over.
+   */
+  settledContributionByYear?: ReadonlyMap<string, number>;
 }): RoadmapRow[] {
   const years = roadmapYearList(params.startYear, params.endYear);
   const overrideByYear = new Map(params.overrides.map((o) => [o.year, o]));
@@ -134,9 +152,20 @@ export function buildRoadmap(params: {
     const base = liveStart + contribution;
     const liveEnd = actual ?? Math.round(base * (1 + returnRate));
 
+    // The rate the year *did* earn, read back out of the identity the
+    // whole table is built on:
+    //
+    //     (이전 기말 + 저축) × (1 + 수익률) = 기말
+    //
+    // against what has actually been put in rather than what is planned
+    // to be — see settledContribution.
+    const settledContribution = params.settledContributionByYear?.get(year) ?? contribution;
+    const settledBase = liveStart + settledContribution;
+
     rows.push({
       year,
       contribution,
+      settledContribution,
       contributionSource,
       returnRate,
       overridden: override !== undefined,
@@ -145,7 +174,7 @@ export function buildRoadmap(params: {
       liveStart,
       liveEnd,
       actual,
-      actualReturnRate: actual === null || base === 0 ? null : actual / base - 1,
+      actualReturnRate: actual === null || settledBase === 0 ? null : actual / settledBase - 1,
       note: override?.note ?? null,
     });
 
