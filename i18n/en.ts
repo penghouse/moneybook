@@ -288,11 +288,12 @@ const en: Record<keyof typeof ko, string> = {
   "roadmap.title": "Asset roadmap",
   "roadmap.year": "Year",
   "roadmap.contribution": "Saved",
-  "roadmap.returnRate": "Return",
+  "roadmap.returnRate": "Target",
   "roadmap.planEnd": "Planned end",
   "roadmap.liveEnd": "Standing end",
+  "roadmap.actualReturnRate": "Earned",
   "roadmap.rateHint":
-    "The rate is what a year actually earned (\u2713), read back out of its closing figure, wherever the book knows it — and the planned rate everywhere else. This year is still running, so it stands on the saving made so far.",
+    "What a year earned is read back out of its closing figure — (start + saved) \u00d7 (1 + rate) = end. This year is still running, so it stands on the saving made so far, and it turns red when it falls short of the target.",
   "roadmap.note": "Milestone",
   "roadmap.fromLedger": "From the ledger",
   "roadmap.addVersion": "New version",
@@ -303,7 +304,7 @@ const en: Record<keyof typeof ko, string> = {
   "roadmap.endYear": "Last year",
   "roadmap.startingAmount": "Starting assets",
   "roadmap.defaultContribution": "Saved per year",
-  "roadmap.defaultReturnRate": "Return rate",
+  "roadmap.defaultReturnRate": "Target return",
   "roadmap.actualFormula": "Formula for the actuals",
   "roadmap.actualFormulaNone": "None (plan only)",
   "roadmap.actualFormulaHint":

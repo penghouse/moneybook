@@ -35,7 +35,7 @@ test.describe("roadmap", () => {
     await page.getByLabel("종료 연도").fill(values.end);
     await page.getByLabel("시작자산").fill(values.starting);
     await page.getByLabel("기본 연저축액").fill(values.saved);
-    await page.getByLabel("기본 수익률 (%)").fill(values.rate);
+    await page.getByLabel("기본 목표수익률 (%)").fill(values.rate);
     await page.getByRole("button", { name: "저장" }).click();
     await expect(page).toHaveURL(/\/roadmap\?id=/);
   }
@@ -287,11 +287,10 @@ test.describe("roadmap", () => {
     await page.getByLabel("실제값으로 쓸 계산식").selectOption({ label: "총자산" });
     await page.getByRole("button", { name: "저장" }).click();
 
-    const rate = rowFor(page, thisYear).getByTestId("roadmap-rate");
-    await expect(rate).toContainText("10%");
-    // The plan's own 3% is gone from the row: one rate column, and the
-    // book outranks the assumption wherever it can speak.
-    await expect(rate).not.toContainText("3%");
+    // What it earned, and the target it is being read against — two
+    // columns, because the gap between them is the point.
+    await expect(rowFor(page, thisYear).getByTestId("roadmap-rate")).toContainText("10%");
+    await expect(rowFor(page, thisYear).getByTestId("roadmap-target-rate")).toContainText("3%");
   });
 
   test("versions are switched by tab, and each keeps its own figures", async ({ page }) => {

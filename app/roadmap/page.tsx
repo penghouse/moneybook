@@ -558,12 +558,15 @@ export default async function RoadmapPage({
                     {t("roadmap.liveEnd")}
                   </th>
                 )}
-                {/* One rate column, not two. A year the book can speak
-                    for shows the rate it actually earned, worked back
-                    out of its own closing figure; a year it cannot shows
-                    what the plan assumes. Two columns would have printed
-                    the same number twice for every settled year and
-                    pushed the one that matters off a phone. */}
+                {/* Next to 실적 기말, because it is the number that
+                    explains the gap between the two closing figures
+                    beside it — and because on a phone that puts it two
+                    columns from the year rather than at the far end. */}
+                {hasActuals && (
+                  <th scope="col" className={`${cell} text-right font-medium`}>
+                    {t("roadmap.actualReturnRate")}
+                  </th>
+                )}
                 <th scope="col" className={`${cell} text-right font-medium`}>
                   {t("roadmap.returnRate")}
                 </th>
@@ -620,27 +623,26 @@ export default async function RoadmapPage({
                       )}
                     </td>
                   )}
-                  <td className={num} data-testid="roadmap-rate">
-                    {row.actualReturnRate === null ? (
-                      <span className="text-ink-faint">{asPercent(row.returnRate)}%</span>
-                    ) : (
-                      // Earned, not assumed — and coloured only when it
-                      // fell short of the plan, because a year that beat
-                      // it needs no marking beyond the number.
-                      <span
-                        className={
-                          row.actualReturnRate < row.returnRate ? "text-negative" : "text-ink"
-                        }
-                      >
-                        {asPercent(row.actualReturnRate)}%
+                  {hasActuals && (
+                    <td className={num} data-testid="roadmap-rate">
+                      {row.actualReturnRate === null ? (
+                        <span className="text-ink-faint">—</span>
+                      ) : (
+                        // Coloured only when it fell short of the target,
+                        // because a year that beat it needs no marking
+                        // beyond the number itself.
                         <span
-                          className="text-positive ml-1 text-xs"
-                          title={t("roadmap.fromLedger")}
+                          className={`font-semibold ${
+                            row.actualReturnRate < row.returnRate ? "text-negative" : ""
+                          }`}
                         >
-                          ✓
+                          {asPercent(row.actualReturnRate)}%
                         </span>
-                      </span>
-                    )}
+                      )}
+                    </td>
+                  )}
+                  <td className={`${num} text-ink-muted`} data-testid="roadmap-target-rate">
+                    {asPercent(row.returnRate)}%
                   </td>
                   {/* Straight through to the twelve months it came
                       from, where a year that looks wrong can be read one
