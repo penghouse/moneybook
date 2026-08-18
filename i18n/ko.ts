@@ -159,6 +159,7 @@ const ko = {
   "entry.addLine": "줄 추가",
   "entry.difference": "차액",
   "entry.duplicate": "복제",
+  "entry.backToEdit": "수정으로 돌아가기",
   "entry.duplicateNotice": "복제한 내용입니다. 확인 후 저장하면 새 거래로 추가됩니다.",
   "entry.counterparties": "거래처별 잔액",
   "entry.counterpartiesHint": "조회 기간과 무관하게 계정 시작일부터 오늘까지의 잔액입니다.",

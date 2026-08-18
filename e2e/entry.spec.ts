@@ -335,11 +335,14 @@ test.describe("entry", () => {
     await expect(page.getByText("정기 결제")).toHaveCount(1);
 
     await page.getByText("정기 결제").click();
-    await page.getByRole("dialog").getByRole("link", { name: "복제" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByTestId("duplicate").click();
 
-    // Everything needed to check it before writing anything: the date,
-    // both sides, the amount and the title all arrive filled in.
-    const copy = createForm(page);
+    // Filled in without leaving the dialog. It used to navigate to
+    // `/?duplicate=<id>`, which re-ran every query the page makes to
+    // show values the browser was already holding.
+    await expect(page).toHaveURL(/\/$/);
+    const copy = dialog.locator("form").first();
     await expect(copy.locator('input[name="title"]')).toHaveValue("정기 결제");
     await expect(copy.locator('input[type="number"]').first()).toHaveValue("8000");
     const names = copy.locator('input[placeholder="계정 검색"]');
@@ -353,9 +356,9 @@ test.describe("entry", () => {
     await expect(page.getByText("정기 결제 2회차")).toBeVisible();
     await expect(page.getByText("정기 결제", { exact: true })).toHaveCount(1);
 
-    // The prefill is gone afterwards, so pressing 저장 again cannot
-    // quietly file a third copy.
-    await expect(page).toHaveURL(/\/$/);
+    // The dialog closes on save, so 저장 cannot be pressed a second time
+    // to file a third copy, and the entry form below is still blank.
+    await expect(dialog).toBeHidden();
     await expect(createForm(page).locator('input[name="title"]')).toHaveValue("");
   });
 
@@ -398,14 +401,12 @@ test.describe("entry", () => {
     await expect(page.getByText("같은 거래")).toHaveCount(1);
 
     await page.getByText("같은 거래").click();
-    await page
-      .locator("main li", { hasText: "같은 거래" })
-      .getByRole("link", { name: "복제" })
-      .click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByTestId("duplicate").click();
 
     // A duplicate is prefilled identical on purpose — the dirty check
     // belongs to editing in place, not to this.
-    const copy = createForm(page);
+    const copy = dialog.locator("form").first();
     await expect(copy.getByRole("button", { name: "저장" })).toBeEnabled();
     await copy.getByRole("button", { name: "저장" }).click();
     await expect(page.getByText("같은 거래")).toHaveCount(2);

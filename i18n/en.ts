@@ -163,6 +163,7 @@ const en: Record<keyof typeof ko, string> = {
   "entry.addLine": "Add line",
   "entry.difference": "Difference",
   "entry.duplicate": "Duplicate",
+  "entry.backToEdit": "Back to editing",
   "entry.duplicateNotice": "A copy. Check it over — saving adds it as a new transaction.",
   "entry.counterparties": "By counterparty",
   "entry.counterpartiesHint":
