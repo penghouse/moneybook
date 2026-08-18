@@ -331,15 +331,13 @@ const en: Record<keyof typeof ko, string> = {
   "roadmap.imageRateNote":
     "Earned and target are that year's return rate. ✓ marks a year from the ledger.",
   "roadmap.saveImage": "Save as image",
+  "roadmap.makeImage": "Make the image",
   "roadmap.savingImage": "Drawing…",
   "roadmap.roundAmounts": "Round the amounts",
   "roadmap.imageShape": "Image shape",
   "roadmap.imageTall": "Upright (a year a line)",
   "roadmap.imageWide": "On its side (years across)",
   "roadmap.maskAmounts": "Blur the amounts",
-  "roadmap.turn": "Turn sideways",
-  "roadmap.unturn": "Turn back",
-  "roadmap.rotateHint": "Now turn the phone anticlockwise.",
   "roadmap.tableHint":
     "The plan compounds from the starting figure untouched. The outlook takes the ledger's own number wherever it has one (\u2713) and compounds on from there. Tap a year to give it different figures.",
   "roadmap.monthly": "saved by month",

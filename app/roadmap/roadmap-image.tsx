@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { buttonClass, controlClass } from "../_components/ui";
+import { useRef, useState } from "react";
+import { buttonClass, controlClass, Label } from "../_components/ui";
 
 /** One year, already formatted — the canvas only ever draws strings. */
 export interface RoadmapImageRow {
@@ -21,6 +21,8 @@ export interface RoadmapImageRow {
 export interface RoadmapImageLabels {
   save: string;
   saving: string;
+  confirm: string;
+  close: string;
   mask: string;
   rounded: string;
   shape: string;
@@ -110,6 +112,7 @@ export function RoadmapImage({
   const [rounded, setRounded] = useState(false);
   const [shape, setShape] = useState<Shape>("tall");
   const [busy, setBusy] = useState(false);
+  const dialog = useRef<HTMLDialogElement>(null);
 
   /**
    * Rounded where a unit exists, exact where it does not — a small
@@ -207,56 +210,96 @@ export function RoadmapImage({
       // the download, and pulling the blob out from under it mid-read is
       // what makes a browser fall back to a nameless file.
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      dialog.current?.close();
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <>
       <button
         type="button"
-        onClick={draw}
-        disabled={busy}
+        onClick={() => dialog.current?.showModal()}
         data-testid="roadmap-image"
         className={buttonClass("secondary")}
       >
-        {busy ? labels.saving : labels.save}
+        {labels.save}
       </button>
 
-      <select
-        value={shape}
-        onChange={(e) => setShape(e.target.value as Shape)}
-        aria-label={labels.shape}
-        data-testid="roadmap-image-shape"
-        className={`${controlClass} w-auto`}
+      {/* The choices live behind the button rather than beside it. Three
+          controls sitting permanently under the table read as settings
+          the page has, when they are questions asked once, at the moment
+          a picture is being made. */}
+      <dialog
+        ref={dialog}
+        aria-label={labels.save}
+        onClick={(e) => {
+          if (e.target === dialog.current) dialog.current?.close();
+        }}
+        className="bg-card rounded-card text-ink m-auto w-[min(30rem,calc(100vw-1.5rem))] p-0 backdrop:bg-black/50"
       >
-        <option value="tall">{labels.shapeTall}</option>
-        <option value="wide">{labels.shapeWide}</option>
-      </select>
+        <div className="border-rule-soft flex min-h-12 items-center gap-2 border-b px-4">
+          <h2 className="min-w-0 flex-1 truncate font-semibold">{labels.save}</h2>
+          <button
+            type="button"
+            onClick={() => dialog.current?.close()}
+            aria-label={labels.close}
+            className="text-ink-faint hover:text-ink -mr-2 grid h-11 w-11 shrink-0 place-items-center text-xl"
+          >
+            ✕
+          </button>
+        </div>
 
-      <label className="text-ink-muted flex min-h-12 items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={rounded}
-          onChange={(e) => setRounded(e.target.checked)}
-          data-testid="roadmap-image-rounded"
-          className="accent-accent size-5"
-        />
-        {labels.rounded}
-      </label>
+        <div className="space-y-3 px-4 py-4">
+          <div>
+            <Label htmlFor="roadmap-image-shape">{labels.shape}</Label>
+            <select
+              id="roadmap-image-shape"
+              value={shape}
+              onChange={(e) => setShape(e.target.value as Shape)}
+              data-testid="roadmap-image-shape"
+              className={controlClass}
+            >
+              <option value="tall">{labels.shapeTall}</option>
+              <option value="wide">{labels.shapeWide}</option>
+            </select>
+          </div>
 
-      <label className="text-ink-muted flex min-h-12 items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={masked}
-          onChange={(e) => setMasked(e.target.checked)}
-          data-testid="roadmap-image-mask"
-          className="accent-accent size-5"
-        />
-        {labels.mask}
-      </label>
-    </div>
+          <label className="text-ink-muted flex min-h-12 items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={rounded}
+              onChange={(e) => setRounded(e.target.checked)}
+              data-testid="roadmap-image-rounded"
+              className="accent-accent size-5"
+            />
+            {labels.rounded}
+          </label>
+
+          <label className="text-ink-muted flex min-h-12 items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={masked}
+              onChange={(e) => setMasked(e.target.checked)}
+              data-testid="roadmap-image-mask"
+              className="accent-accent size-5"
+            />
+            {labels.mask}
+          </label>
+
+          <button
+            type="button"
+            onClick={draw}
+            disabled={busy}
+            data-testid="roadmap-image-confirm"
+            className={buttonClass("primary", true)}
+          >
+            {busy ? labels.saving : labels.confirm}
+          </button>
+        </div>
+      </dialog>
+    </>
   );
 }
 

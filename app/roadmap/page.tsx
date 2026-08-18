@@ -26,7 +26,6 @@ import {
 } from "../_components/ui";
 import { deleteRoadmapAction, saveRoadmapAction, setRoadmapYearAction } from "./actions";
 import { RoadmapImage } from "./roadmap-image";
-import { TurnToRead } from "./turn-to-read";
 
 /** Percent in the boxes, multiplier in the table — see actions.ts. */
 const asPercent = (rate: number) => Math.round(rate * 10000) / 100;
@@ -571,6 +570,8 @@ export default async function RoadmapPage({
         labels={{
           save: t("roadmap.saveImage"),
           saving: t("roadmap.savingImage"),
+          confirm: t("roadmap.makeImage"),
+          close: t("common.close"),
           mask: t("roadmap.maskAmounts"),
           rounded: t("roadmap.roundAmounts"),
           shape: t("roadmap.imageShape"),
@@ -593,155 +594,142 @@ export default async function RoadmapPage({
       {/* A real table, scrolled inside its own box. Seven columns will
           not fit a phone, and the alternative — a card per year — loses
           the one thing a roadmap is read for, which is comparing a
-          column down the years. The page itself stays unscrolled.
-
-          On a phone, 「가로로 보기」 lays the whole block on its side so
-          the table gets the screen's long side. */}
-      <TurnToRead
-        labels={{
-          turn: t("roadmap.turn"),
-          unturn: t("roadmap.unturn"),
-          hint: t("roadmap.rotateHint"),
-        }}
-      >
-        <Card className="h-full">
-          {/* Inside the card for the same reason as the month table —
-              and h-full on both so the quarter-turned view can give the
-              scroller the whole box. */}
-          <div className="h-full overflow-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-rule-soft text-ink-faint border-b text-left">
-                  <th scope="col" className={`${cell} bg-card sticky left-0 z-10 font-medium`}>
-                    {t("roadmap.year")}
-                  </th>
-                  {/* The closing figures come first, right beside the year.
+          column down the years. The page itself stays unscrolled. */}
+      <Card>
+        {/* Inside the card, not on it: a Card always carries
+            overflow-hidden — that is what clips its rounded corners — so
+            an overflow utility beside it is two declarations of one
+            property, and which wins is decided by Tailwind's emit order
+            rather than by anything written here. */}
+        <div className="overflow-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-rule-soft text-ink-faint border-b text-left">
+                <th scope="col" className={`${cell} bg-card sticky left-0 z-10 font-medium`}>
+                  {t("roadmap.year")}
+                </th>
+                {/* The closing figures come first, right beside the year.
                   They are what the table is read for, and at 393px only
                   the first money column is on screen without scrolling
                   — so it had better be this one and not an input. */}
+                <th scope="col" className={`${cell} text-right font-medium`}>
+                  {t("roadmap.planEnd")}
+                </th>
+                {hasActuals && (
                   <th scope="col" className={`${cell} text-right font-medium`}>
-                    {t("roadmap.planEnd")}
+                    {t("roadmap.liveEnd")}
                   </th>
-                  {hasActuals && (
-                    <th scope="col" className={`${cell} text-right font-medium`}>
-                      {t("roadmap.liveEnd")}
-                    </th>
-                  )}
-                  {/* Next to 실적 기말, because it is the number that
+                )}
+                {/* Next to 실적 기말, because it is the number that
                     explains the gap between the two closing figures
                     beside it — and because on a phone that puts it two
                     columns from the year rather than at the far end. */}
+                {hasActuals && (
+                  <th scope="col" className={`${cell} text-right font-medium`}>
+                    {t("roadmap.actualReturnRate")}
+                  </th>
+                )}
+                <th scope="col" className={`${cell} text-right font-medium`}>
+                  {t("roadmap.returnRate")}
+                </th>
+                <th scope="col" className={`${cell} text-right font-medium`}>
+                  {t("roadmap.contribution")}
+                </th>
+                <th scope="col" className={`${cell} font-medium`}>
+                  {t("roadmap.note")}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.year} data-testid="roadmap-row" className="border-rule-soft border-t">
+                  <td className="bg-card sticky left-0 z-10 p-0">
+                    <RowDialog
+                      title={`${row.year}`}
+                      closeLabel={t("common.close")}
+                      trigger={
+                        <span className="tnum flex items-center gap-1.5 font-semibold">
+                          {row.year}
+                          {row.overridden && <span className="text-accent text-xs">●</span>}
+                        </span>
+                      }
+                    >
+                      <YearForm
+                        roadmapId={selected.id}
+                        row={row}
+                        currency={section.baseCurrency}
+                        labels={{
+                          contribution: t("roadmap.contribution"),
+                          returnRate: t("roadmap.returnRate"),
+                          note: t("roadmap.note"),
+                          save: t("common.save"),
+                          saving: t("common.saving"),
+                          hint: t("roadmap.overrideHint"),
+                        }}
+                      />
+                    </RowDialog>
+                  </td>
+                  <td className={`${num} ${hasActuals ? "text-ink-muted" : "font-semibold"}`}>
+                    {money(row.planEnd)}
+                    <ShortForm value={short(row.planEnd)} />
+                  </td>
                   {hasActuals && (
-                    <th scope="col" className={`${cell} text-right font-medium`}>
-                      {t("roadmap.actualReturnRate")}
-                    </th>
+                    <td className={`${num} font-semibold`}>
+                      {money(row.liveEnd)}
+                      <ShortForm value={short(row.liveEnd)} />
+                      {row.actual !== null && (
+                        <span
+                          className="text-positive ml-1 text-xs"
+                          title={t("roadmap.fromLedger")}
+                        >
+                          ✓
+                        </span>
+                      )}
+                    </td>
                   )}
-                  <th scope="col" className={`${cell} text-right font-medium`}>
-                    {t("roadmap.returnRate")}
-                  </th>
-                  <th scope="col" className={`${cell} text-right font-medium`}>
-                    {t("roadmap.contribution")}
-                  </th>
-                  <th scope="col" className={`${cell} font-medium`}>
-                    {t("roadmap.note")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr
-                    key={row.year}
-                    data-testid="roadmap-row"
-                    className="border-rule-soft border-t"
-                  >
-                    <td className="bg-card sticky left-0 z-10 p-0">
-                      <RowDialog
-                        title={`${row.year}`}
-                        closeLabel={t("common.close")}
-                        trigger={
-                          <span className="tnum flex items-center gap-1.5 font-semibold">
-                            {row.year}
-                            {row.overridden && <span className="text-accent text-xs">●</span>}
-                          </span>
-                        }
-                      >
-                        <YearForm
-                          roadmapId={selected.id}
-                          row={row}
-                          currency={section.baseCurrency}
-                          labels={{
-                            contribution: t("roadmap.contribution"),
-                            returnRate: t("roadmap.returnRate"),
-                            note: t("roadmap.note"),
-                            save: t("common.save"),
-                            saving: t("common.saving"),
-                            hint: t("roadmap.overrideHint"),
-                          }}
-                        />
-                      </RowDialog>
+                  {hasActuals && (
+                    <td className={num} data-testid="roadmap-rate">
+                      {row.actualReturnRate === null ? (
+                        <span className="text-ink-faint">—</span>
+                      ) : (
+                        // Coloured only when it fell short of the target,
+                        // because a year that beat it needs no marking
+                        // beyond the number itself.
+                        <span
+                          className={`font-semibold ${
+                            row.actualReturnRate < row.returnRate ? "text-negative" : ""
+                          }`}
+                        >
+                          {asPercent(row.actualReturnRate)}%
+                        </span>
+                      )}
                     </td>
-                    <td className={`${num} ${hasActuals ? "text-ink-muted" : "font-semibold"}`}>
-                      {money(row.planEnd)}
-                      <ShortForm value={short(row.planEnd)} />
-                    </td>
-                    {hasActuals && (
-                      <td className={`${num} font-semibold`}>
-                        {money(row.liveEnd)}
-                        <ShortForm value={short(row.liveEnd)} />
-                        {row.actual !== null && (
-                          <span
-                            className="text-positive ml-1 text-xs"
-                            title={t("roadmap.fromLedger")}
-                          >
-                            ✓
-                          </span>
-                        )}
-                      </td>
-                    )}
-                    {hasActuals && (
-                      <td className={num} data-testid="roadmap-rate">
-                        {row.actualReturnRate === null ? (
-                          <span className="text-ink-faint">—</span>
-                        ) : (
-                          // Coloured only when it fell short of the target,
-                          // because a year that beat it needs no marking
-                          // beyond the number itself.
-                          <span
-                            className={`font-semibold ${
-                              row.actualReturnRate < row.returnRate ? "text-negative" : ""
-                            }`}
-                          >
-                            {asPercent(row.actualReturnRate)}%
-                          </span>
-                        )}
-                      </td>
-                    )}
-                    <td className={`${num} text-ink-muted`} data-testid="roadmap-target-rate">
-                      {asPercent(row.returnRate)}%
-                    </td>
-                    {/* Straight through to the twelve months it came
+                  )}
+                  <td className={`${num} text-ink-muted`} data-testid="roadmap-target-rate">
+                    {asPercent(row.returnRate)}%
+                  </td>
+                  {/* Straight through to the twelve months it came
                       from, where a year that looks wrong can be read one
                       month at a time and the gaps filled in. Faint when
                       the roadmap's flat default was all there was —
                       nothing stands behind that figure but a guess. */}
-                    <td className="p-0">
-                      <Link
-                        href={`/roadmap?id=${selected.id}&year=${row.year}`}
-                        className={`hover:bg-sunken tnum flex min-h-12 items-center justify-end px-3 whitespace-nowrap ${
-                          row.contributionSource === "default" ? "text-ink-faint" : ""
-                        }`}
-                      >
-                        {money(row.contribution)}
-                      </Link>
-                    </td>
-                    <td className={`${cell} max-w-40 truncate`}>{row.note}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      </TurnToRead>
+                  <td className="p-0">
+                    <Link
+                      href={`/roadmap?id=${selected.id}&year=${row.year}`}
+                      className={`hover:bg-sunken tnum flex min-h-12 items-center justify-end px-3 whitespace-nowrap ${
+                        row.contributionSource === "default" ? "text-ink-faint" : ""
+                      }`}
+                    >
+                      {money(row.contribution)}
+                    </Link>
+                  </td>
+                  <td className={`${cell} max-w-40 truncate`}>{row.note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
       <Hint>{t("roadmap.tableHint")}</Hint>
       <Hint>{t("roadmap.contributionHint")}</Hint>
