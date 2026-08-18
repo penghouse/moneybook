@@ -6,6 +6,14 @@ import { getOrCreateSection } from "../lib/current-section";
 import { addMonths, today, yearMonthOf, yearOf } from "../lib/date";
 import { seedSession, SESSION_COOKIE_NAME } from "./auth-helper";
 
+/** A download's bytes, without leaving a file behind. */
+async function readAll(download: import("@playwright/test").Download): Promise<Buffer> {
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks);
+}
+
 test.describe("roadmap", () => {
   let currentUserId = "";
 
@@ -344,6 +352,47 @@ test.describe("roadmap", () => {
     // And it moves when pushed.
     await scroller.evaluate((el) => el.scrollTo({ left: 400 }));
     expect(await scroller.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+  });
+
+  test("the whole roadmap saves as one phone-shaped picture, blurred on request", async ({
+    page,
+  }) => {
+    await addVersion(page, {
+      name: "사진",
+      start: "2030",
+      end: "2049",
+      starting: "100000000",
+      saved: "20000000",
+      rate: "10",
+    });
+
+    // A PNG says its own size in the eight bytes after the IHDR tag, so
+    // the shape can be checked without decoding the image.
+    const sizeOf = (png: Buffer) => ({
+      width: png.readUInt32BE(16),
+      height: png.readUInt32BE(20),
+    });
+
+    const plainDownload = page.waitForEvent("download");
+    await page.getByTestId("roadmap-image").click();
+    const plain = await plainDownload;
+    // The name is not asserted: Chromium reports every blob download as
+    // "download" over the automation protocol, whatever the anchor says.
+    // Checked by hand instead — the anchor carries the right `download`
+    // and is in the document when clicked.
+    const plainPng = await readAll(plain);
+    const size = sizeOf(plainPng);
+    expect(size.width).toBe(1080);
+    // Tall enough for a phone, and grown past it only by the extra years.
+    expect(size.height).toBeGreaterThanOrEqual(1920);
+
+    // Blurring changes the picture, and only the picture — same shape.
+    await page.getByTestId("roadmap-image-mask").check();
+    const maskedDownload = page.waitForEvent("download");
+    await page.getByTestId("roadmap-image").click();
+    const maskedPng = await readAll(await maskedDownload);
+    expect(sizeOf(maskedPng)).toEqual(size);
+    expect(maskedPng.equals(plainPng)).toBe(false);
   });
 
   test("a range running backwards is refused rather than stored", async ({ page }) => {

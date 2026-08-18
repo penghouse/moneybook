@@ -24,6 +24,7 @@ import {
   PageHeader,
 } from "../_components/ui";
 import { deleteRoadmapAction, saveRoadmapAction, setRoadmapYearAction } from "./actions";
+import { RoadmapImage } from "./roadmap-image";
 import { TurnToRead } from "./turn-to-read";
 
 /** Percent in the boxes, multiplier in the table — see actions.ts. */
@@ -532,6 +533,46 @@ export default async function RoadmapPage({
       </Card>
 
       {!selected.actualFormulaId && <Hint>{t("roadmap.pickFormulaHint")}</Hint>}
+
+      {/* Formatted here rather than in the browser: the money strings
+          have to be the section's own currency in the reader's locale,
+          and that knowledge already lives on this side. */}
+      <RoadmapImage
+        name={selected.name}
+        period={`${selected.startYear}–${selected.endYear}`}
+        summary={[
+          { label: t("roadmap.startingAmount"), value: money(selected.startingAmount) },
+          { label: t("roadmap.defaultContribution"), value: money(selected.defaultContribution) },
+          {
+            label: t("roadmap.defaultReturnRate"),
+            value: `${asPercent(selected.defaultReturnRate)}%`,
+          },
+        ]}
+        rows={rows.map((row) => ({
+          year: row.year,
+          plan: money(row.planEnd),
+          live: money(row.liveEnd),
+          actualRate: row.actualReturnRate === null ? null : `${asPercent(row.actualReturnRate)}%`,
+          targetRate: `${asPercent(row.returnRate)}%`,
+          fromLedger: row.actual !== null,
+        }))}
+        labels={{
+          save: t("roadmap.saveImage"),
+          saving: t("roadmap.savingImage"),
+          mask: t("roadmap.maskAmounts"),
+          title: t("roadmap.title"),
+          year: t("roadmap.year"),
+          plan: t("roadmap.planEnd"),
+          live: t("roadmap.liveEnd"),
+          actualRate: t("roadmap.imageActual"),
+          targetRate: t("roadmap.imageTarget"),
+          // The note names both columns, and one of them is only drawn
+          // when the ledger has something to say.
+          rateNote: rows.some((row) => row.actualReturnRate !== null)
+            ? t("roadmap.imageRateNote")
+            : t("roadmap.imageTargetNote"),
+        }}
+      />
 
       {/* A real table, scrolled inside its own box. Seven columns will
           not fit a phone, and the alternative — a card per year — loses

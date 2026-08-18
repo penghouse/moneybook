@@ -317,6 +317,13 @@ const ko = {
   "roadmap.rangeTooLong": "한 번에 최대 {n}년까지 그릴 수 있습니다.",
   "roadmap.overrideHint":
     "비워 두면 그 해는 기본값을 따릅니다. 셋 다 비우면 이 해의 설정이 지워집니다.",
+  "roadmap.imageActual": "실제",
+  "roadmap.imageTarget": "목표",
+  "roadmap.imageTargetNote": "목표는 그 해에 잡은 목표수익률입니다.",
+  "roadmap.imageRateNote": "실제·목표는 그 해의 수익률입니다. ✓는 장부에서 가져온 해.",
+  "roadmap.saveImage": "이미지로 저장",
+  "roadmap.savingImage": "만드는 중…",
+  "roadmap.maskAmounts": "금액 가리기",
   "roadmap.turn": "가로로 보기",
   "roadmap.unturn": "세로로 보기",
   "roadmap.rotateHint": "휴대폰을 왼쪽으로 돌려 보세요.",

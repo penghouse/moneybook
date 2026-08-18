@@ -325,6 +325,14 @@ const en: Record<keyof typeof ko, string> = {
   "roadmap.rangeTooLong": "Up to {n} years can be drawn at once.",
   "roadmap.overrideHint":
     "Leave a box empty and the year follows the default. Empty all three and the year's own settings are removed.",
+  "roadmap.imageActual": "Earned",
+  "roadmap.imageTarget": "Target",
+  "roadmap.imageTargetNote": "Target is the return rate the year was aimed at.",
+  "roadmap.imageRateNote":
+    "Earned and target are that year's return rate. ✓ marks a year from the ledger.",
+  "roadmap.saveImage": "Save as image",
+  "roadmap.savingImage": "Drawing…",
+  "roadmap.maskAmounts": "Blur the amounts",
   "roadmap.turn": "Turn sideways",
   "roadmap.unturn": "Turn back",
   "roadmap.rotateHint": "Now turn the phone anticlockwise.",
