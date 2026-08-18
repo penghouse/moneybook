@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PeriodJump } from "./period-jump";
 import { buttonClass, Card } from "./ui";
 
 /**
@@ -57,6 +58,7 @@ export function PeriodNav({
   prevLabel,
   nextLabel,
   units,
+  jump,
 }: {
   prevHref: string;
   nextHref: string;
@@ -66,6 +68,12 @@ export function PeriodNav({
   nextLabel: string;
   /** 월/년 switch, omitted on screens that only step one unit. */
   units?: readonly PeriodUnitOption[];
+  /**
+   * Makes the label itself a way of jumping to any period, for the
+   * screens whose period is a single key. Omitted where it is a range or
+   * an as-of date, which the screen already has its own controls for.
+   */
+  jump?: { unit: "month" | "year"; hrefPrefix: string; label: string };
 }) {
   return (
     <Card>
@@ -73,7 +81,11 @@ export function PeriodNav({
         <Link href={prevHref} className={buttonClass("nav")}>
           ← {prevLabel}
         </Link>
-        <span className="tnum mx-auto font-semibold">{label}</span>
+        {jump ? (
+          <PeriodJump value={label} {...jump} />
+        ) : (
+          <span className="tnum mx-auto font-semibold">{label}</span>
+        )}
         <Link href={nextHref} className={buttonClass("nav")}>
           {nextLabel} →
         </Link>

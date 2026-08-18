@@ -176,7 +176,7 @@ test("@mobile 「가로로 보기」 lays the roadmap on its side, and turning u
   await page.goto("/roadmap?new=1");
   await page.getByLabel("버전 이름").fill("가로 확인");
   await page.getByLabel("시작 연도").fill("2030");
-  await page.getByLabel("종료 연도").fill("2045");
+  await page.getByLabel("종료 연도").fill("2055");
   await page.getByLabel("시작자산").fill("100000000");
   await page.getByRole("button", { name: "저장" }).click();
   await expect(page).toHaveURL(/\/roadmap\?id=/);
@@ -189,10 +189,24 @@ test("@mobile 「가로로 보기」 lays the roadmap on its side, and turning u
 
   await page.getByRole("button", { name: "가로로 보기" }).click();
   expect(await turn()).toBe("matrix(0, 1, -1, 0, 393, 0)");
-  // The year column, which every other column is read against, stays
-  // clear of the fixed tab bar at the foot of the screen.
+  // The year column, which every other column is read against, lands
+  // along the top of the turned block rather than the bottom, where the
+  // fixed tab bar would cover it. Measured against the block itself, not
+  // the viewport: how far down the page the block sits depends on what
+  // is above it, which is not what this is about.
+  const block = (await page.locator(".rotate-to-read").boundingBox())!;
   const years = (await page.getByTestId("roadmap-row").first().boundingBox())!;
-  expect(years.y).toBeLessThan(page.viewportSize()!.height / 2);
+  expect(years.y).toBeLessThan(block.y + block.height / 2);
+
+  // And the years past the fold are reachable — turning the table is no
+  // use if it cannot be scrolled through once turned.
+  const scrolled = await page.locator(".rotate-to-read > *").evaluate((card) => {
+    const inner = card.firstElementChild as HTMLElement;
+    inner.scrollTo({ top: 400 });
+    return { room: inner.scrollHeight > inner.clientHeight, at: inner.scrollTop };
+  });
+  expect(scrolled.room).toBe(true);
+  expect(scrolled.at).toBeGreaterThan(0);
 
   // Turned: the browser calls it landscape and the transform goes,
   // without the button being pressed again.

@@ -407,6 +407,33 @@ test.describe("budget", () => {
     await expect(page.getByText("₩131,000")).toHaveCount(0);
   });
 
+  test("the period label jumps straight to a month, and to a year", async ({ page }) => {
+    await page.goto("/budget?period=2026-08");
+
+    // Eight taps of 이전 달 away, and back again — which is what the
+    // label exists to save.
+    await page.getByTestId("period-jump").click();
+    const picker = page.getByTestId("period-jump-input");
+    await expect(picker).toHaveAttribute("type", "month");
+    await picker.fill("2026-01");
+    await expect(page).toHaveURL(/period=2026-01/);
+    await expect(page.getByTestId("period-jump")).toHaveText("2026-01");
+
+    // The arrows still work from wherever it landed.
+    await page.getByRole("link", { name: /이전 달/ }).click();
+    await expect(page).toHaveURL(/period=2025-12/);
+
+    // On the year view the same label takes a year instead.
+    await page.getByRole("link", { name: "연간" }).click();
+    await expect(page.getByTestId("period-jump")).toHaveText("2025");
+    await page.getByTestId("period-jump").click();
+    const yearPicker = page.getByTestId("period-jump-input");
+    await expect(yearPicker).toHaveAttribute("type", "number");
+    await yearPicker.fill("2030");
+    await yearPicker.press("Enter");
+    await expect(page).toHaveURL(/period=2030/);
+  });
+
   test("month navigation keeps the selected month in the URL", async ({ page }) => {
     await page.goto("/budget");
     await page.getByRole("link", { name: /다음 달/ }).click();

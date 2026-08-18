@@ -6,6 +6,14 @@ import { getOrCreateSection } from "../lib/current-section";
 import { addMonths, today, yearMonthOf, yearOf } from "../lib/date";
 import { seedSession, SESSION_COOKIE_NAME } from "./auth-helper";
 
+/** A download's bytes, without leaving a file behind. */
+async function readAll(download: import("@playwright/test").Download): Promise<Buffer> {
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks);
+}
+
 test.describe("roadmap", () => {
   let currentUserId = "";
 
@@ -315,6 +323,116 @@ test.describe("roadmap", () => {
 
     await page.getByTestId("roadmap-versions").getByRole("link", { name: "보수적" }).click();
     await expect(rowFor(page, "2030")).toContainText("₩103,000,000");
+  });
+
+  test("the table really scrolls sideways rather than clipping", async ({ page }) => {
+    await addVersion(page, {
+      name: "넓은 표",
+      start: "2030",
+      end: "2045",
+      starting: "100000000",
+      saved: "20000000",
+      rate: "10",
+    });
+    await page.setViewportSize({ width: 393, height: 852 });
+
+    const scroller = page.locator("table").locator("xpath=..");
+    const state = await scroller.evaluate((el) => ({
+      overflowX: getComputedStyle(el).overflowX,
+      wider: el.scrollWidth > el.clientWidth,
+    }));
+
+    // `scrollWidth > clientWidth` alone proves only that the content is
+    // too wide — it reports the same number when overflow is hidden and
+    // the columns are simply cut off, which is how a card's own
+    // overflow-hidden once silently won this argument.
+    expect(state.wider).toBe(true);
+    expect(["auto", "scroll"]).toContain(state.overflowX);
+
+    // And it moves when pushed.
+    await scroller.evaluate((el) => el.scrollTo({ left: 400 }));
+    expect(await scroller.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+  });
+
+  test("the whole roadmap saves as one phone-shaped picture, blurred on request", async ({
+    page,
+  }) => {
+    await addVersion(page, {
+      name: "사진",
+      start: "2030",
+      end: "2049",
+      starting: "100000000",
+      saved: "20000000",
+      rate: "10",
+    });
+
+    // A PNG says its own size in the eight bytes after the IHDR tag, so
+    // the shape can be checked without decoding the image.
+    const sizeOf = (png: Buffer) => ({
+      width: png.readUInt32BE(16),
+      height: png.readUInt32BE(20),
+    });
+
+    const plainDownload = page.waitForEvent("download");
+    await page.getByTestId("roadmap-image").click();
+    const plain = await plainDownload;
+    // The name is not asserted: Chromium reports every blob download as
+    // "download" over the automation protocol, whatever the anchor says.
+    // Checked by hand instead — the anchor carries the right `download`
+    // and is in the document when clicked.
+    const plainPng = await readAll(plain);
+    const size = sizeOf(plainPng);
+    expect(size.width).toBe(1080);
+    // Tall enough for a phone, and grown past it only by the extra years.
+    expect(size.height).toBeGreaterThanOrEqual(1920);
+
+    // Blurring changes the picture, and only the picture — same shape.
+    await page.getByTestId("roadmap-image-mask").check();
+    const maskedDownload = page.waitForEvent("download");
+    await page.getByTestId("roadmap-image").click();
+    const maskedPng = await readAll(await maskedDownload);
+    expect(sizeOf(maskedPng)).toEqual(size);
+    expect(maskedPng.equals(plainPng)).toBe(false);
+
+    // Rounding is a different picture again, at the same shape.
+    await page.getByTestId("roadmap-image-mask").uncheck();
+    await page.getByTestId("roadmap-image-rounded").check();
+    const roundDownload = page.waitForEvent("download");
+    await page.getByTestId("roadmap-image").click();
+    const roundPng = await readAll(await roundDownload);
+    expect(sizeOf(roundPng)).toEqual(size);
+    expect(roundPng.equals(plainPng)).toBe(false);
+  });
+
+  test("the picture can be turned on its side, with the years running across", async ({ page }) => {
+    await addVersion(page, {
+      name: "가로",
+      start: "2030",
+      end: "2049",
+      starting: "100000000",
+      saved: "20000000",
+      rate: "10",
+    });
+
+    const shoot = async () => {
+      const download = page.waitForEvent("download");
+      await page.getByTestId("roadmap-image").click();
+      const png = await readAll(await download);
+      return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+    };
+
+    await page.getByTestId("roadmap-image-shape").selectOption("wide");
+    const exact = await shoot();
+    expect(exact.width).toBe(1920);
+    expect(exact.width).toBeGreaterThan(exact.height);
+
+    // Short figures fit more years to a band, so the same twenty years
+    // need fewer bands and the picture is shorter — the column width is
+    // measured from the text, not guessed.
+    await page.getByTestId("roadmap-image-rounded").check();
+    const rounded = await shoot();
+    expect(rounded.width).toBe(1920);
+    expect(rounded.height).toBeLessThan(exact.height);
   });
 
   test("a range running backwards is refused rather than stored", async ({ page }) => {

@@ -135,7 +135,7 @@ const ko = {
   "csv.importPeriodBudgets": "후잉 비용 예산 CSV 가져오기",
   "csv.periodBudgetsHint":
     "「시작일,종료일,계정,항목,예산,금액,잔여액」 형식의 예산표를 그대로 올리면 됩니다. 예산 열만 읽고, 지출액과 잔여액은 이 앱이 거래에서 직접 계산하므로 무시합니다. 합계 줄과 상위 그룹 줄은 넣을 곳이 없어 건너뛰며, 어떤 줄을 건너뛰었는지 미리보기에서 확인할 수 있습니다.",
-  "csv.notAnAccount": "이 책의 계정 이름이 아니라 건너뜁니다 (합계·상위 그룹)",
+  "csv.notAnAccount": "이 장부에 없는 계정이라 건너뜁니다 (합계·상위 그룹)",
   "csv.newAccounts": "새 계정",
   "csv.rowLabel": "{n}행",
 
@@ -156,7 +156,7 @@ const ko = {
   "csvError.activeRange": "사용 끝이 사용 시작보다 빠릅니다",
   "csvError.invalidAmount": "금액이 잘못되었습니다: {value}",
   "csvError.invalidRate": "환율이 잘못되었습니다: {value}",
-  "csvError.invalidBaseAmount": "기준금액이 잘못되었습니다: {value}",
+  "csvError.invalidBaseAmount": "기준통화 금액이 잘못되었습니다: {value}",
   "csvError.unbalanced": "차변과 대변이 일치하지 않습니다",
   "csvError.headerMismatch": "첫 줄이 헤더와 다릅니다. 필요한 열: {value}",
   "csvError.columnCount": "{value}번째 줄의 열 개수가 맞지 않습니다 (필요 {expected})",
@@ -254,6 +254,8 @@ const ko = {
   "budget.savingPlanned": "예산대로면",
   "budget.savingHint":
     "저축은 수입에서 지출을 뺀 값입니다. 자산 로드맵의 연저축액이 이 값으로 채워집니다.",
+  "budget.pickMonth": "월 고르기",
+  "budget.pickYear": "연도 고르기",
   "budget.empty": "수입·비용 계정이 없습니다.",
   "series.section": "항목별 추이",
   "series.hint": "상위 그룹과 계산식을 겹쳐 봅니다. 아래 이름을 눌러 켜고 끄세요.",
@@ -292,7 +294,7 @@ const ko = {
   "roadmap.liveEnd": "전망",
   "roadmap.actualReturnRate": "실제수익률",
   "roadmap.rateHint":
-    "실제수익률은 기말에서 역산한 값입니다 — (이전 기말 + 저축) × (1 + 수익률) = 기말. 올해는 아직 진행 중이라 지금까지 넣은 저축액 기준이고, 목표에 못 미치면 빨갛게 보입니다.",
+    "실제수익률은 전망 값에서 거꾸로 구한 값입니다 — (전해 전망 + 저축) × (1 + 수익률) = 올해 전망. 올해는 아직 진행 중이라 지금까지 넣은 저축액 기준이고, 목표수익률에 못 미치면 빨갛게 보입니다.",
   "roadmap.note": "메모",
   "roadmap.fromLedger": "장부에서 가져온 값",
   "roadmap.addVersion": "새 버전",
@@ -306,7 +308,7 @@ const ko = {
   "roadmap.defaultReturnRate": "기본 목표수익률",
   "roadmap.actualFormula": "실제값으로 쓸 계산식",
   "roadmap.actualFormulaNone": "쓰지 않음 (계획만)",
-  "roadmap.actualFormulaHint": "지난 해와 올해는 이 계산식의 12월 값이 실적 기말로 들어옵니다.",
+  "roadmap.actualFormulaHint": "지난 해와 올해는 이 계산식의 12월 값이 전망 열에 들어옵니다.",
   "roadmap.actualFormulaEmpty": "자산 계산식이 아직 없습니다. 계산식 화면에서 먼저 만들어 주세요.",
   "roadmap.pickFormulaHint": "계산식을 고르면 지난 해가 장부의 실제값으로 채워집니다.",
   "roadmap.nameRequired": "버전 이름을 입력해 주세요.",
@@ -315,6 +317,17 @@ const ko = {
   "roadmap.rangeTooLong": "한 번에 최대 {n}년까지 그릴 수 있습니다.",
   "roadmap.overrideHint":
     "비워 두면 그 해는 기본값을 따릅니다. 셋 다 비우면 이 해의 설정이 지워집니다.",
+  "roadmap.imageActual": "실제",
+  "roadmap.imageTarget": "목표",
+  "roadmap.imageTargetNote": "목표는 그 해에 잡은 목표수익률입니다.",
+  "roadmap.imageRateNote": "실제·목표는 그 해의 수익률입니다. ✓는 장부에서 가져온 해.",
+  "roadmap.saveImage": "이미지로 저장",
+  "roadmap.savingImage": "만드는 중…",
+  "roadmap.roundAmounts": "어림수로",
+  "roadmap.imageShape": "이미지 모양",
+  "roadmap.imageTall": "세로 (한 해씩)",
+  "roadmap.imageWide": "가로 (연도 나열)",
+  "roadmap.maskAmounts": "금액 가리기",
   "roadmap.turn": "가로로 보기",
   "roadmap.unturn": "세로로 보기",
   "roadmap.rotateHint": "휴대폰을 왼쪽으로 돌려 보세요.",
@@ -335,7 +348,7 @@ const ko = {
     "연저축액은 월별 실적과 예산에서 계산됩니다. 계산할 근거가 없는 해만 기본값을 씁니다.",
   "roadmap.empty": "아직 로드맵이 없습니다.",
   "roadmap.emptyHint":
-    "시작자산과 해마다 넣을 돈, 기대 수익률을 정해 두면 연도별로 자산이 어떻게 불어나는지 볼 수 있습니다.",
+    "시작자산과 해마다 넣을 돈, 목표수익률을 정해 두면 연도별로 자산이 어떻게 불어나는지 볼 수 있습니다.",
 } as const;
 
 export default ko;

@@ -139,7 +139,7 @@ const en: Record<keyof typeof ko, string> = {
   "csv.importPeriodBudgets": "Import Whooing expense budget CSV",
   "csv.periodBudgetsHint":
     "Upload a budget report in the form 「시작일,종료일,계정,항목,예산,금액,잔여액」, unedited. Only the budget column is read — spend and remainder are worked out here from the transactions themselves. Total and 상위 그룹 rows have nowhere to go and are skipped; the preview names every row it passed over.",
-  "csv.notAnAccount": "Not an account in this book, so it was skipped (a total or a 상위 그룹)",
+  "csv.notAnAccount": "No such account in this ledger, so it was skipped (a total or a 상위 그룹)",
   "csv.newAccounts": "New accounts",
   "csv.rowLabel": "Row {n}",
 
@@ -259,6 +259,8 @@ const en: Record<keyof typeof ko, string> = {
   "budget.savingPlanned": "On plan",
   "budget.savingHint":
     "What is saved is income less spending. The roadmap's yearly figure fills itself in from this.",
+  "budget.pickMonth": "Pick a month",
+  "budget.pickYear": "Pick a year",
   "budget.empty": "No income or expense accounts.",
   "series.section": "By item",
   "series.hint":
@@ -323,6 +325,18 @@ const en: Record<keyof typeof ko, string> = {
   "roadmap.rangeTooLong": "Up to {n} years can be drawn at once.",
   "roadmap.overrideHint":
     "Leave a box empty and the year follows the default. Empty all three and the year's own settings are removed.",
+  "roadmap.imageActual": "Earned",
+  "roadmap.imageTarget": "Target",
+  "roadmap.imageTargetNote": "Target is the return rate the year was aimed at.",
+  "roadmap.imageRateNote":
+    "Earned and target are that year's return rate. ✓ marks a year from the ledger.",
+  "roadmap.saveImage": "Save as image",
+  "roadmap.savingImage": "Drawing…",
+  "roadmap.roundAmounts": "Round the amounts",
+  "roadmap.imageShape": "Image shape",
+  "roadmap.imageTall": "Upright (a year a line)",
+  "roadmap.imageWide": "On its side (years across)",
+  "roadmap.maskAmounts": "Blur the amounts",
   "roadmap.turn": "Turn sideways",
   "roadmap.unturn": "Turn back",
   "roadmap.rotateHint": "Now turn the phone anticlockwise.",
