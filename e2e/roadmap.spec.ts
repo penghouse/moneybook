@@ -393,6 +393,46 @@ test.describe("roadmap", () => {
     const maskedPng = await readAll(await maskedDownload);
     expect(sizeOf(maskedPng)).toEqual(size);
     expect(maskedPng.equals(plainPng)).toBe(false);
+
+    // Rounding is a different picture again, at the same shape.
+    await page.getByTestId("roadmap-image-mask").uncheck();
+    await page.getByTestId("roadmap-image-rounded").check();
+    const roundDownload = page.waitForEvent("download");
+    await page.getByTestId("roadmap-image").click();
+    const roundPng = await readAll(await roundDownload);
+    expect(sizeOf(roundPng)).toEqual(size);
+    expect(roundPng.equals(plainPng)).toBe(false);
+  });
+
+  test("the picture can be turned on its side, with the years running across", async ({ page }) => {
+    await addVersion(page, {
+      name: "가로",
+      start: "2030",
+      end: "2049",
+      starting: "100000000",
+      saved: "20000000",
+      rate: "10",
+    });
+
+    const shoot = async () => {
+      const download = page.waitForEvent("download");
+      await page.getByTestId("roadmap-image").click();
+      const png = await readAll(await download);
+      return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+    };
+
+    await page.getByTestId("roadmap-image-shape").selectOption("wide");
+    const exact = await shoot();
+    expect(exact.width).toBe(1920);
+    expect(exact.width).toBeGreaterThan(exact.height);
+
+    // Short figures fit more years to a band, so the same twenty years
+    // need fewer bands and the picture is shorter — the column width is
+    // measured from the text, not guessed.
+    await page.getByTestId("roadmap-image-rounded").check();
+    const rounded = await shoot();
+    expect(rounded.width).toBe(1920);
+    expect(rounded.height).toBeLessThan(exact.height);
   });
 
   test("a range running backwards is refused rather than stored", async ({ page }) => {

@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { buttonClass } from "../_components/ui";
+import { buttonClass, controlClass } from "../_components/ui";
 
 /** One year, already formatted — the canvas only ever draws strings. */
 export interface RoadmapImageRow {
   year: string;
   plan: string;
   live: string;
+  /** The same two figures said short — '32.47억'. Null below any unit. */
+  planShort: string | null;
+  liveShort: string | null;
   /** Null for a year the ledger cannot speak for. */
   actualRate: string | null;
   targetRate: string;
@@ -19,6 +22,10 @@ export interface RoadmapImageLabels {
   save: string;
   saving: string;
   mask: string;
+  rounded: string;
+  shape: string;
+  shapeTall: string;
+  shapeWide: string;
   title: string;
   year: string;
   plan: string;
@@ -30,11 +37,11 @@ export interface RoadmapImageLabels {
   rateNote: string;
 }
 
-/** A phone screen, which is what the picture will be looked at on. */
-const WIDTH = 1080;
-const MIN_HEIGHT = 1920;
 const PAD = 72;
-const ROW_H = 56;
+/** A phone held upright, which is where a picture like this is looked at. */
+const TALL = { width: 1080, minHeight: 1920, rowH: 56 };
+/** Turned on its side, for the years-across reading. */
+const WIDE = { width: 1920, minHeight: 1080 };
 
 /**
  * A light palette, fixed rather than read off the page.
@@ -58,19 +65,32 @@ const FAMILY =
   '-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", Pretendard, system-ui, "Malgun Gothic", sans-serif';
 const font = (size: number, weight = 400) => `${weight} ${size}px ${FAMILY}`;
 
+type Shape = "tall" | "wide";
+type Hide = (text: string, x: number, baseline: number, fontSize: number) => void;
+type Pick = (row: RoadmapImageRow) => string;
+
 /**
- * The roadmap as a picture, laid out for a phone rather than screenshotted
- * from one.
+ * The roadmap as a picture, laid out for sharing rather than screenshotted.
  *
- * A screenshot of the table would carry whatever was scrolled into view
- * and nothing else — the years past the fold are exactly the ones worth
- * showing. So the image is drawn from the data instead: every year, one
- * per line, at a size meant to be read on a phone held at arm's length.
+ * A screenshot carries whatever was scrolled into view and nothing else —
+ * the years past the fold are exactly the ones worth showing. So the
+ * image is drawn from the data instead, on a canvas: the alternative is
+ * a library that re-implements CSS layout in JavaScript, which is a
+ * large dependency for one button and gets fonts and overflow subtly
+ * wrong anyway.
  *
- * Drawn on a canvas rather than rendered from the DOM. The alternative
- * is a library that re-implements CSS layout in JavaScript, which is a
- * large dependency to take on for one button and gets fonts, transforms
- * and overflow subtly wrong anyway.
+ * Three choices, because one picture cannot serve every reason for
+ * making one:
+ *
+ * - **세로 / 가로.** Upright is a year per line, the reading that fits a
+ *   phone. On its side the years run across and the four figures stack
+ *   under each — the shape a spreadsheet has, and the one that shows a
+ *   decade at a time.
+ * - **어림수.** 32.47억 instead of ₩3,247,105,906. Ten digits is a
+ *   number nobody reads; they count the commas.
+ * - **가리기.** Blurs the two money rows and leaves the rates, because
+ *   the rates are the reason to show someone the picture and say nothing
+ *   about how much there is.
  */
 export function RoadmapImage({
   name,
@@ -87,7 +107,17 @@ export function RoadmapImage({
   labels: RoadmapImageLabels;
 }) {
   const [masked, setMasked] = useState(false);
+  const [rounded, setRounded] = useState(false);
+  const [shape, setShape] = useState<Shape>("tall");
   const [busy, setBusy] = useState(false);
+
+  /**
+   * Rounded where a unit exists, exact where it does not — a small
+   * figure has no 억 to be said in, and the exact number beats an
+   * invented one.
+   */
+  const plan: Pick = (row) => (rounded && row.planShort) || row.plan;
+  const live: Pick = (row) => (rounded && row.liveShort) || row.live;
 
   const draw = async () => {
     setBusy(true);
@@ -96,19 +126,17 @@ export function RoadmapImage({
       // canvas takes no second pass once it has painted.
       await document.fonts.ready;
 
-      // Worked out rather than guessed: the summary is three lines of
-      // its own and the column headings sit under them, which is what a
-      // fixed header height got wrong — the two overlapped.
-      const titleY = PAD + 30;
-      const nameY = titleY + 74;
-      const periodY = nameY + 46;
-      const summaryY = periodY + 52;
-      const headerH = summaryY + summary.length * 34 + 44;
-      const footerH = 150;
-      const height = Math.max(MIN_HEIGHT, headerH + rows.length * ROW_H + footerH + PAD);
+      const measure = document.createElement("canvas").getContext("2d");
+      if (!measure) return;
+
+      const size =
+        shape === "tall"
+          ? tallSize(rows.length, summary.length)
+          : wideSize(rows, summary.length, measure, plan, live);
+
       const canvas = document.createElement("canvas");
-      canvas.width = WIDTH;
-      canvas.height = height;
+      canvas.width = size.width;
+      canvas.height = size.height;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
@@ -120,145 +148,46 @@ export function RoadmapImage({
       ctx.filter = "none";
 
       ctx.fillStyle = PAPER;
-      ctx.fillRect(0, 0, WIDTH, height);
+      ctx.fillRect(0, 0, size.width, size.height);
+      const headerBottom = drawHeader(ctx, { name, period, summary, labels, width: size.width });
 
-      ctx.textBaseline = "alphabetic";
-      ctx.fillStyle = INK_FAINT;
-      ctx.font = font(30, 500);
-      ctx.fillText(labels.title, PAD, titleY);
-
-      ctx.fillStyle = INK;
-      ctx.font = font(62, 700);
-      ctx.fillText(name, PAD, nameY);
-
-      ctx.fillStyle = INK_MUTED;
-      ctx.font = font(34, 500);
-      ctx.fillText(period, PAD, periodY);
-
-      // Five columns on 1080px. The two rates are the point of the whole
-      // table — what a year was aimed at and what it came to — so they
-      // get their own space rather than being dropped for want of width;
-      // the money simply sets a size that leaves room for them.
-      const showActual = rows.some((r) => r.actualRate !== null);
-      const colYear = PAD;
-      const colTarget = WIDTH - PAD;
-      const colActual = colTarget - 110;
-      const colLive = (showActual ? colActual : colTarget) - 110;
-      // Wide enough that a ten-digit figure still clears the column
-      // beside it once the blur has smeared it sideways.
-      const colPlan = colLive - 285;
-
-      // The defaults as label/value pairs down the left and right, so a
-      // long currency string wraps to its own column instead of running
-      // off the edge the way one joined line did.
-      summary.forEach((item, i) => {
-        const baseline = summaryY + i * 34;
-        ctx.textAlign = "left";
-        ctx.fillStyle = INK_FAINT;
-        ctx.font = font(26);
-        ctx.fillText(item.label, PAD, baseline);
-        ctx.textAlign = "right";
-        ctx.fillStyle = INK_MUTED;
-        ctx.font = font(26, 600);
-        ctx.fillText(item.value, colPlan, baseline);
-      });
-
-      let y = headerH;
-      ctx.font = font(24, 600);
-      ctx.fillStyle = INK_FAINT;
-      ctx.textAlign = "left";
-      ctx.fillText(labels.year, colYear, y);
-      ctx.textAlign = "right";
-      ctx.fillText(labels.plan, colPlan, y);
-      ctx.fillText(labels.live, colLive, y);
-      if (showActual) ctx.fillText(labels.actualRate, colActual, y);
-      ctx.fillText(labels.targetRate, colTarget, y);
-      y += 24;
-
-      ctx.strokeStyle = INK_FAINT;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(PAD, y);
-      ctx.lineTo(WIDTH - PAD, y);
-      ctx.stroke();
-
-      // A masked figure is drawn, then smeared. Drawing a placeholder
-      // instead would make every row the same width and give away that
-      // there was nothing to hide.
-      const MONEY = 26;
-      const money = (text: string, x: number, baseline: number, weight: number, color: string) => {
-        ctx.font = font(MONEY, weight);
-        if (!masked) {
-          ctx.fillStyle = color;
-          ctx.fillText(text, x, baseline);
-          return;
-        }
+      const hide: Hide = (text, x, baseline, fontSize) => {
         if (canBlur) {
           ctx.save();
           ctx.filter = "blur(5px)";
-          ctx.fillStyle = color;
           ctx.fillText(text, x, baseline);
           ctx.restore();
           return;
         }
         const w = ctx.measureText(text).width;
+        const fill = ctx.fillStyle;
         ctx.fillStyle = RULE;
-        ctx.fillRect(x - w, baseline - MONEY + 3, w, MONEY + 8);
+        ctx.fillRect(x - w, baseline - fontSize + 3, w, fontSize + 8);
+        ctx.fillStyle = fill;
       };
 
-      rows.forEach((row, i) => {
-        const top = y + i * ROW_H;
-        const baseline = top + ROW_H / 2 + 12;
+      const bottom =
+        shape === "tall"
+          ? drawTall(ctx, { rows, labels, headerBottom, masked, hide, plan, live })
+          : drawWide(ctx, {
+              rows,
+              labels,
+              headerBottom,
+              masked,
+              hide,
+              plan,
+              live,
+              width: size.width,
+              measure,
+            });
 
-        if (i % 2 === 1) {
-          ctx.fillStyle = BAND;
-          ctx.fillRect(PAD - 16, top, WIDTH - (PAD - 16) * 2, ROW_H);
-        }
-
-        ctx.textAlign = "left";
-        ctx.fillStyle = INK;
-        ctx.font = font(30, 700);
-        ctx.fillText(row.year, colYear, baseline);
-
-        ctx.textAlign = "right";
-        // Only the two money columns are hidden. The rates are the
-        // reason to show anyone the picture and say nothing about how
-        // much there is — a percentage is the same whether you have a
-        // hundred thousand or a hundred million.
-        money(row.plan, colPlan, baseline, 400, INK_MUTED);
-        money(row.live, colLive, baseline, 700, INK);
-
-        if (showActual) {
-          ctx.font = font(27, 700);
-          ctx.fillStyle = row.actualRate === null ? INK_FAINT : POSITIVE;
-          ctx.fillText(row.actualRate ?? "—", colActual, baseline);
-        }
-        ctx.font = font(27, 400);
-        ctx.fillStyle = INK_MUTED;
-        ctx.fillText(row.targetRate, colTarget, baseline);
-
-        if (row.fromLedger) {
-          // Beside the year rather than the figure: the rates now sit
-          // hard against the money columns and a mark between them would
-          // read as belonging to whichever it was nearer.
-          ctx.textAlign = "left";
-          ctx.font = font(30, 700);
-          const yearWidth = ctx.measureText(row.year).width;
-          ctx.fillStyle = POSITIVE;
-          ctx.font = font(22, 700);
-          ctx.fillText("✓", colYear + yearWidth + 10, baseline);
-        }
-      });
-
-      const bottom = y + rows.length * ROW_H;
       ctx.textAlign = "left";
       ctx.fillStyle = INK_FAINT;
       ctx.font = font(24);
       ctx.fillText(labels.rateNote, PAD, bottom + 46);
-
       ctx.fillStyle = ACCENT;
       ctx.font = font(26, 700);
-      ctx.fillText("moneybook", PAD, Math.min(height - PAD, bottom + 100));
+      ctx.fillText("moneybook", PAD, Math.min(size.height - PAD, bottom + 100));
 
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
       if (!blob) return;
@@ -266,7 +195,7 @@ export function RoadmapImage({
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `roadmap-${name}-${period}.png`.replace(/[\\/:*?"<>|\u2013]/g, "-");
+      link.download = `roadmap-${name}-${period}.png`.replace(/[\\/:*?"<>|–]/g, "-");
       // In the document before it is clicked: a detached anchor still
       // downloads, but the browser ignores its `download` attribute and
       // the file arrives called "download" with no extension.
@@ -276,7 +205,7 @@ export function RoadmapImage({
       link.remove();
       // Revoked a beat later, not immediately: the click only *starts*
       // the download, and pulling the blob out from under it mid-read is
-      // what makes a browser fall back to a nameless, extensionless file.
+      // what makes a browser fall back to a nameless file.
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
     } finally {
       setBusy(false);
@@ -294,6 +223,29 @@ export function RoadmapImage({
       >
         {busy ? labels.saving : labels.save}
       </button>
+
+      <select
+        value={shape}
+        onChange={(e) => setShape(e.target.value as Shape)}
+        aria-label={labels.shape}
+        data-testid="roadmap-image-shape"
+        className={`${controlClass} w-auto`}
+      >
+        <option value="tall">{labels.shapeTall}</option>
+        <option value="wide">{labels.shapeWide}</option>
+      </select>
+
+      <label className="text-ink-muted flex min-h-12 items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={rounded}
+          onChange={(e) => setRounded(e.target.checked)}
+          data-testid="roadmap-image-rounded"
+          className="accent-accent size-5"
+        />
+        {labels.rounded}
+      </label>
+
       <label className="text-ink-muted flex min-h-12 items-center gap-2 text-sm">
         <input
           type="checkbox"
@@ -306,4 +258,331 @@ export function RoadmapImage({
       </label>
     </div>
   );
+}
+
+// ---- Shared ----
+
+function headerHeight(summaryLines: number): number {
+  return PAD + 30 + 74 + 46 + 52 + summaryLines * 34 + 44;
+}
+
+/**
+ * The header, identical in both shapes so a reader who has seen one
+ * recognises the other.
+ */
+function drawHeader(
+  ctx: CanvasRenderingContext2D,
+  params: {
+    name: string;
+    period: string;
+    summary: readonly { label: string; value: string }[];
+    labels: RoadmapImageLabels;
+    width: number;
+  },
+): number {
+  const titleY = PAD + 30;
+  const nameY = titleY + 74;
+  const periodY = nameY + 46;
+  const summaryY = periodY + 52;
+
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "left";
+  ctx.fillStyle = INK_FAINT;
+  ctx.font = font(30, 500);
+  ctx.fillText(params.labels.title, PAD, titleY);
+
+  ctx.fillStyle = INK;
+  ctx.font = font(62, 700);
+  ctx.fillText(params.name, PAD, nameY);
+
+  ctx.fillStyle = INK_MUTED;
+  ctx.font = font(34, 500);
+  ctx.fillText(params.period, PAD, periodY);
+
+  // Values right-aligned to one stop, so a long currency string wraps to
+  // its own column instead of running off the edge.
+  const valueX = Math.min(560, params.width - PAD);
+  params.summary.forEach((item, i) => {
+    const baseline = summaryY + i * 34;
+    ctx.textAlign = "left";
+    ctx.fillStyle = INK_FAINT;
+    ctx.font = font(26);
+    ctx.fillText(item.label, PAD, baseline);
+    ctx.textAlign = "right";
+    ctx.fillStyle = INK_MUTED;
+    ctx.font = font(26, 600);
+    ctx.fillText(item.value, valueX, baseline);
+  });
+
+  return headerHeight(params.summary.length);
+}
+
+// ---- Tall ----
+
+function tallSize(rowCount: number, summaryLines: number) {
+  return {
+    width: TALL.width,
+    height: Math.max(TALL.minHeight, headerHeight(summaryLines) + rowCount * TALL.rowH + 150 + PAD),
+  };
+}
+
+/** A year per line: five columns, the reading a phone can hold. */
+function drawTall(
+  ctx: CanvasRenderingContext2D,
+  params: {
+    rows: readonly RoadmapImageRow[];
+    labels: RoadmapImageLabels;
+    headerBottom: number;
+    masked: boolean;
+    hide: Hide;
+    plan: Pick;
+    live: Pick;
+  },
+): number {
+  const { rows, labels, masked, hide } = params;
+  const showActual = rows.some((r) => r.actualRate !== null);
+  const colYear = PAD;
+  const colTarget = TALL.width - PAD;
+  const colActual = colTarget - 110;
+  const colLive = (showActual ? colActual : colTarget) - 110;
+  // Wide enough that a ten-digit figure still clears the column beside
+  // it once the blur has smeared it sideways.
+  const colPlan = colLive - 285;
+
+  let y = params.headerBottom;
+  ctx.font = font(24, 600);
+  ctx.fillStyle = INK_FAINT;
+  ctx.textAlign = "left";
+  ctx.fillText(labels.year, colYear, y);
+  ctx.textAlign = "right";
+  ctx.fillText(labels.plan, colPlan, y);
+  ctx.fillText(labels.live, colLive, y);
+  if (showActual) ctx.fillText(labels.actualRate, colActual, y);
+  ctx.fillText(labels.targetRate, colTarget, y);
+  y += 24;
+
+  ctx.strokeStyle = INK_FAINT;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(PAD, y);
+  ctx.lineTo(TALL.width - PAD, y);
+  ctx.stroke();
+
+  const MONEY = 26;
+  const money = (text: string, x: number, baseline: number, weight: number, color: string) => {
+    ctx.font = font(MONEY, weight);
+    ctx.fillStyle = color;
+    ctx.textAlign = "right";
+    if (masked) hide(text, x, baseline, MONEY);
+    else ctx.fillText(text, x, baseline);
+  };
+
+  rows.forEach((row, i) => {
+    const top = y + i * TALL.rowH;
+    const baseline = top + TALL.rowH / 2 + 12;
+
+    if (i % 2 === 1) {
+      ctx.fillStyle = BAND;
+      ctx.fillRect(PAD - 16, top, TALL.width - (PAD - 16) * 2, TALL.rowH);
+    }
+
+    ctx.textAlign = "left";
+    ctx.fillStyle = INK;
+    ctx.font = font(30, 700);
+    ctx.fillText(row.year, colYear, baseline);
+    if (row.fromLedger) {
+      // Beside the year rather than the figure: the rates sit hard
+      // against the money columns and a mark between them would read as
+      // belonging to whichever it was nearer.
+      const yearWidth = ctx.measureText(row.year).width;
+      ctx.fillStyle = POSITIVE;
+      ctx.font = font(22, 700);
+      ctx.fillText("✓", colYear + yearWidth + 10, baseline);
+    }
+
+    money(params.plan(row), colPlan, baseline, 400, INK_MUTED);
+    money(params.live(row), colLive, baseline, 700, INK);
+
+    ctx.textAlign = "right";
+    if (showActual) {
+      ctx.font = font(26, 700);
+      ctx.fillStyle = row.actualRate === null ? INK_FAINT : POSITIVE;
+      ctx.fillText(row.actualRate ?? "—", colActual, baseline);
+    }
+    ctx.font = font(26, 400);
+    ctx.fillStyle = INK_MUTED;
+    ctx.fillText(row.targetRate, colTarget, baseline);
+  });
+
+  return y + rows.length * TALL.rowH;
+}
+
+// ---- Wide ----
+
+const WIDE_LABEL_W = 190;
+const WIDE_ROW_H = 46;
+const WIDE_MONEY = 24;
+const WIDE_BLOCK_GAP = 46;
+
+/**
+ * How many years fit across, and therefore how many bands the years are
+ * broken into.
+ *
+ * Measured rather than guessed: the answer is completely different for
+ * ₩3,247,105,906 and 32.47억, and one number for both would either
+ * waste half the width or run the columns together.
+ */
+function wideColumns(
+  rows: readonly RoadmapImageRow[],
+  measure: CanvasRenderingContext2D,
+  plan: Pick,
+  live: Pick,
+): { perBlock: number; colWidth: number } {
+  measure.font = font(WIDE_MONEY, 700);
+  let widest = 0;
+  for (const row of rows) {
+    widest = Math.max(
+      widest,
+      measure.measureText(plan(row)).width,
+      measure.measureText(live(row)).width,
+    );
+  }
+  const colWidth = Math.max(110, widest + 30);
+  const room = WIDE.width - PAD * 2 - WIDE_LABEL_W;
+  return { perBlock: Math.max(3, Math.floor(room / colWidth)), colWidth };
+}
+
+/** Year heading plus one line per figure. */
+function wideLineCount(rows: readonly RoadmapImageRow[]): number {
+  return rows.some((r) => r.actualRate !== null) ? 5 : 4;
+}
+
+function wideSize(
+  rows: readonly RoadmapImageRow[],
+  summaryLines: number,
+  measure: CanvasRenderingContext2D,
+  plan: Pick,
+  live: Pick,
+) {
+  const { perBlock } = wideColumns(rows, measure, plan, live);
+  const blocks = Math.max(1, Math.ceil(rows.length / perBlock));
+  const body = blocks * (wideLineCount(rows) * WIDE_ROW_H + WIDE_BLOCK_GAP);
+  return {
+    width: WIDE.width,
+    height: Math.max(WIDE.minHeight, headerHeight(summaryLines) + body + 150 + PAD),
+  };
+}
+
+/**
+ * Years across, figures stacked under each — the shape the spreadsheet
+ * this replaces had, and the one that shows a decade at a time.
+ *
+ * Broken into bands rather than run off the edge: forty years across
+ * 1920px is 48px a year, which is not a number anyone can read.
+ */
+function drawWide(
+  ctx: CanvasRenderingContext2D,
+  params: {
+    rows: readonly RoadmapImageRow[];
+    labels: RoadmapImageLabels;
+    headerBottom: number;
+    masked: boolean;
+    hide: Hide;
+    plan: Pick;
+    live: Pick;
+    width: number;
+    measure: CanvasRenderingContext2D;
+  },
+): number {
+  const { rows, labels, masked, hide } = params;
+  const showActual = rows.some((r) => r.actualRate !== null);
+  const { perBlock, colWidth } = wideColumns(rows, params.measure, params.plan, params.live);
+
+  const lines: {
+    label: string;
+    pick: (row: RoadmapImageRow) => string | null;
+    weight: number;
+    money: boolean;
+    color: string;
+  }[] = [
+    { label: labels.plan, pick: params.plan, weight: 400, money: true, color: INK_MUTED },
+    { label: labels.live, pick: params.live, weight: 700, money: true, color: INK },
+    ...(showActual
+      ? [
+          {
+            label: labels.actualRate,
+            pick: (r: RoadmapImageRow) => r.actualRate,
+            weight: 700,
+            money: false,
+            color: POSITIVE,
+          },
+        ]
+      : []),
+    {
+      label: labels.targetRate,
+      pick: (r: RoadmapImageRow) => r.targetRate,
+      weight: 400,
+      money: false,
+      color: INK_MUTED,
+    },
+  ];
+
+  let y = params.headerBottom;
+  for (let start = 0; start < rows.length; start += perBlock) {
+    const band = rows.slice(start, start + perBlock);
+    const xOf = (i: number) => PAD + WIDE_LABEL_W + (i + 1) * colWidth - 16;
+
+    ctx.textAlign = "left";
+    ctx.fillStyle = INK_FAINT;
+    ctx.font = font(24, 600);
+    ctx.fillText(labels.year, PAD, y + 30);
+    band.forEach((row, i) => {
+      ctx.textAlign = "right";
+      ctx.fillStyle = INK;
+      ctx.font = font(28, 700);
+      ctx.fillText(row.year, xOf(i), y + 30);
+      if (row.fromLedger) {
+        ctx.fillStyle = POSITIVE;
+        ctx.font = font(20, 700);
+        ctx.textAlign = "left";
+        ctx.fillText("✓", xOf(i) + 4, y + 30);
+      }
+    });
+    y += WIDE_ROW_H;
+
+    ctx.strokeStyle = INK_FAINT;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(PAD, y - 12);
+    ctx.lineTo(params.width - PAD, y - 12);
+    ctx.stroke();
+
+    lines.forEach((line, li) => {
+      const top = y + li * WIDE_ROW_H;
+      const baseline = top + WIDE_ROW_H / 2 + 9;
+      if (li % 2 === 1) {
+        ctx.fillStyle = BAND;
+        ctx.fillRect(PAD - 16, top, params.width - (PAD - 16) * 2, WIDE_ROW_H);
+      }
+
+      ctx.textAlign = "left";
+      ctx.fillStyle = INK_FAINT;
+      ctx.font = font(24, 600);
+      ctx.fillText(line.label, PAD, baseline);
+
+      band.forEach((row, i) => {
+        const value = line.pick(row);
+        ctx.textAlign = "right";
+        ctx.font = font(WIDE_MONEY, line.weight);
+        ctx.fillStyle = value === null ? INK_FAINT : line.color;
+        const text = value ?? "—";
+        if (line.money && masked) hide(text, xOf(i), baseline, WIDE_MONEY);
+        else ctx.fillText(text, xOf(i), baseline);
+      });
+    });
+
+    y += lines.length * WIDE_ROW_H + WIDE_BLOCK_GAP;
+  }
+
+  return y - WIDE_BLOCK_GAP;
 }

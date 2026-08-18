@@ -6,6 +6,7 @@ import { parseGroupOrder } from "@/lib/account-groups";
 import { currentSection } from "@/lib/current-request";
 import { monthsBetween, today, yearMonthOf, yearOf } from "@/lib/date";
 import { formatMoney, toMajorUnits } from "@/lib/money";
+import { formatShortMoney } from "@/lib/short-money";
 import { buildReportSeries } from "@/lib/report-series";
 import { getMonthlySavings, sumSavings, type MonthlySaving } from "@/lib/savings";
 import { buildRoadmap, MAX_ROADMAP_YEARS, roadmapYearList, type RoadmapRow } from "@/lib/roadmap";
@@ -61,6 +62,15 @@ export default async function RoadmapPage({
   const isNew = params.new === "1";
   const editing = params.edit === "1" && selected ? selected : undefined;
   const money = (minor: number) => formatMoney(minor, section.baseCurrency, locale);
+  /**
+   * The same figure said the short way, for beside the long one.
+   *
+   * Ten digits of won is a number nobody reads — they count the commas
+   * instead. 「32.47억」 is what a person would say out loud, and it is
+   * what makes one year comparable to the next at a glance. Null when
+   * the figure is too small to have a unit worth naming.
+   */
+  const short = (minor: number) => formatShortMoney(minor, section.baseCurrency, locale);
   const major = (minor: number) => String(toMajorUnits(minor, section.baseCurrency));
 
   if (isNew || editing) {
@@ -552,6 +562,8 @@ export default async function RoadmapPage({
           year: row.year,
           plan: money(row.planEnd),
           live: money(row.liveEnd),
+          planShort: short(row.planEnd),
+          liveShort: short(row.liveEnd),
           actualRate: row.actualReturnRate === null ? null : `${asPercent(row.actualReturnRate)}%`,
           targetRate: `${asPercent(row.returnRate)}%`,
           fromLedger: row.actual !== null,
@@ -560,6 +572,10 @@ export default async function RoadmapPage({
           save: t("roadmap.saveImage"),
           saving: t("roadmap.savingImage"),
           mask: t("roadmap.maskAmounts"),
+          rounded: t("roadmap.roundAmounts"),
+          shape: t("roadmap.imageShape"),
+          shapeTall: t("roadmap.imageTall"),
+          shapeWide: t("roadmap.imageWide"),
           title: t("roadmap.title"),
           year: t("roadmap.year"),
           plan: t("roadmap.planEnd"),
@@ -666,10 +682,12 @@ export default async function RoadmapPage({
                     </td>
                     <td className={`${num} ${hasActuals ? "text-ink-muted" : "font-semibold"}`}>
                       {money(row.planEnd)}
+                      <ShortForm value={short(row.planEnd)} />
                     </td>
                     {hasActuals && (
                       <td className={`${num} font-semibold`}>
                         {money(row.liveEnd)}
+                        <ShortForm value={short(row.liveEnd)} />
                         {row.actual !== null && (
                           <span
                             className="text-positive ml-1 text-xs"
@@ -730,6 +748,18 @@ export default async function RoadmapPage({
       <Hint>{t("roadmap.rateHint")}</Hint>
     </div>
   );
+}
+
+/**
+ * The rounded figure in brackets beside the exact one.
+ *
+ * Its own component because it appears twice per row and renders nothing
+ * at all for a figure with no unit worth naming — a bracket pair with a
+ * blank inside would be worse than leaving it out.
+ */
+function ShortForm({ value }: { value: string | null }) {
+  if (!value) return null;
+  return <span className="text-ink-faint ml-1.5 text-xs font-normal">({value})</span>;
 }
 
 /** The per-year override form, inside the year's dialog. */
