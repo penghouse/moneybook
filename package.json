@@ -17,7 +17,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "db:schema": "node scripts/build-schema-sql.mjs"
+    "db:schema": "node scripts/build-schema-sql.mjs",
+    "db:schema:check": "node scripts/build-schema-sql.mjs --check"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",

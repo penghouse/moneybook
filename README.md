@@ -26,19 +26,20 @@ npm run dev
 
 ## 스크립트
 
-| 명령                  | 설명                                 |
-| --------------------- | ------------------------------------ |
-| `npm run dev`         | 개발 서버                            |
-| `npm run build`       | 프로덕션 빌드                        |
-| `npm run lint`        | ESLint                               |
-| `npm run typecheck`   | TypeScript 타입 검사                 |
-| `npm run test`        | Vitest 단위 테스트                   |
-| `npm run e2e`         | Playwright E2E (개발 서버 자동 기동) |
-| `npm run format`      | Prettier 포맷 적용                   |
-| `npm run db:generate` | 스키마 변경으로 마이그레이션 생성    |
-| `npm run db:migrate`  | 마이그레이션 적용                    |
-| `npm run db:studio`   | Drizzle Studio                       |
-| `npm run db:schema`   | `docs/schema.sql` 재생성             |
+| 명령                      | 설명                                                |
+| ------------------------- | --------------------------------------------------- |
+| `npm run dev`             | 개발 서버                                           |
+| `npm run build`           | 프로덕션 빌드                                       |
+| `npm run lint`            | ESLint                                              |
+| `npm run typecheck`       | TypeScript 타입 검사                                |
+| `npm run test`            | Vitest 단위 테스트                                  |
+| `npm run e2e`             | Playwright E2E (개발 서버 자동 기동)                |
+| `npm run format`          | Prettier 포맷 적용                                  |
+| `npm run db:generate`     | 스키마 변경으로 마이그레이션 생성                   |
+| `npm run db:migrate`      | 마이그레이션 적용                                   |
+| `npm run db:studio`       | Drizzle Studio                                      |
+| `npm run db:schema`       | `docs/schema.sql` 재생성                            |
+| `npm run db:schema:check` | `docs/schema.sql`이 마이그레이션과 맞는지 확인 (CI) |
 
 ## 디렉터리 구조
 
