@@ -369,6 +369,113 @@ export const formulasRelations = relations(formulas, ({ one }) => ({
   }),
 }));
 
+/**
+ * A plan for how the assets grow, year by year.
+ *
+ * The whole point is the column beside the plan: a year that has already
+ * happened is not a guess, and the book knows what it actually was. So a
+ * roadmap names one 계산식 (scope 'assets') and the past years fill
+ * themselves from it — the same recipe, and therefore the same number,
+ * as the band at the foot of 자산현황.
+ *
+ * Several roadmaps can exist at once and are switched between by tab:
+ * "10%로 굴렸을 때"와 "5%로 굴렸을 때"는 서로 다른 계획이지 한 계획의 두
+ * 줄이 아닙니다.
+ */
+export const roadmaps = sqliteTable(
+  "roadmaps",
+  {
+    id: uuid(),
+    sectionId: text("section_id")
+      .notNull()
+      .references(() => sections.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** 'YYYY', inclusive at both ends. */
+    startYear: text("start_year").notNull(),
+    endYear: text("end_year").notNull(),
+    /** Minor-unit amount in the section's base currency. */
+    startingAmount: integer("starting_amount").notNull().default(0),
+    /** What goes in each year unless that year says otherwise. */
+    defaultContribution: integer("default_contribution").notNull().default(0),
+    /**
+     * A multiplier, not a percent: 0.1 is 10%. Stored as `real` because
+     * this is a *rate*, not money — the same choice exchange_rates.rate
+     * and transaction_lines.rate already make. The integer-minor-units
+     * rule is about amounts, and every amount here is still an integer.
+     */
+    defaultReturnRate: real("default_return_rate").notNull().default(0),
+    /**
+     * Which 계산식 fills the 실적 column. Null means the roadmap is pure
+     * plan — and it also becomes null on its own if the formula it named
+     * is deleted, which is why the column is nullable rather than the
+     * delete being blocked: losing the actuals column is a smaller loss
+     * than being unable to tidy up 계산식.
+     */
+    actualFormulaId: text("actual_formula_id").references(() => formulas.id, {
+      onDelete: "set null",
+    }),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (t) => [
+    index("roadmaps_section_idx").on(t.sectionId, t.sortOrder),
+    check("roadmaps_start_year_format_check", sql`${t.startYear} GLOB ${YEAR_GLOB}`),
+    check("roadmaps_end_year_format_check", sql`${t.endYear} GLOB ${YEAR_GLOB}`),
+  ],
+);
+
+/**
+ * One year that differs from the roadmap's defaults.
+ *
+ * Sparse on purpose: forty years of "the default, again" would be forty
+ * rows saying nothing, and a null here means "ask the roadmap" rather
+ * than "zero". A row exists only once a year has been given a saving, a
+ * rate or a note of its own.
+ *
+ * A row per year rather than one JSON blob on the roadmap because the
+ * editing is per-year — a blob would be read-modify-write on every save,
+ * which quietly loses one of two edits made at once. The unique tuple
+ * below is what lets the write be an upsert, the same shape budgets
+ * already uses.
+ */
+export const roadmapYears = sqliteTable(
+  "roadmap_years",
+  {
+    id: uuid(),
+    roadmapId: text("roadmap_id")
+      .notNull()
+      .references(() => roadmaps.id, { onDelete: "cascade" }),
+    year: text("year").notNull(),
+    /** Null means "use the roadmap's default". */
+    contribution: integer("contribution"),
+    returnRate: real("return_rate"),
+    /** 「출산」「이사」「은퇴」 — what this year is *for*. */
+    note: text("note"),
+  },
+  (t) => [
+    unique("roadmap_years_year_unique").on(t.roadmapId, t.year),
+    check("roadmap_years_year_format_check", sql`${t.year} GLOB ${YEAR_GLOB}`),
+  ],
+);
+
+export const roadmapsRelations = relations(roadmaps, ({ one, many }) => ({
+  section: one(sections, {
+    fields: [roadmaps.sectionId],
+    references: [sections.id],
+  }),
+  actualFormula: one(formulas, {
+    fields: [roadmaps.actualFormulaId],
+    references: [formulas.id],
+  }),
+  years: many(roadmapYears),
+}));
+
+export const roadmapYearsRelations = relations(roadmapYears, ({ one }) => ({
+  roadmap: one(roadmaps, {
+    fields: [roadmapYears.roadmapId],
+    references: [roadmaps.id],
+  }),
+}));
+
 export const budgetsRelations = relations(budgets, ({ one }) => ({
   section: one(sections, {
     fields: [budgets.sectionId],
@@ -442,3 +549,5 @@ export type Transaction = typeof transactions.$inferSelect;
 export type TransactionLine = typeof transactionLines.$inferSelect;
 export type ExchangeRate = typeof exchangeRates.$inferSelect;
 export type Budget = typeof budgets.$inferSelect;
+export type Roadmap = typeof roadmaps.$inferSelect;
+export type RoadmapYear = typeof roadmapYears.$inferSelect;

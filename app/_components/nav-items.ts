@@ -10,6 +10,7 @@ export const NAV_ITEMS: { href: string; labelKey: TranslationKey }[] = [
   { href: "/", labelKey: "nav.entry" },
   { href: "/assets", labelKey: "nav.assets" },
   { href: "/assets/chart", labelKey: "nav.assetsChart" },
+  { href: "/roadmap", labelKey: "nav.roadmap" },
   { href: "/income", labelKey: "nav.income" },
   { href: "/income/chart", labelKey: "nav.incomeChart" },
   { href: "/budget", labelKey: "nav.budget" },

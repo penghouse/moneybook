@@ -7,6 +7,7 @@ const en: Record<keyof typeof ko, string> = {
   "nav.entry": "Entry",
   "nav.assets": "Balance Sheet",
   "nav.assetsChart": "Charts",
+  "nav.roadmap": "Asset roadmap",
   "nav.income": "Income Statement",
   "nav.incomeChart": "Income Charts",
   "nav.budget": "Budget",
@@ -275,6 +276,41 @@ const en: Record<keyof typeof ko, string> = {
   "formula.missingTerms": "{n} item(s) no longer exist and were left out.",
   "formula.snapshotHint":
     "Worked out from what this screen is showing. Revisit the formula when the items change.",
+  "roadmap.title": "Asset roadmap",
+  "roadmap.year": "Year",
+  "roadmap.contribution": "Saved",
+  "roadmap.returnRate": "Return",
+  "roadmap.planEnd": "Planned end",
+  "roadmap.liveEnd": "Standing end",
+  "roadmap.actualReturnRate": "Actual return",
+  "roadmap.note": "Milestone",
+  "roadmap.fromLedger": "From the ledger",
+  "roadmap.addVersion": "New version",
+  "roadmap.editVersion": "Version settings",
+  "roadmap.versionName": "Version name",
+  "roadmap.versionNamePlaceholder": "e.g. 10% return",
+  "roadmap.startYear": "First year",
+  "roadmap.endYear": "Last year",
+  "roadmap.startingAmount": "Starting assets",
+  "roadmap.defaultContribution": "Saved per year",
+  "roadmap.defaultReturnRate": "Return rate (%)",
+  "roadmap.actualFormula": "Formula for the actuals",
+  "roadmap.actualFormulaNone": "None (plan only)",
+  "roadmap.actualFormulaHint":
+    "Past years and this one take this formula's December figure as their standing end.",
+  "roadmap.actualFormulaEmpty": "No asset formulas yet. Build one on the formulas screen first.",
+  "roadmap.pickFormulaHint": "Pick a formula and the past years fill in from the ledger.",
+  "roadmap.nameRequired": "Please name this version.",
+  "roadmap.yearInvalid": "Years are four digits.",
+  "roadmap.rangeBackwards": "The last year cannot come before the first.",
+  "roadmap.rangeTooLong": "Up to {n} years can be drawn at once.",
+  "roadmap.overrideHint":
+    "Leave a box empty and the year follows the default. Empty all three and the year's own settings are removed.",
+  "roadmap.tableHint":
+    "The plan compounds from the starting figure untouched; the standing column picks the ledger's own number up wherever it has one. Tap a year to give it different figures.",
+  "roadmap.empty": "No roadmap yet.",
+  "roadmap.emptyHint":
+    "Set a starting figure, what goes in each year and a return rate, and the years fill themselves in.",
 };
 
 export default en;

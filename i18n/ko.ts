@@ -5,6 +5,7 @@ const ko = {
   "nav.entry": "입력",
   "nav.assets": "자산현황",
   "nav.assetsChart": "자산 그래프",
+  "nav.roadmap": "자산 로드맵",
   "nav.income": "기간손익",
   "nav.incomeChart": "기간손익 그래프",
   "nav.budget": "예산",
@@ -268,6 +269,40 @@ const ko = {
   "formula.missingTerms": "없어진 항목 {n}개는 빼고 계산했습니다.",
   "formula.snapshotHint":
     "지금 화면이 보여주는 값들로 계산합니다. 항목이 바뀌면 계산식도 손봐 주세요.",
+  "roadmap.title": "자산 로드맵",
+  "roadmap.year": "연도",
+  "roadmap.contribution": "연저축액",
+  "roadmap.returnRate": "수익률",
+  "roadmap.planEnd": "계획 기말",
+  "roadmap.liveEnd": "실적 기말",
+  "roadmap.actualReturnRate": "실제수익률",
+  "roadmap.note": "인생목표",
+  "roadmap.fromLedger": "장부에서 가져온 값",
+  "roadmap.addVersion": "새 버전",
+  "roadmap.editVersion": "버전 설정",
+  "roadmap.versionName": "버전 이름",
+  "roadmap.versionNamePlaceholder": "예: 수익률 10% 안",
+  "roadmap.startYear": "시작 연도",
+  "roadmap.endYear": "종료 연도",
+  "roadmap.startingAmount": "시작자산",
+  "roadmap.defaultContribution": "기본 연저축액",
+  "roadmap.defaultReturnRate": "기본 수익률 (%)",
+  "roadmap.actualFormula": "실제값으로 쓸 계산식",
+  "roadmap.actualFormulaNone": "쓰지 않음 (계획만)",
+  "roadmap.actualFormulaHint": "지난 해와 올해는 이 계산식의 12월 값이 실적 기말로 들어옵니다.",
+  "roadmap.actualFormulaEmpty": "자산 계산식이 아직 없습니다. 계산식 화면에서 먼저 만들어 주세요.",
+  "roadmap.pickFormulaHint": "계산식을 고르면 지난 해가 장부의 실제값으로 채워집니다.",
+  "roadmap.nameRequired": "버전 이름을 입력해 주세요.",
+  "roadmap.yearInvalid": "연도는 네 자리 숫자로 입력해 주세요.",
+  "roadmap.rangeBackwards": "종료 연도가 시작 연도보다 앞설 수 없습니다.",
+  "roadmap.rangeTooLong": "한 번에 최대 {n}년까지 그릴 수 있습니다.",
+  "roadmap.overrideHint":
+    "비워 두면 그 해는 기본값을 따릅니다. 셋 다 비우면 이 해의 설정이 지워집니다.",
+  "roadmap.tableHint":
+    "계획은 시작자산에서 그대로 굴린 값이고, 실적은 장부의 실제값이 나온 해부터 다시 굴린 값입니다. 연도를 누르면 그 해만 다르게 잡을 수 있습니다.",
+  "roadmap.empty": "아직 로드맵이 없습니다.",
+  "roadmap.emptyHint":
+    "시작자산과 해마다 넣을 돈, 기대 수익률을 정해 두면 연도별로 자산이 어떻게 불어나는지 볼 수 있습니다.",
 } as const;
 
 export default ko;

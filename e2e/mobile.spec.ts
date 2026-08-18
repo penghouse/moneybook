@@ -15,6 +15,7 @@ const PAGES = [
   "/",
   "/assets",
   "/assets/chart",
+  "/roadmap",
   "/income",
   "/income/chart",
   "/budget",

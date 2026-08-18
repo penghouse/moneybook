@@ -194,6 +194,52 @@ ALTER TABLE `budgets` DROP COLUMN `year_month`;
 
 ALTER TABLE `accounts` ADD `tracks_counterparties` integer DEFAULT false NOT NULL;
 
+CREATE TABLE `formulas` (
+	`id` text PRIMARY KEY NOT NULL,
+	`section_id` text NOT NULL,
+	`scope` text NOT NULL,
+	`name` text NOT NULL,
+	`terms` text DEFAULT '[]' NOT NULL,
+	`expression` text DEFAULT '' NOT NULL,
+	`sort_order` integer DEFAULT 0 NOT NULL,
+	FOREIGN KEY (`section_id`) REFERENCES `sections`(`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "formulas_scope_check" CHECK("formulas"."scope" IN ('assets','income'))
+);
+
+CREATE INDEX `formulas_section_scope_idx` ON `formulas` (`section_id`,`scope`,`sort_order`);
+
+CREATE TABLE `roadmaps` (
+	`id` text PRIMARY KEY NOT NULL,
+	`section_id` text NOT NULL,
+	`name` text NOT NULL,
+	`start_year` text NOT NULL,
+	`end_year` text NOT NULL,
+	`starting_amount` integer DEFAULT 0 NOT NULL,
+	`default_contribution` integer DEFAULT 0 NOT NULL,
+	`default_return_rate` real DEFAULT 0 NOT NULL,
+	`actual_formula_id` text,
+	`sort_order` integer DEFAULT 0 NOT NULL,
+	FOREIGN KEY (`section_id`) REFERENCES `sections`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`actual_formula_id`) REFERENCES `formulas`(`id`) ON UPDATE no action ON DELETE set null,
+	CONSTRAINT "roadmaps_start_year_format_check" CHECK("roadmaps"."start_year" GLOB '[0-9][0-9][0-9][0-9]'),
+	CONSTRAINT "roadmaps_end_year_format_check" CHECK("roadmaps"."end_year" GLOB '[0-9][0-9][0-9][0-9]')
+);
+
+CREATE INDEX `roadmaps_section_idx` ON `roadmaps` (`section_id`,`sort_order`);
+
+CREATE TABLE `roadmap_years` (
+	`id` text PRIMARY KEY NOT NULL,
+	`roadmap_id` text NOT NULL,
+	`year` text NOT NULL,
+	`contribution` integer,
+	`return_rate` real,
+	`note` text,
+	FOREIGN KEY (`roadmap_id`) REFERENCES `roadmaps`(`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "roadmap_years_year_format_check" CHECK("roadmap_years"."year" GLOB '[0-9][0-9][0-9][0-9]')
+);
+
+CREATE UNIQUE INDEX `roadmap_years_year_unique` ON `roadmap_years` (`roadmap_id`,`year`);
+
 -- Drizzle's bookkeeping. The app never reads it; `drizzle-kit migrate`
 -- does, to know what has already run. Recording the migrations this file
 -- is equivalent to is what stops the next `npm run db:migrate` from
@@ -210,4 +256,6 @@ INSERT INTO `__drizzle_migrations` (`hash`, `created_at`) VALUES
 	('1cf9aeeb26a3a693893dfa2178d42c2788adfbbb31d14c78e42c31217ab5cdb8', 1785991646983),
 	('bcce57e61f7b16e016296bdb38cc65366ac41fd58e8f03e915164881e450b9ec', 1786247084505),
 	('90af2c3f8c0a8855ca94b67b6a24c69797eda38faf44e28bc9833ca76502ede5', 1786247135287),
-	('432d2627f2a56171a64b61882fb7ddf9123dfe01c8025dc31bf4351ceb46300d', 1786250222679);
+	('432d2627f2a56171a64b61882fb7ddf9123dfe01c8025dc31bf4351ceb46300d', 1786250222679),
+	('ae1ee42ebfb7fd5da657e298e98145c70a23156e62bab7543d48512d0191fddf', 1786284806351),
+	('eb3ec6da0c002299c0c5a8a38560b242d29f58625708682d04f87bcc2e4362a3', 1787034469652);
