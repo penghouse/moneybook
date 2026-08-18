@@ -139,7 +139,7 @@ const en: Record<keyof typeof ko, string> = {
   "csv.importPeriodBudgets": "Import Whooing expense budget CSV",
   "csv.periodBudgetsHint":
     "Upload a budget report in the form 「시작일,종료일,계정,항목,예산,금액,잔여액」, unedited. Only the budget column is read — spend and remainder are worked out here from the transactions themselves. Total and 상위 그룹 rows have nowhere to go and are skipped; the preview names every row it passed over.",
-  "csv.notAnAccount": "Not an account in this book, so it was skipped (a total or a 상위 그룹)",
+  "csv.notAnAccount": "No such account in this ledger, so it was skipped (a total or a 상위 그룹)",
   "csv.newAccounts": "New accounts",
   "csv.rowLabel": "Row {n}",
 
