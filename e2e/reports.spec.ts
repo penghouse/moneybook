@@ -439,7 +439,9 @@ test.describe("reports", () => {
     await expect(page).toHaveURL(/unit=month/);
   });
 
-  test("the range label picks both ends, and the header carries no form", async ({ page }) => {
+  test("both chart screens pick their range from the label, with no header form", async ({
+    page,
+  }) => {
     await page.goto("/income/chart?from=2026-07-01&to=2026-09-30&unit=month");
 
     // 시작 / 끝 / 조회 used to stand in the header permanently. The bar
@@ -465,6 +467,16 @@ test.describe("reports", () => {
 
     // And the arrows still step from wherever it landed.
     await page.getByRole("link", { name: /이전 기간/ }).click();
+    await expect(page).toHaveURL(/from=2026-01-01&to=2026-03-31/);
+
+    // The net-worth chart reads the same kind of period, so it asks for
+    // it the same way rather than keeping a form of its own.
+    await page.goto("/assets/chart?from=2026-07-01&to=2026-09-30");
+    await expect(page.locator('form[action="/assets/chart"]')).toHaveCount(0);
+    await page.getByTestId("range-jump").click();
+    await page.getByTestId("range-jump-from").fill("2026-01-01");
+    await page.getByTestId("range-jump-to").fill("2026-03-31");
+    await page.getByTestId("range-jump-confirm").click();
     await expect(page).toHaveURL(/from=2026-01-01&to=2026-03-31/);
   });
 

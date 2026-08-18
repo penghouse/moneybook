@@ -18,10 +18,8 @@ import { PeriodNav } from "../../_components/period-nav";
 import {
   buttonClass,
   Card,
-  controlClass,
   EmptyState,
   Hint,
-  Label,
   PageHeader,
   SectionLabel,
 } from "../../_components/ui";
@@ -101,21 +99,7 @@ export default async function AssetsChartPage({
 
   return (
     <div className="space-y-4">
-      <PageHeader title={t("nav.assetsChart")}>
-        <form className="flex flex-wrap items-end gap-2" action="/assets/chart">
-          <div>
-            <Label>{t("assets.rangeFrom")}</Label>
-            <input type="date" name="from" defaultValue={from} className={`${controlClass} tnum`} />
-          </div>
-          <div>
-            <Label>{t("assets.rangeTo")}</Label>
-            <input type="date" name="to" defaultValue={to} className={`${controlClass} tnum`} />
-          </div>
-          <button type="submit" className={buttonClass("secondary")}>
-            {t("common.apply")}
-          </button>
-        </form>
-      </PageHeader>
+      <PageHeader title={t("nav.assetsChart")} />
 
       <Card>
         <div className="px-4 py-4">
@@ -126,12 +110,26 @@ export default async function AssetsChartPage({
         </div>
       </Card>
 
+      {/* Same bar, same label, same picker as 기간손익 그래프 — the two
+          chart screens read the same kind of period and had no business
+          asking for it two different ways. */}
       <PeriodNav
         prevHref={stepHref(-1)}
         nextHref={stepHref(1)}
         label={`${start} ~ ${to}`}
         prevLabel={t("common.prevWindow")}
         nextLabel={t("common.nextWindow")}
+        jump={{
+          kind: "range",
+          from: start,
+          to,
+          hrefTemplate: "/assets/chart?from={from}&to={to}",
+          label: t("common.pickRange"),
+          fromLabel: t("assets.rangeFrom"),
+          toLabel: t("assets.rangeTo"),
+          confirmLabel: t("common.apply"),
+          closeLabel: t("common.close"),
+        }}
       />
 
       <section>
