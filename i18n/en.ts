@@ -54,6 +54,7 @@ const en: Record<keyof typeof ko, string> = {
   "common.archive": "Archive",
   "common.unarchive": "Unarchive",
   "common.viewTable": "View as table",
+  "common.pickRange": "Pick a range",
   "common.apply": "Show",
   "common.saving": "Saving…",
   "common.working": "Working…",

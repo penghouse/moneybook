@@ -129,6 +129,7 @@ export default async function BudgetPage({
         // go" and eight taps too many for "what did I budget in
         // January", so the label opens a picker.
         jump={{
+          kind: "period",
           unit: ref.period,
           hrefPrefix: "/budget?period=",
           label: t(isYear ? "budget.pickYear" : "budget.pickMonth"),

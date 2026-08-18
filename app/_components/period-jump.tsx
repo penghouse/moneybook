@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { buttonClass, controlClass, Label } from "./ui";
 
 /**
  * The period label, made into a way of getting somewhere.
@@ -103,5 +104,134 @@ export function PeriodJump({
       }
       className="bg-sunken rounded-control tnum mx-auto min-h-12 w-40 px-2 text-center font-semibold"
     />
+  );
+}
+
+/**
+ * The same idea for a screen whose period is a range rather than a key.
+ *
+ * The income chart used to carry a 시작 / 끝 / 조회 form in its header —
+ * three controls permanently on screen for a question asked once in a
+ * while, and the only one of the period screens that answered "which
+ * period" with a form instead of with the bar. The arrows and the
+ * 월간/연간 switch were already in the bar; the range now is too.
+ *
+ * Two dates will not fit between the arrows at 393px the way a single
+ * month does, so this one opens a modal rather than swapping itself out
+ * in place. `<dialog showModal>` for the same reasons the row editor
+ * uses it: Escape, focus trapping and the top layer, none of which a div
+ * gets right for free.
+ */
+export function RangeJump({
+  value,
+  from,
+  to,
+  hrefTemplate,
+  label,
+  fromLabel,
+  toLabel,
+  confirmLabel,
+  closeLabel,
+}: {
+  /** The range as it reads on the bar, e.g. '2025-09-01 ~ 2026-08-31'. */
+  value: string;
+  from: string;
+  to: string;
+  /** '{from}' and '{to}' are replaced with the picked dates. */
+  hrefTemplate: string;
+  /** Accessible name — the visible text is a bare range and says nothing. */
+  label: string;
+  fromLabel: string;
+  toLabel: string;
+  confirmLabel: string;
+  closeLabel: string;
+}) {
+  const router = useRouter();
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [nextFrom, setNextFrom] = useState(from);
+  const [nextTo, setNextTo] = useState(to);
+
+  const go = () => {
+    dialog.current?.close();
+    if (nextFrom === from && nextTo === to) return;
+    // Picked backwards is a slip, not a range: the reader means the two
+    // dates they chose, in the order that makes a window.
+    const [a, b] = nextFrom > nextTo ? [nextTo, nextFrom] : [nextFrom, nextTo];
+    router.push(hrefTemplate.replace("{from}", a).replace("{to}", b));
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          // Reopened after a step, the fields should say where the
+          // reader is now — not where they were the last time they
+          // opened this.
+          setNextFrom(from);
+          setNextTo(to);
+          dialog.current?.showModal();
+        }}
+        aria-label={label}
+        data-testid="range-jump"
+        className="tnum hover:text-accent mx-auto min-h-12 px-3 text-sm font-semibold underline decoration-dotted underline-offset-4"
+      >
+        {value}
+      </button>
+
+      <dialog
+        ref={dialog}
+        aria-label={label}
+        onClick={(e) => {
+          if (e.target === dialog.current) dialog.current?.close();
+        }}
+        className="bg-card rounded-card text-ink m-auto w-[min(24rem,calc(100vw-1.5rem))] p-0 backdrop:bg-black/50"
+      >
+        <div className="border-rule-soft flex min-h-12 items-center gap-2 border-b px-4">
+          <h2 className="min-w-0 flex-1 truncate font-semibold">{label}</h2>
+          <button
+            type="button"
+            onClick={() => dialog.current?.close()}
+            aria-label={closeLabel}
+            className="text-ink-faint hover:text-ink -mr-2 grid h-11 w-11 shrink-0 place-items-center text-xl"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="space-y-3 px-4 py-4">
+          <div>
+            <Label htmlFor="range-jump-from">{fromLabel}</Label>
+            <input
+              id="range-jump-from"
+              type="date"
+              value={nextFrom}
+              onChange={(e) => setNextFrom(e.target.value)}
+              data-testid="range-jump-from"
+              className={`${controlClass} tnum`}
+            />
+          </div>
+          <div>
+            <Label htmlFor="range-jump-to">{toLabel}</Label>
+            <input
+              id="range-jump-to"
+              type="date"
+              value={nextTo}
+              onChange={(e) => setNextTo(e.target.value)}
+              data-testid="range-jump-to"
+              className={`${controlClass} tnum`}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={go}
+            data-testid="range-jump-confirm"
+            className={buttonClass("primary", true)}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </dialog>
+    </>
   );
 }

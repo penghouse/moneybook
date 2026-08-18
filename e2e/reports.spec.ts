@@ -439,6 +439,35 @@ test.describe("reports", () => {
     await expect(page).toHaveURL(/unit=month/);
   });
 
+  test("the range label picks both ends, and the header carries no form", async ({ page }) => {
+    await page.goto("/income/chart?from=2026-07-01&to=2026-09-30&unit=month");
+
+    // 시작 / 끝 / 조회 used to stand in the header permanently. The bar
+    // below already held the arrows and the 월간/연간 switch, so the
+    // range moved in with them.
+    await expect(page.locator('form[action="/income/chart"]')).toHaveCount(0);
+
+    await page.getByTestId("range-jump").click();
+    await page.getByTestId("range-jump-from").fill("2026-01-01");
+    await page.getByTestId("range-jump-to").fill("2026-03-31");
+    await page.getByTestId("range-jump-confirm").click();
+    await expect(page).toHaveURL(/from=2026-01-01&to=2026-03-31/);
+    // The bar width the reader was on travels with the new range.
+    await expect(page).toHaveURL(/unit=month/);
+    await expect(page.getByTestId("range-jump")).toHaveText("2026-01-01 ~ 2026-03-31");
+
+    // Picked backwards is a slip, not an empty range.
+    await page.getByTestId("range-jump").click();
+    await page.getByTestId("range-jump-from").fill("2026-06-30");
+    await page.getByTestId("range-jump-to").fill("2026-04-01");
+    await page.getByTestId("range-jump-confirm").click();
+    await expect(page).toHaveURL(/from=2026-04-01&to=2026-06-30/);
+
+    // And the arrows still step from wherever it landed.
+    await page.getByRole("link", { name: /이전 기간/ }).click();
+    await expect(page).toHaveURL(/from=2026-01-01&to=2026-03-31/);
+  });
+
   test("the income chart hovers a bar for its numbers, and switches month/year", async ({
     page,
   }) => {

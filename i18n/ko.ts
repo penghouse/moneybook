@@ -52,6 +52,7 @@ const ko = {
   "common.archive": "보관",
   "common.unarchive": "보관 해제",
   "common.viewTable": "표로 보기",
+  "common.pickRange": "기간 고르기",
   "common.apply": "조회",
   "common.saving": "저장 중…",
   "common.working": "처리 중…",
