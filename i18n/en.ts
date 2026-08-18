@@ -134,6 +134,10 @@ const en: Record<keyof typeof ko, string> = {
   "csv.importPaired": "Import paired-row CSV",
   "csv.pairedHint":
     "Upload a CSV that carries a whole transaction on each row, unedited. Accounts it names but this book doesn't have are created, and a row with a negative amount is entered with its two sides swapped. Importing the same file twice enters every transaction twice.",
+  "csv.importPeriodBudgets": "Import period budget CSV",
+  "csv.periodBudgetsHint":
+    "Upload a budget report from another ledger app in the form 「시작일,종료일,계정,항목,예산,금액,잔여액」, unedited. Only the budget column is read — spend and remainder are worked out here from the transactions themselves. Total and 상위 그룹 rows have nowhere to go and are skipped; the preview names every row it passed over.",
+  "csv.notAnAccount": "Not an account in this book, so it was skipped (a total or a 상위 그룹)",
   "csv.newAccounts": "New accounts",
   "csv.rowLabel": "Row {n}",
 

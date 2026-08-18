@@ -23,6 +23,8 @@ import {
 } from "@/lib/csv-import";
 import { toMinorUnits } from "@/lib/money";
 import { checkPairedRow, parsePairedCsv, planPairedAccounts } from "@/lib/paired-csv";
+import { checkPeriodBudgetRow, parsePeriodBudgetCsv } from "@/lib/period-budget-csv";
+import { parseBudgetPeriod } from "@/lib/budgets";
 import { currentSection } from "@/lib/current-request";
 import type { ImportState } from "./csv-types";
 
@@ -494,6 +496,115 @@ export async function importBudgetsAction(
 }
 
 // ---- Exchange rates ----
+
+/**
+ * The same budgets, arriving as another app's budget-vs-actual report.
+ *
+ * Unlike every other importer here, most of a valid file is *not*
+ * imported: the format interleaves running totals and 상위 그룹 sums
+ * with the account rows, and only the account rows have anywhere to go.
+ * So skipped rows are counted separately from errors and the item names
+ * are listed — 「이 줄들은 안 들어갔습니다」 is the one thing a reader
+ * needs to check before committing.
+ */
+export async function importPeriodBudgetsAction(
+  _prev: ImportState,
+  formData: FormData,
+): Promise<ImportState> {
+  const { section, t } = await currentSection();
+
+  const csvText = await readCsv(formData);
+  if (csvText === null) return { status: "error", message: t("csv.noFile") };
+
+  let rows;
+  try {
+    rows = parsePeriodBudgetCsv(csvText);
+  } catch (error) {
+    return { status: "error", message: formatCsvFormatError(t, error) };
+  }
+
+  const accountRows = await db.query.accounts.findMany({
+    where: eq(accounts.sectionId, section.id),
+    columns: { id: true, name: true, group: true },
+  });
+  const accountsByGroupAndName = new Map(accountRows.map((a) => [`${a.group} ${a.name}`, a.id]));
+
+  const valid = [];
+  const issues: { label: string; message: string }[] = [];
+  // Named once each, however many periods the file covers them for: a
+  // year's export repeats every subtotal twelve times, and a list of
+  // twelve identical 「총」 helps nobody.
+  const skippedItems = new Set<string>();
+  for (const row of rows) {
+    const check = checkPeriodBudgetRow(row, section.baseCurrency, accountsByGroupAndName);
+    if (check.ok) valid.push(check);
+    else if (check.skipped) skippedItems.add(check.item);
+    else issues.push({ label: check.label, message: formatImportIssue(t, check.issue) });
+  }
+
+  if (!isCommit(formData)) {
+    return {
+      status: "preview",
+      counts: [
+        { label: t("csv.total"), value: rows.length },
+        { label: t("csv.importable"), value: valid.length },
+        { label: t("csv.skipped"), value: rows.length - valid.length - issues.length },
+        { label: t("csv.errors"), value: issues.length },
+      ],
+      issues: [
+        ...[...skippedItems].map((item) => ({
+          label: item,
+          message: t("csv.notAnAccount"),
+        })),
+        ...issues,
+      ].slice(0, MAX_REPORTED_ISSUES),
+      canCommit: valid.length > 0,
+    };
+  }
+
+  // Deduped on the unique key, last row winning — the same rule the
+  // other budget importer follows, and what keeps a file naming one
+  // budget twice from upserting a row against itself in one statement.
+  const budgetValues = [
+    ...new Map(
+      valid.map((row) => {
+        const ref = parseBudgetPeriod(row.periodKey)!;
+        return [
+          `${row.accountId}|${ref.period}|${ref.periodKey}`,
+          {
+            sectionId: section.id,
+            accountId: row.accountId,
+            period: ref.period,
+            periodKey: ref.periodKey,
+            amount: row.amount,
+          },
+        ];
+      }),
+    ).values(),
+  ];
+
+  await db.transaction(async (tx) => {
+    for (const part of chunk(budgetValues, UPSERT_CHUNK_ROWS)) {
+      await tx
+        .insert(budgets)
+        .values(part)
+        .onConflictDoUpdate({
+          target: [budgets.accountId, budgets.period, budgets.periodKey],
+          set: { amount: sql`excluded.amount` },
+        });
+    }
+  });
+
+  revalidateAll();
+  return {
+    status: "done",
+    message: t("csv.done"),
+    counts: [
+      { label: t("csv.updated"), value: budgetValues.length },
+      { label: t("csv.skipped"), value: rows.length - valid.length },
+    ],
+  };
+}
 
 export async function importRatesAction(
   _prev: ImportState,
