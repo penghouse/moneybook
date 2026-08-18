@@ -128,6 +128,40 @@ test.describe("entry", () => {
     expect(runs).toEqual(["자산", "부채", "자본", "비용", "수익"]);
   });
 
+  test("a save whose answer never comes back leaves the form usable", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("12000");
+    await form.locator('input[name="title"]').fill("응답유실");
+
+    // The request reaches the server and is processed — so the write
+    // lands — and the answer is dropped on the way back. This is what a
+    // flaky connection does, and it used to leave 저장 중… on the button
+    // for good: a rejected useActionState reducer never settles the
+    // transition. Reloading showed the transaction saved while the
+    // screen still said it was saving.
+    await page.route("**/*", async (route) => {
+      if (route.request().method() === "POST") {
+        await route.fetch().catch(() => {});
+        await route.abort("connectionfailed");
+        return;
+      }
+      await route.continue();
+    });
+    await form.getByRole("button", { name: "저장", exact: true }).click();
+
+    // Said plainly rather than claimed as a failure — the write may well
+    // have gone through, and here it did.
+    await expect(page.getByTestId("save-unconfirmed")).toBeVisible();
+    await expect(form.getByRole("button", { name: "저장", exact: true })).toBeEnabled();
+
+    await page.unroute("**/*");
+    await page.reload();
+    await expect(page.getByText("응답유실")).toHaveCount(1);
+  });
+
   test("creates a simple same-currency transaction and shows it in the list", async ({ page }) => {
     await page.goto("/");
     const form = createForm(page);

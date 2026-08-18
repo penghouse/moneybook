@@ -163,6 +163,8 @@ const en: Record<keyof typeof ko, string> = {
   "entry.addLine": "Add line",
   "entry.difference": "Difference",
   "entry.duplicate": "Duplicate",
+  "entry.saveUnconfirmed":
+    "The save could not be confirmed. The list has been reloaded — check whether it went through.",
   "entry.editTitle": "Edit transaction",
   "entry.backToEdit": "Back to editing",
   "entry.duplicateNotice": "A copy. Check it over — saving adds it as a new transaction.",

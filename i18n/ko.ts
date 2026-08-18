@@ -159,6 +159,8 @@ const ko = {
   "entry.addLine": "줄 추가",
   "entry.difference": "차액",
   "entry.duplicate": "복제",
+  "entry.saveUnconfirmed":
+    "저장 결과를 확인하지 못했습니다. 목록을 다시 불러왔으니 저장됐는지 확인해 주세요.",
   "entry.editTitle": "거래 수정",
   "entry.backToEdit": "수정으로 돌아가기",
   "entry.duplicateNotice": "복제한 내용입니다. 확인 후 저장하면 새 거래로 추가됩니다.",

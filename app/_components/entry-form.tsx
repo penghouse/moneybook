@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { unstable_rethrow, useRouter } from "next/navigation";
 import type { AccountGroup } from "@/db/schema";
 import { AccountCombobox, type ComboboxAccount } from "./account-combobox";
 import { useDialogClose } from "./dialog";
@@ -31,6 +31,8 @@ export interface EntryFormLabels {
   unbalanced: string;
   difference: string;
   namePlaceholder: string;
+  /** Shown when a save's answer never came back. */
+  unconfirmed: string;
   /** 분류 names, shown beside each account in the picker. */
   groups: Record<AccountGroup, string>;
 }
@@ -143,10 +145,30 @@ export function EntryForm({
   // after they resolve, but the plan calls for clearing amount/title
   // while keeping date and the selected accounts on repeated entry —
   // useActionState's returned state is what makes that possible.
-  const [submitCount, dispatch] = useActionState(async (count: number, formData: FormData) => {
-    await action(formData);
-    return count + 1;
-  }, 0);
+  //
+  // The catch is not decoration. A rejected reducer never settles the
+  // transition, so 저장 중… stayed on the button for good — and since
+  // the request had reached the server, the transaction was already
+  // written. Reloading showed it saved while the screen still said it
+  // was saving.
+  const [saved, dispatch] = useActionState(
+    async (state: { count: number; unconfirmed: boolean }, formData: FormData) => {
+      try {
+        await action(formData);
+        return { count: state.count + 1, unconfirmed: false };
+      } catch (error) {
+        // redirect() and notFound() travel as errors and belong to the
+        // framework; swallowing them would break both.
+        unstable_rethrow(error);
+        // The re-read happens in an effect, not here: refreshing inside
+        // the transition discards the state this returns, and the notice
+        // never painted at all.
+        return { count: state.count, unconfirmed: true };
+      }
+    },
+    { count: 0, unconfirmed: false },
+  );
+  const submitCount = saved.count;
   const lastSubmitCount = useRef(0);
 
   const [date, setDate] = useState(initial?.date ?? defaultDate);
@@ -233,6 +255,14 @@ export function EntryForm({
   // Editing inside a dialog: once the save lands the dialog's work is
   // done, so it closes itself. Null when the form is rendered inline,
   // which is what lets one component serve both.
+  // Not "저장 실패": the answer went missing, and the write it was
+  // answering for may well have landed — as it had every time this was
+  // reported. So the list is re-read and the reader is told to check it,
+  // which is the only honest thing to say.
+  useEffect(() => {
+    if (saved.unconfirmed) router.refresh();
+  }, [saved.unconfirmed, router]);
+
   const lastClosedAt = useRef(0);
   useEffect(() => {
     if (submitCount > lastClosedAt.current) {
@@ -446,6 +476,19 @@ export function EntryForm({
     </>
   );
 
+  // Both layouts render it, so it is written once — the simple form is
+  // the one this happens on most, and it is the one that had no notice
+  // when the first version of this only patched the split view.
+  const unconfirmedNotice = saved.unconfirmed ? (
+    <p
+      role="status"
+      data-testid="save-unconfirmed"
+      className="bg-negative-soft text-negative rounded-control px-3 py-2 text-sm"
+    >
+      {labels.unconfirmed}
+    </p>
+  ) : null;
+
   if (!showDetailed) {
     return (
       <form action={dispatch} className="space-y-3">
@@ -559,6 +602,7 @@ export function EntryForm({
                   {labels.save}
                 </SubmitButton>
               </div>
+              <div className="col-span-3">{unconfirmedNotice}</div>
             </div>
           </div>
 
@@ -738,6 +782,8 @@ export function EntryForm({
           )}
         </div>
       </div>
+
+      {unconfirmedNotice}
 
       <SubmitButton
         variant="primary"
