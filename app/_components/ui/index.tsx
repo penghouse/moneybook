@@ -70,9 +70,21 @@ export function Hint({ children }: { children: ReactNode }) {
  * container. That is what pushed the split view's right column outside
  * the card.
  */
-export const controlClass =
-  "bg-sunken text-ink rounded-control min-h-12 w-full min-w-0 px-3.5 " +
+const controlBase =
+  "bg-sunken text-ink rounded-control min-h-12 w-full min-w-0 " +
   "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent";
+
+export const controlClass = `${controlBase} px-3.5`;
+
+/**
+ * The same control with less air either side, for a date sitting in a
+ * row that has to hold two of them and a button.
+ *
+ * A date input cannot shrink past the text it renders — '08/18/2026'
+ * plus the picker icon — so the padding is the only give there is, and
+ * 8px a side is what buys the row.
+ */
+export const compactControlClass = `${controlBase} px-2`;
 
 export type ButtonVariant = "primary" | "secondary" | "danger" | "ghost" | "nav";
 

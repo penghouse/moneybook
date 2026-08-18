@@ -25,7 +25,7 @@ import { PeriodNav } from "../../_components/period-nav";
 import {
   buttonClass,
   Card,
-  controlClass,
+  compactControlClass,
   EmptyState,
   Hint,
   Label,
@@ -123,19 +123,39 @@ export default async function IncomeChartPage({
   return (
     <div className="space-y-4">
       <PageHeader title={t("nav.incomeChart")}>
-        <form className="flex flex-wrap items-end gap-2" action="/income/chart">
-          <div>
+        <form
+          // 조회 sat on its own line because two date boxes at their
+          // natural width plus a button came to more than the row had.
+          // The dates flex instead of standing at that width — but only
+          // down to 8.5rem, because a date input clips rather than
+          // wraps, and below that the year loses a digit. Under a width
+          // where all three genuinely cannot fit, the button wraps,
+          // which is the right thing to give up.
+          className="flex flex-wrap items-end gap-2"
+          action="/income/chart"
+        >
+          <div className="min-w-[8.5rem] flex-1">
             <Label>{t("assets.rangeFrom")}</Label>
-            <input type="date" name="from" defaultValue={from} className={`${controlClass} tnum`} />
+            <input
+              type="date"
+              name="from"
+              defaultValue={from}
+              className={`${compactControlClass} tnum`}
+            />
           </div>
-          <div>
+          <div className="min-w-[8.5rem] flex-1">
             <Label>{t("assets.rangeTo")}</Label>
-            <input type="date" name="to" defaultValue={to} className={`${controlClass} tnum`} />
+            <input
+              type="date"
+              name="to"
+              defaultValue={to}
+              className={`${compactControlClass} tnum`}
+            />
           </div>
           {/* Carried through the form, or 조회 would silently drop the
               reader back to months. */}
           <input type="hidden" name="unit" value={byYear ? "year" : "month"} />
-          <button type="submit" className={buttonClass("secondary")}>
+          <button type="submit" className={`${buttonClass("secondary")} shrink-0`}>
             {t("common.apply")}
           </button>
         </form>
