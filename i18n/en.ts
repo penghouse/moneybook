@@ -189,6 +189,7 @@ const en: Record<keyof typeof ko, string> = {
   "entry.allAccounts": "All",
   "entry.noTransactions": "No transactions yet.",
   "entry.unbalancedError": "Debit and credit totals don't match.",
+  "entry.accountMissingError": "That account no longer exists. Pick one from the list.",
   "entry.accountInactiveError":
     "{name} was not in use on that date. Check its active period under Accounts.",
 

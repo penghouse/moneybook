@@ -64,7 +64,13 @@ async function buildLines(
     if (side !== "left" && side !== "right") throw new Error("Invalid side");
     const account = accountsById.get(accountIds[i]);
     if (!account || account.sectionId !== sectionId) {
-      throw new Error("Unknown or foreign account");
+      // Told, not thrown. This is reachable without tampering — the form
+      // holds ids chosen when the page rendered, and an account deleted
+      // in another tab (or a leg never picked from the list) arrives
+      // here as an id that no longer resolves. Throwing put the whole
+      // screen behind "A server error occurred", which says nothing
+      // about the one field that needs fixing and loses the entry.
+      redirect("/?error=account_missing");
     }
     if (!isActiveOn(account, date)) {
       redirect(`/?error=account_inactive&name=${encodeURIComponent(account.name)}`);

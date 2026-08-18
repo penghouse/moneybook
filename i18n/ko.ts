@@ -184,6 +184,7 @@ const ko = {
   "entry.allAccounts": "전체",
   "entry.noTransactions": "거래가 없습니다.",
   "entry.unbalancedError": "차변과 대변이 일치하지 않습니다.",
+  "entry.accountMissingError": "없는 계정입니다. 목록에서 계정을 다시 골라 주세요.",
   "entry.accountInactiveError":
     "{name}은(는) 그 날짜에 쓰지 않던 계정입니다. 계정과목에서 사용 기간을 확인해 주세요.",
 

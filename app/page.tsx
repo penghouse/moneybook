@@ -412,6 +412,11 @@ export default async function Home({
           {t("entry.unbalancedError")}
         </p>
       )}
+      {error === "account_missing" && (
+        <p className="bg-negative-soft text-negative rounded-control px-3 py-2 text-sm">
+          {t("entry.accountMissingError")}
+        </p>
+      )}
       {error === "account_inactive" && (
         <p className="bg-negative-soft text-negative rounded-control px-3 py-2 text-sm">
           {interpolate(t("entry.accountInactiveError"), { name: errorAccountName ?? "" })}

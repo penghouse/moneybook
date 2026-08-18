@@ -75,6 +75,34 @@ test.describe("entry", () => {
     await expect(tag(1)).toHaveAttribute("data-tag", "−");
   });
 
+  test("an account that is gone is said so, not served as a server error", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("12000");
+
+    // The form holds ids chosen when the page rendered. An account
+    // deleted in another tab — or a leg whose id no longer resolves for
+    // any other reason — arrives at the action as a stranger.
+    await form
+      .locator('input[name="accountId"]')
+      .first()
+      .evaluate((el: HTMLInputElement) => {
+        el.value = "00000000-0000-0000-0000-000000000000";
+      });
+
+    await form.getByRole("button", { name: "저장" }).click();
+
+    // It used to throw, which put the whole screen behind "A server
+    // error occurred" — no mention of the account, and the entry gone.
+    await expect(page.getByText("없는 계정입니다.", { exact: false })).toBeVisible();
+    await expect(page.getByText("서버 오류")).toHaveCount(0);
+    await expect(page.getByText("A server error occurred")).toHaveCount(0);
+    // And the form is usable again rather than stuck on 저장 중….
+    await expect(form.getByRole("button", { name: "저장" })).toBeVisible();
+  });
+
   test("creates a simple same-currency transaction and shows it in the list", async ({ page }) => {
     await page.goto("/");
     const form = createForm(page);
