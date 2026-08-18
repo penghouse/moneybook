@@ -307,6 +307,9 @@ const en: Record<keyof typeof ko, string> = {
   "roadmap.rangeTooLong": "Up to {n} years can be drawn at once.",
   "roadmap.overrideHint":
     "Leave a box empty and the year follows the default. Empty all three and the year's own settings are removed.",
+  "roadmap.turn": "Turn sideways",
+  "roadmap.unturn": "Turn back",
+  "roadmap.rotateHint": "Now turn the phone anticlockwise.",
   "roadmap.tableHint":
     "The plan compounds from the starting figure untouched; the standing column picks the ledger's own number up wherever it has one. Tap a year to give it different figures.",
   "roadmap.empty": "No roadmap yet.",

@@ -21,6 +21,7 @@ import {
   PageHeader,
 } from "../_components/ui";
 import { deleteRoadmapAction, saveRoadmapAction, setRoadmapYearAction } from "./actions";
+import { TurnToRead } from "./turn-to-read";
 
 /** Percent in the boxes, multiplier in the table — see actions.ts. */
 const asPercent = (rate: number) => Math.round(rate * 10000) / 100;
@@ -352,111 +353,122 @@ export default async function RoadmapPage({
 
       {!selected.actualFormulaId && <Hint>{t("roadmap.pickFormulaHint")}</Hint>}
 
-      {/* A real table, scrolled inside its own box. Eight columns will
+      {/* A real table, scrolled inside its own box. Seven columns will
           not fit a phone, and the alternative — a card per year — loses
           the one thing a roadmap is read for, which is comparing a
-          column down the years. The page itself stays unscrolled. */}
-      <Card className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-rule-soft text-ink-faint border-b text-left">
-              <th scope="col" className={`${cell} bg-card sticky left-0 z-10 font-medium`}>
-                {t("roadmap.year")}
-              </th>
-              {/* The closing figures come first, right beside the year.
+          column down the years. The page itself stays unscrolled.
+
+          On a phone, 「가로로 보기」 lays the whole block on its side so
+          the table gets the screen's long side. */}
+      <TurnToRead
+        labels={{
+          turn: t("roadmap.turn"),
+          unturn: t("roadmap.unturn"),
+          hint: t("roadmap.rotateHint"),
+        }}
+      >
+        <Card className="h-full overflow-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-rule-soft text-ink-faint border-b text-left">
+                <th scope="col" className={`${cell} bg-card sticky left-0 z-10 font-medium`}>
+                  {t("roadmap.year")}
+                </th>
+                {/* The closing figures come first, right beside the year.
                   They are what the table is read for, and at 393px only
                   the first money column is on screen without scrolling
                   — so it had better be this one and not an input. */}
-              <th scope="col" className={`${cell} text-right font-medium`}>
-                {t("roadmap.planEnd")}
-              </th>
-              {hasActuals && (
-                <>
-                  <th scope="col" className={`${cell} text-right font-medium`}>
-                    {t("roadmap.liveEnd")}
-                  </th>
-                  <th scope="col" className={`${cell} text-right font-medium`}>
-                    {t("roadmap.actualReturnRate")}
-                  </th>
-                </>
-              )}
-              <th scope="col" className={`${cell} text-right font-medium`}>
-                {t("roadmap.contribution")}
-              </th>
-              <th scope="col" className={`${cell} text-right font-medium`}>
-                {t("roadmap.returnRate")}
-              </th>
-              <th scope="col" className={`${cell} font-medium`}>
-                {t("roadmap.note")}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.year} data-testid="roadmap-row" className="border-rule-soft border-t">
-                <td className="bg-card sticky left-0 z-10 p-0">
-                  <RowDialog
-                    title={`${row.year}`}
-                    closeLabel={t("common.close")}
-                    trigger={
-                      <span className="tnum flex items-center gap-1.5 font-semibold">
-                        {row.year}
-                        {row.overridden && <span className="text-accent text-xs">●</span>}
-                      </span>
-                    }
-                  >
-                    <YearForm
-                      roadmapId={selected.id}
-                      row={row}
-                      currency={section.baseCurrency}
-                      labels={{
-                        contribution: t("roadmap.contribution"),
-                        returnRate: t("roadmap.returnRate"),
-                        note: t("roadmap.note"),
-                        save: t("common.save"),
-                        saving: t("common.saving"),
-                        hint: t("roadmap.overrideHint"),
-                      }}
-                    />
-                  </RowDialog>
-                </td>
-                <td className={`${num} ${hasActuals ? "text-ink-muted" : "font-semibold"}`}>
-                  {money(row.planEnd)}
-                </td>
+                <th scope="col" className={`${cell} text-right font-medium`}>
+                  {t("roadmap.planEnd")}
+                </th>
                 {hasActuals && (
                   <>
-                    <td className={`${num} font-semibold`}>
-                      {money(row.liveEnd)}
-                      {row.actual !== null && (
-                        <span
-                          className="text-positive ml-1 text-xs"
-                          title={t("roadmap.fromLedger")}
-                        >
-                          ✓
-                        </span>
-                      )}
-                    </td>
-                    <td className={num}>
-                      {row.actualReturnRate === null ? (
-                        <span className="text-ink-faint">—</span>
-                      ) : (
-                        <span
-                          className={row.actualReturnRate < row.returnRate ? "text-negative" : ""}
-                        >
-                          {asPercent(row.actualReturnRate)}%
-                        </span>
-                      )}
-                    </td>
+                    <th scope="col" className={`${cell} text-right font-medium`}>
+                      {t("roadmap.liveEnd")}
+                    </th>
+                    <th scope="col" className={`${cell} text-right font-medium`}>
+                      {t("roadmap.actualReturnRate")}
+                    </th>
                   </>
                 )}
-                <td className={num}>{money(row.contribution)}</td>
-                <td className={num}>{asPercent(row.returnRate)}%</td>
-                <td className={`${cell} max-w-40 truncate`}>{row.note}</td>
+                <th scope="col" className={`${cell} text-right font-medium`}>
+                  {t("roadmap.contribution")}
+                </th>
+                <th scope="col" className={`${cell} text-right font-medium`}>
+                  {t("roadmap.returnRate")}
+                </th>
+                <th scope="col" className={`${cell} font-medium`}>
+                  {t("roadmap.note")}
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.year} data-testid="roadmap-row" className="border-rule-soft border-t">
+                  <td className="bg-card sticky left-0 z-10 p-0">
+                    <RowDialog
+                      title={`${row.year}`}
+                      closeLabel={t("common.close")}
+                      trigger={
+                        <span className="tnum flex items-center gap-1.5 font-semibold">
+                          {row.year}
+                          {row.overridden && <span className="text-accent text-xs">●</span>}
+                        </span>
+                      }
+                    >
+                      <YearForm
+                        roadmapId={selected.id}
+                        row={row}
+                        currency={section.baseCurrency}
+                        labels={{
+                          contribution: t("roadmap.contribution"),
+                          returnRate: t("roadmap.returnRate"),
+                          note: t("roadmap.note"),
+                          save: t("common.save"),
+                          saving: t("common.saving"),
+                          hint: t("roadmap.overrideHint"),
+                        }}
+                      />
+                    </RowDialog>
+                  </td>
+                  <td className={`${num} ${hasActuals ? "text-ink-muted" : "font-semibold"}`}>
+                    {money(row.planEnd)}
+                  </td>
+                  {hasActuals && (
+                    <>
+                      <td className={`${num} font-semibold`}>
+                        {money(row.liveEnd)}
+                        {row.actual !== null && (
+                          <span
+                            className="text-positive ml-1 text-xs"
+                            title={t("roadmap.fromLedger")}
+                          >
+                            ✓
+                          </span>
+                        )}
+                      </td>
+                      <td className={num}>
+                        {row.actualReturnRate === null ? (
+                          <span className="text-ink-faint">—</span>
+                        ) : (
+                          <span
+                            className={row.actualReturnRate < row.returnRate ? "text-negative" : ""}
+                          >
+                            {asPercent(row.actualReturnRate)}%
+                          </span>
+                        )}
+                      </td>
+                    </>
+                  )}
+                  <td className={num}>{money(row.contribution)}</td>
+                  <td className={num}>{asPercent(row.returnRate)}%</td>
+                  <td className={`${cell} max-w-40 truncate`}>{row.note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      </TurnToRead>
 
       <Hint>{t("roadmap.tableHint")}</Hint>
     </div>

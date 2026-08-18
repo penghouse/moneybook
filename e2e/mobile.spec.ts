@@ -163,3 +163,39 @@ test("@mobile the account list is wider than the box, and stays on screen", asyn
     await page.getByRole("heading").first().click();
   }
 });
+
+/**
+ * Forty years of seven columns has no upright arrangement on a phone, so
+ * 「가로로 보기」 lays the table on its side and the reader turns the
+ * phone. Turned far enough that the browser calls it landscape, the
+ * transform drops on its own and the table lays out wide for real.
+ */
+test("@mobile 「가로로 보기」 lays the roadmap on its side, and turning undoes it", async ({
+  page,
+}) => {
+  await page.goto("/roadmap?new=1");
+  await page.getByLabel("버전 이름").fill("가로 확인");
+  await page.getByLabel("시작 연도").fill("2030");
+  await page.getByLabel("종료 연도").fill("2045");
+  await page.getByLabel("시작자산").fill("100000000");
+  await page.getByRole("button", { name: "저장" }).click();
+  await expect(page).toHaveURL(/\/roadmap\?id=/);
+
+  const turn = () =>
+    page.locator(".rotate-to-read > *").evaluate((el) => getComputedStyle(el).transform);
+
+  // Nothing happens unasked.
+  expect(await turn()).toBe("none");
+
+  await page.getByRole("button", { name: "가로로 보기" }).click();
+  expect(await turn()).toBe("matrix(0, 1, -1, 0, 393, 0)");
+  // The year column, which every other column is read against, stays
+  // clear of the fixed tab bar at the foot of the screen.
+  const years = (await page.getByTestId("roadmap-row").first().boundingBox())!;
+  expect(years.y).toBeLessThan(page.viewportSize()!.height / 2);
+
+  // Turned: the browser calls it landscape and the transform goes,
+  // without the button being pressed again.
+  await page.setViewportSize({ width: 851, height: 393 });
+  expect(await turn()).toBe("none");
+});

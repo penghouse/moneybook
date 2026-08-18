@@ -299,6 +299,9 @@ const ko = {
   "roadmap.rangeTooLong": "한 번에 최대 {n}년까지 그릴 수 있습니다.",
   "roadmap.overrideHint":
     "비워 두면 그 해는 기본값을 따릅니다. 셋 다 비우면 이 해의 설정이 지워집니다.",
+  "roadmap.turn": "가로로 보기",
+  "roadmap.unturn": "세로로 보기",
+  "roadmap.rotateHint": "휴대폰을 왼쪽으로 돌려 보세요.",
   "roadmap.tableHint":
     "계획은 시작자산에서 그대로 굴린 값이고, 실적은 장부의 실제값이 나온 해부터 다시 굴린 값입니다. 연도를 누르면 그 해만 다르게 잡을 수 있습니다.",
   "roadmap.empty": "아직 로드맵이 없습니다.",
