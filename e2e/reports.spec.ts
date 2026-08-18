@@ -397,6 +397,32 @@ test.describe("reports", () => {
     await expect(page.getByRole("heading", { name: "기간손익 그래프" })).toBeVisible();
   });
 
+  test("조회 stays on the row with the two dates it belongs to", async ({ page }) => {
+    // Both date boxes stood at their natural width — 174px each — which
+    // with the button came to more than the row had, so 조회 dropped to
+    // a line of its own.
+    for (const width of [393, 900]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto("/income");
+      const form = page.locator('form[action="/income"]');
+      await expect(form.getByRole("button")).toBeVisible();
+
+      const row = await form.evaluate((el) => {
+        const kids = [...el.children].map((k) => k.getBoundingClientRect());
+        const dates = [...el.querySelectorAll('input[type="date"]')].map(
+          (i) => i.getBoundingClientRect().width,
+        );
+        return { bottoms: new Set(kids.map((r) => Math.round(r.bottom))).size, dates };
+      });
+
+      expect(row.bottoms).toBe(1);
+      // And the dates keep enough width to read: a date input clips
+      // rather than wraps, and under about 8.5rem the year loses a digit
+      // with nothing on screen to say so.
+      for (const w of row.dates) expect(w).toBeGreaterThanOrEqual(136);
+    }
+  });
+
   test("both chart screens page by the window's own length", async ({ page }) => {
     // Twelve whole months, so the arrows must land on the twelve before
     // and after — not eleven of the same twelve.

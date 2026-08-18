@@ -136,6 +136,7 @@ export default async function Home({
     unbalanced: t("entry.unbalanced"),
     difference: t("entry.difference"),
     namePlaceholder: t("entry.searchPlaceholder"),
+    unconfirmed: t("entry.saveUnconfirmed"),
     groups: Object.fromEntries(ACCOUNT_GROUPS.map((g) => [g, t(GROUP_LABEL_KEY[g])])) as Record<
       AccountGroup,
       string

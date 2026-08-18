@@ -29,6 +29,7 @@ import {
   importRatesAction,
   importTransactionsAction,
   importPairedAction,
+  importPeriodBudgetsAction,
 } from "./csv-actions";
 import { CsvImportForm, type CsvImportLabels } from "./csv-import";
 
@@ -99,14 +100,21 @@ export default async function SettingsPage({
       kind: "budgets",
     },
     { action: importRatesAction, label: t("csv.importRates"), kind: "rates" },
-    // Last, and the only one with its own hint: this reads another app's
-    // export rather than one of ours, so what it will do with the file
-    // (create accounts, flip negative rows) has to be said up front.
+    // Last, and the only two with their own hints: these read another
+    // app's export rather than one of ours, so what each will do with
+    // the file — create accounts and flip negative rows; skip the
+    // subtotal lines — has to be said up front.
     {
       action: importPairedAction,
       label: t("csv.importPaired"),
       kind: "paired",
       hint: t("csv.pairedHint"),
+    },
+    {
+      action: importPeriodBudgetsAction,
+      label: t("csv.importPeriodBudgets"),
+      kind: "periodBudgets",
+      hint: t("csv.periodBudgetsHint"),
     },
   ];
 

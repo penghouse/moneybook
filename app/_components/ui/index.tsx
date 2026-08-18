@@ -70,17 +70,36 @@ export function Hint({ children }: { children: ReactNode }) {
  * container. That is what pushed the split view's right column outside
  * the card.
  */
-export const controlClass =
-  "bg-sunken text-ink rounded-control min-h-12 w-full min-w-0 px-3.5 " +
+const controlBase =
+  "bg-sunken text-ink rounded-control min-h-12 w-full min-w-0 " +
   "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent";
 
-export type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
+export const controlClass = `${controlBase} px-3.5`;
+
+/**
+ * The same control with less air either side, for a date sitting in a
+ * row that has to hold two of them and a button.
+ *
+ * A date input cannot shrink past the text it renders — '08/18/2026'
+ * plus the picker icon — so the padding is the only give there is, and
+ * 8px a side is what buys the row.
+ */
+export const compactControlClass = `${controlBase} px-2`;
+
+export type ButtonVariant = "primary" | "secondary" | "danger" | "ghost" | "nav";
 
 const buttonVariant: Record<ButtonVariant, string> = {
   primary: "bg-accent text-accent-ink border-accent font-semibold",
   secondary: "bg-sunken text-ink border-transparent hover:bg-rule",
   danger: "bg-card text-negative border-negative/40 hover:bg-negative-soft",
   ghost: "bg-transparent text-ink-muted border-transparent hover:bg-sunken",
+  // A filled hover is how this app says *engaged* — it is what the
+  // selected 월간/연간 wears, in the same card. On a nav arrow that
+  // reads as a button held down, and since a pointer does not move
+  // after a click, it stays that way for as long as the reader is
+  // looking at the page they just asked for. Navigation gets the link
+  // idiom instead: the label answers, the surface does not.
+  nav: "bg-transparent text-ink-muted border-transparent hover:text-ink hover:underline underline-offset-4",
 };
 
 /**

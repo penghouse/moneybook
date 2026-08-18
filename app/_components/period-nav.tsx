@@ -70,11 +70,11 @@ export function PeriodNav({
   return (
     <Card>
       <div className="flex items-center px-1 py-1">
-        <Link href={prevHref} className={buttonClass("ghost")}>
+        <Link href={prevHref} className={buttonClass("nav")}>
           ← {prevLabel}
         </Link>
         <span className="tnum mx-auto font-semibold">{label}</span>
-        <Link href={nextHref} className={buttonClass("ghost")}>
+        <Link href={nextHref} className={buttonClass("nav")}>
           {nextLabel} →
         </Link>
       </div>

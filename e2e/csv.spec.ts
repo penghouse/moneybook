@@ -8,7 +8,7 @@ import { seedSession, SESSION_COOKIE_NAME } from "./auth-helper";
 // The import forms are structurally identical, so each carries a
 // data-testid. They used to be addressed by position, which broke the
 // moment they were reordered or wrapped.
-type ImportForm = "accounts" | "transactions" | "budgets" | "rates" | "paired";
+type ImportForm = "accounts" | "transactions" | "budgets" | "rates" | "paired" | "periodBudgets";
 
 async function upload(page: Page, which: ImportForm, name: string, csv: string) {
   // Each import is collapsed into a single row until opened, so the file
@@ -221,7 +221,7 @@ test.describe("csv", () => {
       "budgets.csv",
       "account,period,amount\n식비,2026-07,450000\n식비,2026,5400000\n",
     );
-    await expect(form.getByText(/가져올 거래 2 · 오류 0/)).toBeVisible();
+    await expect(form.getByText(/가져올 예산 2 · 오류 0/)).toBeVisible();
     await form.getByRole("button", { name: "가져오기 확정" }).click();
     await expect(form.getByText(/갱신 2/)).toBeVisible();
 
@@ -330,7 +330,7 @@ test.describe("csv", () => {
       "rates.csv",
       "date,base,quote,rate,source\n2026-07-31,USD,KRW,1380,manual\n",
     );
-    await expect(form.getByText(/가져올 거래 1 · 오류 0/)).toBeVisible();
+    await expect(form.getByText(/가져올 환율 1 · 오류 0/)).toBeVisible();
     await form.getByRole("button", { name: "가져오기 확정" }).click();
     await expect(form.getByText(/갱신 1/)).toBeVisible();
 
@@ -338,5 +338,91 @@ test.describe("csv", () => {
     const text = (await response.text()).replace(/^﻿/, "");
     expect(text.split("\r\n")[0]).toBe("date,base,quote,rate,source");
     expect(text).toContain("2026-07-31,USD,KRW,1380,manual");
+  });
+
+  test("a period budget report imports its account rows and passes over the totals", async ({
+    page,
+  }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const food = await byName("식비");
+    const transport = await byName("교통비");
+    const salary = await byName("급여");
+
+    await page.goto("/settings");
+
+    // Shaped like the real export: running totals, then a 상위 그룹 sum,
+    // then the accounts under it. Figures are invented.
+    const csv = [
+      "시작일,종료일,계정,항목,예산,금액,잔여액",
+      "2026-01-01,2026-01-31,비용,총,900000,880000,20000",
+      "2026-01-01,2026-01-31,비용,총 고정,300000,310000,-10000",
+      "2026-01-01,2026-01-31,비용,생활,600000,570000,30000",
+      "2026-01-01,2026-01-31,비용,식비,400000,380000,20000",
+      "2026-01-01,2026-01-31,비용,교통비,200000,190000,10000",
+      "2026-01-01,2026-01-31,비용,없는항목,50000,0,50000",
+      "2026-01-01,2026-01-31,수익,급여,3000000,3000000,0",
+      "2026-01-01,2026-12-31,비용,식비,4800000,0,4800000",
+      "",
+    ].join("\n");
+
+    const form = await upload(page, "periodBudgets", "budget-report.csv", csv);
+
+    // Four of the eight rows name an account; the rest are the format's
+    // own headings, a 상위 그룹, and an item this book does not keep.
+    await expect(form).toContainText("가져올 예산 4");
+    await expect(form).toContainText("총");
+    await expect(form).toContainText("생활");
+    await expect(form).toContainText("없는항목");
+
+    await form.getByRole("button", { name: "가져오기 확정" }).click();
+    await expect(form).toContainText("가져왔습니다");
+
+    const rows = await db.query.budgets.findMany({
+      where: eq(budgets.sectionId, section.id),
+    });
+    const byKey = new Map(rows.map((b) => [`${b.accountId}|${b.periodKey}`, b.amount]));
+    expect(byKey.get(`${food.id}|2026-01`)).toBe(400_000);
+    expect(byKey.get(`${transport.id}|2026-01`)).toBe(200_000);
+    // 수익 rows land on the income side, which the budget screen now has.
+    expect(byKey.get(`${salary.id}|2026-01`)).toBe(3_000_000);
+    // A whole calendar year is a year budget, not January's.
+    expect(byKey.get(`${food.id}|2026`)).toBe(4_800_000);
+    expect(rows).toHaveLength(4);
+
+    // What it shows on the budget screen is what went in.
+    await page.goto("/budget?period=2026-01");
+    await expect(page.getByTestId("budget-row").filter({ hasText: "식비" })).toContainText(
+      "예산 설정 ₩400,000",
+    );
+  });
+
+  test("a period budget row that is not a whole month or year is refused", async ({ page }) => {
+    await page.goto("/settings");
+    const csv = [
+      "시작일,종료일,계정,항목,예산,금액,잔여액",
+      "2026-01-01,2026-01-15,비용,식비,400000,380000,20000",
+      "",
+    ].join("\n");
+
+    const form = await upload(page, "periodBudgets", "half-month.csv", csv);
+
+    // Named, not silently rounded to the month it mostly covers.
+    await expect(form).toContainText("2026-01-01~2026-01-15");
+    await expect(form.getByRole("button", { name: "가져오기 확정" })).toHaveCount(0);
+  });
+
+  test("a file that is not this format is refused by its header", async ({ page }) => {
+    await page.goto("/settings");
+    const form = await upload(
+      page,
+      "periodBudgets",
+      "wrong.csv",
+      "account,period,amount\n식비,2026-01,400000\n",
+    );
+    await expect(form).toContainText("시작일");
   });
 });

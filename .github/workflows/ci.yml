@@ -22,6 +22,10 @@ jobs:
 
       - run: npm run typecheck
 
+      # The pasteable schema is a second copy of the migrations, and a
+      # second copy drifts — it once shipped a release behind them.
+      - run: npm run db:schema:check
+
       - run: npm run test
 
       - run: npm run build

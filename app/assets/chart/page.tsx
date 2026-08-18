@@ -205,7 +205,7 @@ export default async function AssetsChartPage({
         <Hint>{t("series.hint")}</Hint>
       </section>
 
-      <Link href={`/assets?asOf=${to}`} className={buttonClass("ghost")}>
+      <Link href={`/assets?asOf=${to}`} className={buttonClass("nav")}>
         ← {t("assets.backToList")}
       </Link>
     </div>

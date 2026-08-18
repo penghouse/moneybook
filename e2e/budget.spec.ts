@@ -1,10 +1,24 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator } from "@playwright/test";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, transactionLines, transactions } from "../db/schema";
 import { today } from "../lib/date";
 import { getOrCreateSection } from "../lib/current-section";
 import { seedSession, SESSION_COOKIE_NAME } from "./auth-helper";
+
+/**
+ * Set one row's budget the way a reader does.
+ *
+ * A row that already has a budget keeps its box folded away behind 수정,
+ * so the second and later passes have to open it first — that fold is
+ * the behaviour, not an obstacle to route around.
+ */
+async function setRowBudget(row: Locator, amount: string) {
+  const edit = row.getByRole("button", { name: "수정" });
+  if (await edit.isVisible()) await edit.click();
+  await row.locator('input[name="amount"]').fill(amount);
+  await row.getByRole("button", { name: "저장" }).click();
+}
 
 test.describe("budget", () => {
   let currentUserId = "";
@@ -68,8 +82,7 @@ test.describe("budget", () => {
     // Addressed by testid rather than by tag: the row is whatever element
     // the current layout uses, and that has already changed once.
     const row = page.getByTestId("budget-row").filter({ hasText: "식비" });
-    await row.locator('input[name="amount"]').fill("300000");
-    await row.getByRole("button", { name: "저장" }).click();
+    await setRowBudget(row, "300000");
 
     // Read off the row rather than the page: 식비 is the only budgeted
     // account here, so 전체 carries the very same figures — which is the
@@ -79,8 +92,7 @@ test.describe("budget", () => {
     await expect(foodRow()).toContainText("예산 설정 ₩300,000 (67%)");
     await expect(foodRow()).toContainText("잔여 ₩100,000");
 
-    await foodRow().locator('input[name="amount"]').fill("150000");
-    await foodRow().getByRole("button", { name: "저장" }).click();
+    await setRowBudget(foodRow(), "150000");
 
     await expect.poll(() => foodRow().innerText()).toMatch(/초과.*₩50,000/);
   });
@@ -127,7 +139,7 @@ test.describe("budget", () => {
     }
 
     await page.goto("/budget");
-    const total = page.getByTestId("budget-total");
+    const total = page.getByTestId("budget-total-expense");
 
     // Nothing budgeted anywhere yet: spend alone, no share to report.
     await expect(total).toContainText("₩180,000");
@@ -135,8 +147,7 @@ test.describe("budget", () => {
 
     const setBudget = async (name: string, amount: string) => {
       const row = page.getByTestId("budget-row").filter({ hasText: name });
-      await row.locator('input[name="amount"]').fill(amount);
-      await row.getByRole("button", { name: "저장" }).click();
+      await setRowBudget(row, amount);
     };
     await setBudget("식비", "200000");
     await setBudget("교통비", "100000");
@@ -211,8 +222,7 @@ test.describe("budget", () => {
 
     const setBudget = async (name: string, amount: string) => {
       const row = page.getByTestId("budget-row").filter({ hasText: name });
-      await row.locator('input[name="amount"]').fill(amount);
-      await row.getByRole("button", { name: "저장" }).click();
+      await setRowBudget(row, amount);
     };
     await setBudget("식비", "200000");
     await setBudget("생활용품", "100000");
@@ -244,6 +254,94 @@ test.describe("budget", () => {
       .filter({ hasText: "식비" })
       .boundingBox())!;
     expect(rowBox.x).toBeGreaterThan(bandBox.x);
+  });
+
+  test("a settled row folds its box away, and 수정 opens that row alone", async ({ page }) => {
+    await page.goto("/budget");
+    const food = () => page.getByTestId("budget-row").filter({ hasText: "식비" });
+    const transport = () => page.getByTestId("budget-row").filter({ hasText: "교통비" });
+
+    // Nothing set yet, so every row keeps its box open — it is the only
+    // way to give a row a budget in the first place.
+    await expect(food().locator('input[name="amount"]')).toBeVisible();
+    await setRowBudget(food(), "300000");
+
+    // Set, and now folded: the figures speak for the row instead.
+    await expect(food().locator('input[name="amount"]')).toBeHidden();
+    await expect(food()).toContainText("예산 설정 ₩300,000");
+    // Its neighbour is untouched and still open.
+    await expect(transport().locator('input[name="amount"]')).toBeVisible();
+
+    await food().getByRole("button", { name: "수정" }).click();
+    await expect(food().locator('input[name="amount"]')).toBeVisible();
+    // And only that row — pressing 수정 does not unfold the whole page.
+    await expect(page.getByRole("button", { name: "수정" })).toHaveCount(0);
+
+    await food().getByRole("button", { name: "취소" }).click();
+    await expect(food().locator('input[name="amount"]')).toBeHidden();
+  });
+
+  test("수입 is budgeted too, and 저축 is what the two sides leave over", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = (name: string) =>
+      db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      });
+    const salary = await byName("급여");
+    const food = await byName("식비");
+    const bank = await byName("은행");
+    const asOf = today(section.timezone);
+
+    const post = async (left: string, right: string, amount: number, title: string) => {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date: asOf, title })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: left,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: right,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+      ]);
+    };
+    // 급여 3,000,000 in, 식비 800,000 out — so 2,200,000 stayed.
+    await post(bank!.id, salary!.id, 3_000_000, "월급");
+    await post(food!.id, bank!.id, 800_000, "장보기");
+
+    await page.goto("/budget");
+
+    // An income account is budgetable, in its own section.
+    const salaryRow = page.getByTestId("budget-row").filter({ hasText: "급여" });
+    await expect(salaryRow.getByRole("button", { name: "저장" })).toBeVisible();
+    await expect(page.getByTestId("budget-total-income")).toContainText("₩3,000,000");
+    await expect(page.getByTestId("budget-total-expense")).toContainText("₩800,000");
+
+    // What actually stayed, before anything is planned.
+    await expect(page.getByTestId("budget-saving")).toContainText("₩2,200,000");
+
+    await setRowBudget(salaryRow, "2500000");
+    await setRowBudget(page.getByTestId("budget-row").filter({ hasText: "식비" }), "1000000");
+
+    // Earning past the plan is the good direction, so the income side
+    // reads 초과 without the alarm the spending side wears.
+    await expect(page.getByTestId("budget-total-income")).toContainText("초과");
+    await expect(salaryRow).toContainText("초과 ₩500,000");
+    // And the plan's own leftover: 2,500,000 − 1,000,000.
+    await expect(page.getByTestId("budget-saving")).toContainText("₩1,500,000");
   });
 
   test("a budget row opens that month's transactions for the account", async ({ page }) => {
@@ -325,22 +423,19 @@ test.describe("budget", () => {
     // year — the exact situation the year screen exists to surface.
     await page.goto(`/budget?period=${year}-01`);
     const janRow = page.getByTestId("budget-row").filter({ hasText: "식비" });
-    await janRow.locator('input[name="amount"]').fill("300000");
-    await janRow.getByRole("button", { name: "저장" }).click();
+    await setRowBudget(janRow, "300000");
     await expect(page.getByText(/예산 설정.*₩300,000/)).toBeVisible();
 
     await page.goto(`/budget?period=${year}-02`);
     const febRow = page.getByTestId("budget-row").filter({ hasText: "식비" });
-    await febRow.locator('input[name="amount"]').fill("300000");
-    await febRow.getByRole("button", { name: "저장" }).click();
+    await setRowBudget(febRow, "300000");
     await expect(page.getByText(/예산 설정.*₩300,000/)).toBeVisible();
 
     await page.getByRole("link", { name: "연간" }).click();
     await expect(page).toHaveURL(new RegExp(`period=${year}$`));
 
     const yearRow = page.getByTestId("budget-row").filter({ hasText: "식비" });
-    await yearRow.locator('input[name="amount"]').fill("500000");
-    await yearRow.getByRole("button", { name: "저장" }).click();
+    await setRowBudget(yearRow, "500000");
 
     // ₩600,000 of monthly budgets against a ₩500,000 year cap.
     await expect(page.getByText(/월 예산 합계.*₩600,000/).first()).toBeVisible();

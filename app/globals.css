@@ -162,3 +162,56 @@
     margin: 0;
   }
 }
+
+/* ---- Landscape on a portrait phone ----
+   The roadmap is forty years of seven columns. On a phone held upright
+   there is no arrangement that makes it readable, and the honest answer
+   is that this table wants the long side of the screen. There is no web
+   API to ask for that: orientation locking exists only inside
+   fullscreen, and the manifest's setting would apply to the whole
+   installed app rather than to the one screen that needs it.
+
+   So the reader asks for it, with 「가로로 보기」. Pressing it turns the
+   table block a quarter turn, which lays the table out against the
+   screen's height instead of its width; turning the phone anticlockwise
+   then puts it upright. Turned far enough that the browser calls it
+   landscape, the media query stops matching and the table lays itself
+   out for real at the wider viewport — so the state undoes itself the
+   moment it is no longer wanted.
+
+   Turned clockwise, so the table's *first* column — the years, which
+   every other column is read against — lands along the top of the
+   screen rather than along the bottom, where the fixed tab bar would
+   cover the one column that has to stay visible.
+
+   The maths: the inner box is laid out `--rot-h` wide and one viewport
+   width tall, then slid up by its own pre-rotation height and turned a
+   quarter turn about its top-left. That lands it exactly over the
+   wrapper, which is one viewport wide and `--rot-h` tall. Only
+   `--rot-h` needs choosing; everything else follows from the viewport.
+
+   Anything painted into the top layer from inside — the year's dialog —
+   inherits the turn along with the table, which is what should happen:
+   with the phone turned, both read upright. */
+@media (max-width: 767px) and (orientation: portrait) {
+  .rotate-to-read[data-turned="true"] {
+    --rot-h: 70svh;
+    position: relative;
+    /* Full-bleed out of the page's gutters: a quarter turn trades width
+       for height, so every pixel of viewport width becomes a row. */
+    width: 100vw;
+    margin-inline: calc(50% - 50vw);
+    height: var(--rot-h);
+    overflow: hidden;
+  }
+
+  .rotate-to-read[data-turned="true"] > * {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: var(--rot-h);
+    height: 100vw;
+    transform-origin: 0 0;
+    transform: rotate(90deg) translateY(-100%);
+  }
+}

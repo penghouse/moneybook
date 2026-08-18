@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useActionState, useContext, useRef, useState, type ReactNode } from "react";
+import { unstable_rethrow, useRouter } from "next/navigation";
 
 /**
  * Lets whatever is inside a dialog close it once its work is done —
@@ -154,8 +155,19 @@ export function DialogActionForm({
   className?: string;
 }) {
   const close = useDialogClose();
+  const router = useRouter();
   const [, dispatch] = useActionState(async (_state: null, formData: FormData) => {
-    await action(formData);
+    try {
+      await action(formData);
+    } catch (error) {
+      // Same hazard as the entry form's save: a rejected reducer never
+      // settles, so the button would sit on its pending label for good
+      // while the delete it was waiting on had already gone through.
+      // redirect() and notFound() travel as errors and belong to the
+      // framework.
+      unstable_rethrow(error);
+      router.refresh();
+    }
     close?.();
     return null;
   }, null);

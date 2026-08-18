@@ -16,6 +16,13 @@ import { readFileSync, writeFileSync } from "node:fs";
  * So it is generated. This is the only thing in scripts/ that touches the
  * schema, and it never opens a connection — it reads two files and writes
  * a third.
+ *
+ * `--check` writes nothing and exits non-zero if the file on disk is not
+ * what this script would write. Generating it was never enough on its
+ * own: 0005 added the 계산식 tables and nobody re-ran this, so the file
+ * shipped for a whole release describing a database that had one fewer
+ * table than the real one. CI runs the check, which is the only thing
+ * that can notice.
  */
 
 const journal = JSON.parse(readFileSync("drizzle/meta/_journal.json", "utf8"));
@@ -74,9 +81,22 @@ ${rows};
 `;
 
 const body = migrations.flatMap((m) => m.statements).join("\n\n");
-writeFileSync("docs/schema.sql", `${header}\n${body}\n${footer}`);
-
-console.log(
+const contents = `${header}\n${body}\n${footer}`;
+const summary =
   `docs/schema.sql <- ${migrations.map((m) => m.tag).join(", ")} ` +
-    `(${migrations.flatMap((m) => m.statements).length} statements)`,
-);
+  `(${migrations.flatMap((m) => m.statements).length} statements)`;
+
+if (process.argv.includes("--check")) {
+  const onDisk = readFileSync("docs/schema.sql", "utf8");
+  if (onDisk !== contents) {
+    console.error(
+      "docs/schema.sql is out of date with the migrations in drizzle/.\n" +
+        "Run `npm run db:schema` and commit the result.",
+    );
+    process.exit(1);
+  }
+  console.log(`${summary} — up to date`);
+} else {
+  writeFileSync("docs/schema.sql", contents);
+  console.log(summary);
+}
