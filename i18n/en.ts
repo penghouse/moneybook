@@ -163,6 +163,8 @@ const en: Record<keyof typeof ko, string> = {
   "entry.addLine": "Add line",
   "entry.difference": "Difference",
   "entry.duplicate": "Duplicate",
+  "entry.editTitle": "Edit transaction",
+  "entry.backToEdit": "Back to editing",
   "entry.duplicateNotice": "A copy. Check it over — saving adds it as a new transaction.",
   "entry.counterparties": "By counterparty",
   "entry.counterpartiesHint":
@@ -189,6 +191,7 @@ const en: Record<keyof typeof ko, string> = {
   "entry.allAccounts": "All",
   "entry.noTransactions": "No transactions yet.",
   "entry.unbalancedError": "Debit and credit totals don't match.",
+  "entry.accountMissingError": "That account no longer exists. Pick one from the list.",
   "entry.accountInactiveError":
     "{name} was not in use on that date. Check its active period under Accounts.",
 

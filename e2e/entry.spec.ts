@@ -61,15 +61,71 @@ test.describe("entry", () => {
     await pickAccount(form, 0, "식비");
     await pickAccount(form, 1, "신용카드");
     await expect(tag(1)).toHaveAttribute("data-tag", "+");
-    // 비용 gets the same treatment as 수익, the other way round.
+    // 비용 gets the same treatment as 수익, the other way round —
+    // orange, not the P&L red, because against the income green red is
+    // the pair red-green colour blindness cannot separate (ΔE 1.7 in
+    // dark mode, where the two would be the same swatch).
     await expect(tag(0)).toHaveAttribute("data-tag", "none");
-    await expect(tag(0)).toHaveClass(/bg-negative/);
+    await expect(tag(0)).toHaveClass(/bg-series-2/);
 
     // Paying the card down lowers the debt, so now it is a minus.
     await pickAccount(form, 0, "신용카드");
     await pickAccount(form, 1, "은행");
     await expect(tag(0)).toHaveAttribute("data-tag", "−");
     await expect(tag(1)).toHaveAttribute("data-tag", "−");
+  });
+
+  test("an account that is gone is said so, not served as a server error", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("12000");
+
+    // The form holds ids chosen when the page rendered. An account
+    // deleted in another tab — or a leg whose id no longer resolves for
+    // any other reason — arrives at the action as a stranger.
+    await form
+      .locator('input[name="accountId"]')
+      .first()
+      .evaluate((el: HTMLInputElement) => {
+        el.value = "00000000-0000-0000-0000-000000000000";
+      });
+
+    await form.getByRole("button", { name: "저장" }).click();
+
+    // It used to throw, which put the whole screen behind "A server
+    // error occurred" — no mention of the account, and the entry gone.
+    await expect(page.getByText("없는 계정입니다.", { exact: false })).toBeVisible();
+    await expect(page.getByText("서버 오류")).toHaveCount(0);
+    await expect(page.getByText("A server error occurred")).toHaveCount(0);
+    // And the form is usable again rather than stuck on 저장 중….
+    await expect(form.getByRole("button", { name: "저장" })).toBeVisible();
+  });
+
+  test("the picker lists 분류 together, in the order the book is set to", async ({ page }) => {
+    // A 비용 account created after everything else. `sortOrder` is
+    // assigned section-wide as accounts are created, so ordering by it
+    // alone put this one last — 비용, 자산, 부채… and 비용 again, which
+    // is no order to hunt through.
+    await page.goto("/accounts");
+    const newForm = page.locator("form").filter({ has: page.getByPlaceholder("예: 식비") });
+    await newForm.locator('select[name="group"]').selectOption("expense");
+    await newForm.locator('input[name="name"]').fill("경조사비");
+    await newForm.getByRole("button", { name: "추가" }).click();
+    await expect(page.getByText("경조사비")).toBeVisible();
+
+    await page.goto("/");
+    const form = createForm(page);
+    await form.locator('input[placeholder="계정 검색"]').first().click();
+
+    const groups = await form.locator("ul li button span:nth-child(3)").allInnerTexts();
+    expect(groups.length).toBeGreaterThan(5);
+    // Each 분류 appears as one run, not scattered through the list.
+    const runs = groups.filter((g, i) => g !== groups[i - 1]);
+    expect(runs).toEqual([...new Set(runs)]);
+    // And the runs follow the book's own order, which /accounts sets.
+    expect(runs).toEqual(["자산", "부채", "자본", "비용", "수익"]);
   });
 
   test("creates a simple same-currency transaction and shows it in the list", async ({ page }) => {
@@ -304,11 +360,18 @@ test.describe("entry", () => {
     await expect(page.getByText("정기 결제")).toHaveCount(1);
 
     await page.getByText("정기 결제").click();
-    await page.getByRole("dialog").getByRole("link", { name: "복제" }).click();
+    const dialog = page.getByRole("dialog");
+    // The header says what the panel does. It used to say the
+    // transaction's own 적요, which the field right below it repeats.
+    await expect(dialog.getByRole("heading")).toHaveText("거래 수정");
+    await dialog.getByTestId("duplicate").click();
+    await expect(dialog.getByRole("heading")).toHaveText("복제");
 
-    // Everything needed to check it before writing anything: the date,
-    // both sides, the amount and the title all arrive filled in.
-    const copy = createForm(page);
+    // Filled in without leaving the dialog. It used to navigate to
+    // `/?duplicate=<id>`, which re-ran every query the page makes to
+    // show values the browser was already holding.
+    await expect(page).toHaveURL(/\/$/);
+    const copy = dialog.locator("form").first();
     await expect(copy.locator('input[name="title"]')).toHaveValue("정기 결제");
     await expect(copy.locator('input[type="number"]').first()).toHaveValue("8000");
     const names = copy.locator('input[placeholder="계정 검색"]');
@@ -322,9 +385,9 @@ test.describe("entry", () => {
     await expect(page.getByText("정기 결제 2회차")).toBeVisible();
     await expect(page.getByText("정기 결제", { exact: true })).toHaveCount(1);
 
-    // The prefill is gone afterwards, so pressing 저장 again cannot
-    // quietly file a third copy.
-    await expect(page).toHaveURL(/\/$/);
+    // The dialog closes on save, so 저장 cannot be pressed a second time
+    // to file a third copy, and the entry form below is still blank.
+    await expect(dialog).toBeHidden();
     await expect(createForm(page).locator('input[name="title"]')).toHaveValue("");
   });
 
@@ -367,14 +430,12 @@ test.describe("entry", () => {
     await expect(page.getByText("같은 거래")).toHaveCount(1);
 
     await page.getByText("같은 거래").click();
-    await page
-      .locator("main li", { hasText: "같은 거래" })
-      .getByRole("link", { name: "복제" })
-      .click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByTestId("duplicate").click();
 
     // A duplicate is prefilled identical on purpose — the dirty check
     // belongs to editing in place, not to this.
-    const copy = createForm(page);
+    const copy = dialog.locator("form").first();
     await expect(copy.getByRole("button", { name: "저장" })).toBeEnabled();
     await copy.getByRole("button", { name: "저장" }).click();
     await expect(page.getByText("같은 거래")).toHaveCount(2);

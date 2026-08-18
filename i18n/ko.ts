@@ -159,6 +159,8 @@ const ko = {
   "entry.addLine": "줄 추가",
   "entry.difference": "차액",
   "entry.duplicate": "복제",
+  "entry.editTitle": "거래 수정",
+  "entry.backToEdit": "수정으로 돌아가기",
   "entry.duplicateNotice": "복제한 내용입니다. 확인 후 저장하면 새 거래로 추가됩니다.",
   "entry.counterparties": "거래처별 잔액",
   "entry.counterpartiesHint": "조회 기간과 무관하게 계정 시작일부터 오늘까지의 잔액입니다.",
@@ -184,6 +186,7 @@ const ko = {
   "entry.allAccounts": "전체",
   "entry.noTransactions": "거래가 없습니다.",
   "entry.unbalancedError": "차변과 대변이 일치하지 않습니다.",
+  "entry.accountMissingError": "없는 계정입니다. 목록에서 계정을 다시 골라 주세요.",
   "entry.accountInactiveError":
     "{name}은(는) 그 날짜에 쓰지 않던 계정입니다. 계정과목에서 사용 기간을 확인해 주세요.",
 

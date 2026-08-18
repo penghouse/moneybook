@@ -33,12 +33,26 @@ export interface ComboboxAccount {
  * reports are built on.
  */
 function tagFor(group: AccountGroup | undefined, side: "left" | "right" | undefined) {
+  // Orange rather than the P&L red, of the two that were offered.
+  // Against the income green, red is the pair red-green colour blindness
+  // cannot separate — the data-viz validator measures ΔE 4.4 (protan) in
+  // light and 1.7 (deutan) in dark, where 1.7 means the two tags are the
+  // same swatch. Orange reads 5.7 and 16.2, the dark pair clearing the
+  // gate outright.
+  //
+  // Light is still under the floor, so the colour is never the only
+  // channel: every row spells its 분류 out beside the tag, and the
+  // account's own name sits next to it. The colour reinforces; it does
+  // not carry.
   if (group === "income") return { className: "bg-positive", glyph: "" };
-  if (group === "expense") return { className: "bg-negative", glyph: "" };
+  if (group === "expense") return { className: "bg-series-2", glyph: "" };
 
   const raises = group ? (side === "left") !== isCreditNormal(group) : side === "left";
   return {
-    className: raises ? "bg-accent" : "bg-ink-faint",
+    // ink-muted, not ink-faint: the glyph is white, and on faint grey
+    // that is 3.0:1 — under the 4.5 a small bold character needs. Muted
+    // is 7.1 and still reads as the recessive one of the pair.
+    className: raises ? "bg-accent" : "bg-ink-muted",
     glyph: raises ? "+" : "−",
   };
 }

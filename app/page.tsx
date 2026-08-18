@@ -10,6 +10,8 @@ import {
 } from "@/db/schema";
 import { interpolate } from "@/i18n/format";
 import { GROUP_LABEL_KEY } from "@/i18n/groups";
+import { parseGroupOrder } from "@/lib/account-groups";
+import { byGroupOrder } from "@/lib/account-order";
 import { activeOn, isFlowGroup } from "@/lib/accounts";
 import { currentSection } from "@/lib/current-request";
 import {
@@ -34,6 +36,7 @@ import { CompositionChart } from "./_components/composition-chart";
 import { DialogActionForm, RowDialog } from "./_components/dialog";
 import { EntryForm, type EntryFormLabels } from "./_components/entry-form";
 import { PeriodNav } from "./_components/period-nav";
+import { RowEditor } from "./_components/row-editor";
 import { SubmitButton } from "./_components/submit-button";
 import { TransactionRowLinks } from "./_components/transaction-row-links";
 import {
@@ -67,7 +70,6 @@ export default async function Home({
     accountId?: string;
     q?: string;
     tag?: string;
-    duplicate?: string;
   }>;
 }) {
   const { section, t, locale } = await currentSection();
@@ -79,14 +81,13 @@ export default async function Home({
     accountId,
     q,
     tag: tagParam,
-    duplicate,
   } = await searchParams;
   const tag = normalizeTag(tagParam);
 
   // Three reads that need nothing from each other, issued together: one
   // after another they were three network round trips on a deployment
   // where the database is not in this process.
-  const [allAccounts, filterAccounts, suggestions] = await Promise.all([
+  const [catalog, filterCatalog, suggestions] = await Promise.all([
     db.query.accounts.findMany({
       // The picker offers what can be posted to *now*; a closed account
       // stays out of it even though its past transactions still read and
@@ -106,6 +107,13 @@ export default async function Home({
     // about to type, not for what you are looking at.
     getTitleSuggestions(db, { sectionId: section.id }),
   ]);
+
+  // Both lists read in the book's own order — 분류 first, then the order
+  // set on /accounts inside each. `sortOrder` alone is section-wide and
+  // assigned as accounts are created, so it interleaves the 분류.
+  const groupOrder = parseGroupOrder(section.groupOrder);
+  const allAccounts = byGroupOrder(catalog, groupOrder);
+  const filterAccounts = byGroupOrder(filterCatalog, groupOrder);
 
   const labels: EntryFormLabels = {
     date: t("common.date"),
@@ -298,24 +306,10 @@ export default async function Home({
     })),
   });
 
-  // Fetched by id rather than picked out of `list`: the source is
-  // usually right there, but the list is filtered and capped at 100, and
-  // a copy link that quietly does nothing once the row scrolls past the
-  // limit is worse than one more query. Scoped to the section, so an id
-  // naming someone else's transaction finds nothing.
-  const source = duplicate
-    ? await db.query.transactions.findFirst({
-        where: and(eq(transactions.id, duplicate), eq(transactions.sectionId, section.id)),
-        with: { lines: { with: { account: true }, orderBy: asc(transactionLines.lineOrder) } },
-      })
-    : undefined;
-  const copy = source ? prefillFrom(source) : undefined;
-
-  /** The current filter, so copying does not throw away the list you found it in. */
+  /** The current filter, so a link out of the list can come back to it. */
   const listParams = new URLSearchParams(
     Object.entries({ from, to, accountId, q, tag }).filter(([, v]) => v) as [string, string][],
   );
-  const withoutDuplicate = listParams.toString();
 
   /**
    * Filtered to one account, this screen stops being the entry form and
@@ -324,10 +318,8 @@ export default async function Home({
    * disclosure, the period gets arrows, and the entry form steps aside:
    * nobody arriving from 자산현황 came here to type a new transaction.
    *
-   * A copy in progress is the exception. It *is* something to type, and
-   * hiding the form would leave 복제 doing nothing visible.
    */
-  const isLedger = !!filtered && !copy;
+  const isLedger = !!filtered;
   const ledgerUnit = from && to ? rangeUnit(from, to) : "custom";
   const ledgerStep = (delta: number) => {
     const range =
@@ -403,45 +395,27 @@ export default async function Home({
           {t("entry.unbalancedError")}
         </p>
       )}
+      {error === "account_missing" && (
+        <p className="bg-negative-soft text-negative rounded-control px-3 py-2 text-sm">
+          {t("entry.accountMissingError")}
+        </p>
+      )}
       {error === "account_inactive" && (
         <p className="bg-negative-soft text-negative rounded-control px-3 py-2 text-sm">
           {interpolate(t("entry.accountInactiveError"), { name: errorAccountName ?? "" })}
         </p>
       )}
 
-      {/* The 복제 links jump here; scroll-mt clears the sticky bar. */}
       {!isLedger && (
-        <div id="entry" className="scroll-mt-20 space-y-4">
-          {copy && (
-            // The form below is prefilled and about to create a *second*
-            // record, which is indistinguishable from an edit form unless
-            // something says so.
-            <div className="bg-sunken rounded-control flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 text-sm">
-              <span>{t("entry.duplicateNotice")}</span>
-              <Link
-                href={withoutDuplicate ? `/?${withoutDuplicate}` : "/"}
-                className={`${buttonClass("ghost")} ml-auto`}
-              >
-                {t("common.cancel")}
-              </Link>
-            </div>
-          )}
-
+        <div className="space-y-4">
           <EntryForm
-            // Remounts when the copied transaction changes, so pressing 복제
-            // on a second row replaces the prefill instead of leaving the
-            // first one's state in place — the form holds its values in
-            // useState, which a prop change alone does not reset.
-            key={duplicate ?? "new"}
             action={createTransactionAction}
-            accounts={copy ? pickerFor(copy.lines) : allAccounts}
+            accounts={allAccounts}
             baseCurrency={section.baseCurrency}
             defaultDate={today(section.timezone)}
             locale={locale}
             labels={labels}
-            initial={copy}
             suggestions={suggestions}
-            afterSaveHref={copy ? (withoutDuplicate ? `/?${withoutDuplicate}` : "/") : undefined}
           />
         </div>
       )}
@@ -665,38 +639,47 @@ export default async function Home({
                         </>
                       }
                     >
-                      <div className="space-y-3">
-                        <EntryForm
-                          action={updateTransactionAction}
-                          accounts={pickerFor(tx.lines)}
-                          baseCurrency={section.baseCurrency}
-                          defaultDate={today(section.timezone)}
-                          locale={locale}
-                          labels={labels}
-                          initial={{ transactionId: tx.id, ...prefillFrom(tx) }}
-                          suggestions={suggestions}
-                        />
-                        <div className="flex flex-wrap gap-2">
-                          {/* 복제 is navigation, not a mutation: it opens the
-                              entry form at the top of the page carrying this
-                              transaction's values, so every field can be
-                              checked and changed before anything is written.
-                              The hash is what saves a scroll back up on a
-                              phone. */}
-                          <Link
-                            href={`/?${new URLSearchParams({ ...Object.fromEntries(listParams), duplicate: tx.id })}#entry`}
-                            className={buttonClass("secondary")}
-                          >
-                            {t("entry.duplicate")}
-                          </Link>
-                          <DialogActionForm action={deleteTransactionAction} className="ml-auto">
-                            <input type="hidden" name="transactionId" value={tx.id} />
-                            <SubmitButton variant="danger" pendingLabel={t("common.working")}>
-                              {t("common.delete")}
-                            </SubmitButton>
-                          </DialogActionForm>
-                        </div>
-                      </div>
+                      <RowEditor
+                        editTitle={t("entry.editTitle")}
+                        copyTitle={t("entry.duplicate")}
+                        notice={t("entry.duplicateNotice")}
+                        copyLabel={t("entry.duplicate")}
+                        backLabel={t("entry.backToEdit")}
+                        edit={
+                          <EntryForm
+                            action={updateTransactionAction}
+                            accounts={pickerFor(tx.lines)}
+                            baseCurrency={section.baseCurrency}
+                            defaultDate={today(section.timezone)}
+                            locale={locale}
+                            labels={labels}
+                            initial={{ transactionId: tx.id, ...prefillFrom(tx) }}
+                            suggestions={suggestions}
+                          />
+                        }
+                        copy={
+                          // The same values with no transactionId, which is
+                          // the whole difference between updating this
+                          // record and writing a new one.
+                          <EntryForm
+                            action={createTransactionAction}
+                            accounts={pickerFor(tx.lines)}
+                            baseCurrency={section.baseCurrency}
+                            defaultDate={today(section.timezone)}
+                            locale={locale}
+                            labels={labels}
+                            initial={prefillFrom(tx)}
+                            suggestions={suggestions}
+                          />
+                        }
+                      >
+                        <DialogActionForm action={deleteTransactionAction} className="ml-auto">
+                          <input type="hidden" name="transactionId" value={tx.id} />
+                          <SubmitButton variant="danger" pendingLabel={t("common.working")}>
+                            {t("common.delete")}
+                          </SubmitButton>
+                        </DialogActionForm>
+                      </RowEditor>
                     </RowDialog>
 
                     <TransactionRowLinks
