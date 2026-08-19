@@ -229,9 +229,10 @@ const en: Record<keyof typeof ko, string> = {
   "assets.backToList": "Back to list",
   "assets.viewCharts": "View charts",
   "assets.projected": "projected",
+  "assets.notSettled": "not settled",
   "assets.projectedNetWorth": "Projected net worth",
   "assets.projectedHint":
-    "Solid up to this month, from the ledger. The dotted stretch carries net worth forward by the income budget less the expense budget, and stops where the budget does.",
+    "Solid up to this month, where the figures are settled; dashed after it, for months that have not happened — entries dated in advance count, and where there are none the balance carries forward. The dotted line is net worth carried on by the income budget less the expense budget, and it stops where the budget does.",
   "assets.rangeFrom": "From",
   "assets.rangeTo": "To",
   "assets.compositionAsOf": "The mix is as of the end date.",

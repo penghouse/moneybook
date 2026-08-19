@@ -42,6 +42,8 @@ export interface SeriesChartLabels {
   period: string;
   empty: string;
   capped: string;
+  /** Marks a period past today — '미확정'. */
+  notSettled: string;
 }
 
 /**
@@ -56,6 +58,11 @@ export interface SeriesChartLabels {
  * A series keeps its colour for as long as it is on: turning another one
  * off must not repaint the ones still drawn, or the reader has to
  * re-read the legend after every tap.
+ *
+ * Past today every line breaks. The figures are still real — a
+ * transaction can be dated in advance, and where none is the balance
+ * carries forward — but a month that has not happened is not the same
+ * claim as one that has, and a solid stroke would say it was.
  */
 export function SeriesChart({
   periods,
@@ -66,6 +73,7 @@ export function SeriesChart({
   currency,
   locale,
   caption,
+  settledThrough,
   labels,
 }: {
   /** Full period names, e.g. '2026-08'. */
@@ -83,6 +91,12 @@ export function SeriesChart({
   currency: string;
   locale: string;
   caption: string;
+  /**
+   * The last period that has already been and gone. Anything after it is
+   * drawn broken. Omitted where the question does not have a now — the
+   * caller passes a period key of the same shape as `periods`.
+   */
+  settledThrough?: string;
   labels: SeriesChartLabels;
 }) {
   // Which series is in which colour slot. A Map rather than a Set so a
@@ -119,6 +133,13 @@ export function SeriesChart({
     .map((s) => ({ ...s, slot: slots.get(s.key)! }));
 
   const money = (minor: number) => formatMoney(minor, currency, locale);
+
+  // Where today falls. The period itself belongs to both strokes, so the
+  // solid stretch and the broken one meet at a shared point rather than
+  // at a gap.
+  const aheadFrom = settledThrough ? periods.findIndex((p) => p > settledThrough) : -1;
+  const settledTo = aheadFrom < 0 ? periods.length - 1 : aheadFrom - 1;
+  const isAhead = (i: number) => aheadFrom >= 0 && i >= aheadFrom;
 
   const all = drawn.flatMap((s) => s.values);
   // The gridlines set the domain rather than being fitted to it
@@ -197,17 +218,40 @@ export function SeriesChart({
             />
           )}
 
-          {drawn.map((s) => (
-            <polyline
-              key={s.key}
-              points={s.values.map((v, i) => `${x(i)},${y(v)}`).join(" ")}
-              fill="none"
-              strokeWidth={2}
-              strokeLinejoin="round"
-              strokeLinecap="round"
-              className={SERIES_STROKE[s.slot]}
-            />
-          ))}
+          {drawn.map((s) => {
+            const at = (i: number) => `${x(i)},${y(s.values[i])}`;
+            const settled = s.values.slice(0, settledTo + 1).map((_, i) => at(i));
+            const ahead =
+              aheadFrom < 0
+                ? []
+                : s.values
+                    .slice(Math.max(settledTo, 0))
+                    .map((_, n) => at(Math.max(settledTo, 0) + n));
+            return (
+              <g key={s.key}>
+                <polyline
+                  points={settled.join(" ")}
+                  fill="none"
+                  strokeWidth={2}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  className={SERIES_STROKE[s.slot]}
+                />
+                {ahead.length > 1 && (
+                  <polyline
+                    points={ahead.join(" ")}
+                    fill="none"
+                    strokeWidth={2}
+                    strokeDasharray="5 3"
+                    strokeLinejoin="round"
+                    strokeLinecap="butt"
+                    data-testid="series-ahead"
+                    className={SERIES_STROKE[s.slot]}
+                  />
+                )}
+              </g>
+            );
+          })}
 
           {periods.map((period, i) => (
             <g key={period}>
@@ -242,7 +286,9 @@ export function SeriesChart({
                 fill="transparent"
                 tabIndex={0}
                 role="img"
-                aria-label={`${period}: ${drawn.map((s) => `${s.name} ${money(s.values[i])}`).join(", ")}`}
+                aria-label={`${period}${isAhead(i) ? ` (${labels.notSettled})` : ""}: ${drawn
+                  .map((s) => `${s.name} ${money(s.values[i])}`)
+                  .join(", ")}`}
                 data-testid="series-hit"
                 className="cursor-pointer outline-none"
                 onPointerEnter={() => setActive(i)}
@@ -270,7 +316,10 @@ export function SeriesChart({
               })`,
             }}
           >
-            <div className="text-ink-faint mb-1 text-[11px] font-semibold">{periods[active]}</div>
+            <div className="text-ink-faint mb-1 text-[11px] font-semibold">
+              {periods[active]}
+              {isAhead(active) && <span className="ml-1.5 font-normal">{labels.notSettled}</span>}
+            </div>
             <dl className="grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5 text-xs">
               {drawn.map((s) => (
                 <div key={s.key} className="contents">
@@ -350,7 +399,13 @@ export function SeriesChart({
             <tbody>
               {periods.map((period, i) => (
                 <tr key={period} className="border-rule-soft border-t">
-                  <td className="tnum py-2">{period}</td>
+                  <td className="tnum py-2">
+                    {period}
+                    {isAhead(i) && (
+                      // A table has no strokes to break, so it says it.
+                      <span className="text-ink-faint ml-1.5 text-xs">{labels.notSettled}</span>
+                    )}
+                  </td>
                   {drawn.map((s) => (
                     <td key={s.key} className="tnum py-2 text-right">
                       {money(s.values[i])}

@@ -49,6 +49,7 @@ export default async function IncomeChartPage({
   // something the dates can say. Twelve fixed months and five fixed
   // years — the old, unmovable pair — could answer neither.
   const byYear = unitParam === "year";
+  const currentMonth = yearMonthOf(today(section.timezone));
 
   const start = from > to ? to : from;
   const periods = byYear ? yearsBetween(start, to) : monthsBetween(start, to);
@@ -210,6 +211,7 @@ export default async function IncomeChartPage({
             <div className="px-2 py-3 md:px-4">
               <SeriesChart
                 periods={seriesMonths}
+                settledThrough={currentMonth}
                 ticks={seriesMonths.map((m) => m.slice(2).replace("-", "."))}
                 series={reportSeries}
                 initial={initialSeries}
@@ -222,6 +224,7 @@ export default async function IncomeChartPage({
                   period: t("income.period"),
                   empty: t("series.noneOn"),
                   capped: t("series.capped"),
+                  notSettled: t("assets.notSettled"),
                 }}
               />
             </div>

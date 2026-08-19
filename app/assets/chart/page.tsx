@@ -78,15 +78,11 @@ export default async function AssetsChartPage({
     .sort((a, b) => b.baseAmount - a.baseAmount)
     .map((b) => ({ id: b.accountId, name: b.name, amount: b.baseAmount }));
 
-  // The balance sheet behind us, the budget ahead of us. Past now the
-  // ledger's carry-forward would draw a flat line off the right edge,
-  // which reads as a forecast and is the absence of one.
+  // The balance sheet as it stands, plus what the budget expects of the
+  // months it has not settled yet.
   const points = projectNetWorth({ history, savings, currentMonth });
-  const hasHistory = points.some(
-    (p) =>
-      (p.assets ?? 0) !== 0 || (p.liabilities ?? 0) !== 0 || (p.projected && p.netWorth !== null),
-  );
-  const hasProjection = points.some((p) => p.projected && p.netWorth !== null);
+  const hasHistory = points.some((p) => p.assets !== 0 || p.liabilities !== 0);
+  const unsettled = points.some((p) => p.ahead);
 
   const seriesMonths = months;
   const reportSeries = await buildReportSeries(db, {
@@ -170,16 +166,17 @@ export default async function AssetsChartPage({
                 netWorthLabel={t("assets.netWorth")}
                 projectedLabel={t("assets.projectedNetWorth")}
                 projectedMarker={t("assets.projected")}
+                aheadMarker={t("assets.notSettled")}
               />
             </div>
           ) : (
             <EmptyState>{t("assets.noHistory")}</EmptyState>
           )}
         </Card>
-        {/* Only when there is a dotted stretch to explain. A standing note
-            about the budget under a chart that is entirely history is one
-            more line to read past. */}
-        {hasProjection && <Hint>{t("assets.projectedHint")}</Hint>}
+        {/* Only when there is a broken stretch to explain. A standing
+            note under a chart that is entirely history is one more line
+            to read past. */}
+        {unsettled && <Hint>{t("assets.projectedHint")}</Hint>}
       </section>
 
       <section>
@@ -211,6 +208,7 @@ export default async function AssetsChartPage({
             <div className="px-2 py-3 md:px-4">
               <SeriesChart
                 periods={seriesMonths}
+                settledThrough={currentMonth}
                 ticks={seriesMonths.map((m) => m.slice(2).replace("-", "."))}
                 series={reportSeries}
                 initial={initialSeries}
@@ -223,6 +221,7 @@ export default async function AssetsChartPage({
                   period: t("income.period"),
                   empty: t("series.noneOn"),
                   capped: t("series.capped"),
+                  notSettled: t("assets.notSettled"),
                 }}
               />
             </div>

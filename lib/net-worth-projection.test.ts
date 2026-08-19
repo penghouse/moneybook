@@ -28,7 +28,7 @@ const nothing = (month: string): MonthlySaving => ({
 });
 
 describe("projectNetWorth", () => {
-  it("leaves the months the ledger speaks for exactly as they were", () => {
+  it("leaves the months the ledger has settled exactly as they were", () => {
     const rows = projectNetWorth({
       history: [sheet("2026-06", 1000, 400), sheet("2026-07", 1200, 400)],
       savings: [],
@@ -36,12 +36,41 @@ describe("projectNetWorth", () => {
     });
 
     expect(rows).toEqual([
-      { yearMonth: "2026-06", assets: 1000, liabilities: 400, netWorth: 600, projected: false },
-      { yearMonth: "2026-07", assets: 1200, liabilities: 400, netWorth: 800, projected: false },
+      {
+        yearMonth: "2026-06",
+        assets: 1000,
+        liabilities: 400,
+        netWorth: 600,
+        ahead: false,
+        expected: null,
+      },
+      {
+        yearMonth: "2026-07",
+        assets: 1200,
+        liabilities: 400,
+        netWorth: 800,
+        ahead: false,
+        expected: null,
+      },
     ]);
   });
 
-  it("carries the budget forward from the last actual month", () => {
+  it("keeps the ledger's own figures for the months ahead, and marks them unsettled", () => {
+    // A transaction can be dated in advance, so a future month is not
+    // empty — it is just not settled. The balance sheet's answer stands.
+    const rows = projectNetWorth({
+      history: [sheet("2026-07", 1200, 400), sheet("2026-08", 1500, 400)],
+      savings: [budget("2026-08", 150)],
+      currentMonth: "2026-07",
+    });
+
+    expect(rows[1].assets).toBe(1500);
+    expect(rows[1].liabilities).toBe(400);
+    expect(rows[1].netWorth).toBe(1100);
+    expect(rows.map((r) => r.ahead)).toEqual([false, true]);
+  });
+
+  it("carries the budget forward from the last settled month, beside the ledger's line", () => {
     const rows = projectNetWorth({
       history: [
         sheet("2026-07", 1200, 400),
@@ -52,22 +81,10 @@ describe("projectNetWorth", () => {
       currentMonth: "2026-07",
     });
 
-    // 800 + 150, then + 250.
-    expect(rows.map((r) => r.netWorth)).toEqual([800, 950, 1200]);
-    expect(rows.map((r) => r.projected)).toEqual([false, true, true]);
-  });
-
-  it("says nothing about assets and liabilities ahead of now", () => {
-    const rows = projectNetWorth({
-      history: [sheet("2026-07", 1200, 400), sheet("2026-08", 1200, 400)],
-      savings: [budget("2026-08", 150)],
-      currentMonth: "2026-07",
-    });
-
-    // The balance sheet carried 1200/400 forward; the future keeps none
-    // of it, because nothing has happened there yet.
-    expect(rows[1].assets).toBeNull();
-    expect(rows[1].liabilities).toBeNull();
+    // The forecast leaves from 800 — the anchor is the settled month
+    // itself, so the two lines meet rather than start apart.
+    expect(rows.map((r) => r.expected)).toEqual([800, 950, 1200]);
+    expect(rows.map((r) => r.netWorth)).toEqual([800, 800, 800]);
   });
 
   it("does not apply the current month's own budget, which is half in the ledger already", () => {
@@ -77,11 +94,11 @@ describe("projectNetWorth", () => {
       currentMonth: "2026-08",
     });
 
-    expect(rows[0].netWorth).toBe(800);
-    expect(rows[1].netWorth).toBe(900);
+    expect(rows[0].expected).toBe(800);
+    expect(rows[1].expected).toBe(900);
   });
 
-  it("stops where the budget stops rather than running on flat", () => {
+  it("stops the forecast where the budget stops rather than running on flat", () => {
     const rows = projectNetWorth({
       history: [
         sheet("2026-07", 1000, 0),
@@ -93,7 +110,9 @@ describe("projectNetWorth", () => {
       currentMonth: "2026-07",
     });
 
-    expect(rows.map((r) => r.netWorth)).toEqual([1000, 1100, null, null]);
+    expect(rows.map((r) => r.expected)).toEqual([1000, 1100, null, null]);
+    // The ledger's line is untouched by any of that.
+    expect(rows.map((r) => r.netWorth)).toEqual([1000, 1000, 1000, 1000]);
   });
 
   it("bridges a gap in the middle at no change, because the budget still reaches past it", () => {
@@ -108,17 +127,19 @@ describe("projectNetWorth", () => {
       currentMonth: "2026-07",
     });
 
-    expect(rows.map((r) => r.netWorth)).toEqual([1000, 1100, 1100, 1400]);
+    expect(rows.map((r) => r.expected)).toEqual([1000, 1100, 1100, 1400]);
   });
 
-  it("draws no dotted line at all when nothing ahead is budgeted", () => {
+  it("draws no forecast at all — not even its anchor — when nothing ahead is budgeted", () => {
     const rows = projectNetWorth({
       history: [sheet("2026-07", 1000, 0), sheet("2026-08", 1000, 0)],
       savings: [nothing("2026-08")],
       currentMonth: "2026-07",
     });
 
-    expect(rows[1].netWorth).toBeNull();
+    expect(rows.map((r) => r.expected)).toEqual([null, null]);
+    // The chart still has the ledger's own months to draw.
+    expect(rows[1].ahead).toBe(true);
   });
 
   it("keeps a negative budget month negative", () => {
@@ -128,20 +149,21 @@ describe("projectNetWorth", () => {
       currentMonth: "2026-07",
     });
 
-    expect(rows[1].netWorth).toBe(750);
+    expect(rows[1].expected).toBe(750);
   });
 
   it("anchors on the carried balance when the whole range is ahead of us", () => {
-    // Every month is in the future, so the balance sheet reports today's
-    // figure for all of them — the first row is the anchor, not a point.
+    // Every month is in the future, so there is no settled month to leave
+    // from — the balance carried into the range is what the first row
+    // already reports, and that is the anchor.
     const rows = projectNetWorth({
       history: [sheet("2026-09", 1000, 0), sheet("2026-10", 1000, 0)],
       savings: [budget("2026-09", 100), budget("2026-10", 200)],
       currentMonth: "2026-07",
     });
 
-    expect(rows.map((r) => r.netWorth)).toEqual([1100, 1300]);
-    expect(rows.every((r) => r.projected)).toBe(true);
+    expect(rows.map((r) => r.expected)).toEqual([1100, 1300]);
+    expect(rows.every((r) => r.ahead)).toBe(true);
   });
 
   it("has nothing to say about an empty range", () => {
