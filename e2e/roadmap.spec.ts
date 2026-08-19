@@ -373,8 +373,9 @@ test.describe("roadmap", () => {
       height: png.readUInt32BE(20),
     });
 
-    const plainDownload = page.waitForEvent("download");
     await page.getByTestId("roadmap-image").click();
+    const plainDownload = page.waitForEvent("download");
+    await page.getByTestId("roadmap-image-confirm").click();
     const plain = await plainDownload;
     // The name is not asserted: Chromium reports every blob download as
     // "download" over the automation protocol, whatever the anchor says.
@@ -387,18 +388,20 @@ test.describe("roadmap", () => {
     expect(size.height).toBeGreaterThanOrEqual(1920);
 
     // Blurring changes the picture, and only the picture — same shape.
+    await page.getByTestId("roadmap-image").click();
     await page.getByTestId("roadmap-image-mask").check();
     const maskedDownload = page.waitForEvent("download");
-    await page.getByTestId("roadmap-image").click();
+    await page.getByTestId("roadmap-image-confirm").click();
     const maskedPng = await readAll(await maskedDownload);
     expect(sizeOf(maskedPng)).toEqual(size);
     expect(maskedPng.equals(plainPng)).toBe(false);
 
     // Rounding is a different picture again, at the same shape.
+    await page.getByTestId("roadmap-image").click();
     await page.getByTestId("roadmap-image-mask").uncheck();
     await page.getByTestId("roadmap-image-rounded").check();
     const roundDownload = page.waitForEvent("download");
-    await page.getByTestId("roadmap-image").click();
+    await page.getByTestId("roadmap-image-confirm").click();
     const roundPng = await readAll(await roundDownload);
     expect(sizeOf(roundPng)).toEqual(size);
     expect(roundPng.equals(plainPng)).toBe(false);
@@ -414,23 +417,29 @@ test.describe("roadmap", () => {
       rate: "10",
     });
 
-    const shoot = async () => {
-      const download = page.waitForEvent("download");
+    // The options are asked once, when a picture is being made, so each
+    // pass opens the panel again.
+    const shoot = async (set: (page: Page) => Promise<void>) => {
       await page.getByTestId("roadmap-image").click();
+      await set(page);
+      const download = page.waitForEvent("download");
+      await page.getByTestId("roadmap-image-confirm").click();
       const png = await readAll(await download);
       return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
     };
 
-    await page.getByTestId("roadmap-image-shape").selectOption("wide");
-    const exact = await shoot();
+    const exact = await shoot(async (p) => {
+      await p.getByTestId("roadmap-image-shape").selectOption("wide");
+    });
     expect(exact.width).toBe(1920);
     expect(exact.width).toBeGreaterThan(exact.height);
 
     // Short figures fit more years to a band, so the same twenty years
     // need fewer bands and the picture is shorter — the column width is
     // measured from the text, not guessed.
-    await page.getByTestId("roadmap-image-rounded").check();
-    const rounded = await shoot();
+    const rounded = await shoot(async (p) => {
+      await p.getByTestId("roadmap-image-rounded").check();
+    });
     expect(rounded.width).toBe(1920);
     expect(rounded.height).toBeLessThan(exact.height);
   });

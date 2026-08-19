@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PeriodJump } from "./period-jump";
+import { PeriodJump, RangeJump } from "./period-jump";
 import { buttonClass, Card } from "./ui";
 
 /**
@@ -69,11 +69,24 @@ export function PeriodNav({
   /** 월/년 switch, omitted on screens that only step one unit. */
   units?: readonly PeriodUnitOption[];
   /**
-   * Makes the label itself a way of jumping to any period, for the
-   * screens whose period is a single key. Omitted where it is a range or
-   * an as-of date, which the screen already has its own controls for.
+   * Makes the label itself a way of jumping to any period. A screen
+   * whose period is one key picks it with the browser's month field; one
+   * whose period is a range picks both ends in a small dialog. Omitted
+   * where the screen has its own control for it.
    */
-  jump?: { unit: "month" | "year"; hrefPrefix: string; label: string };
+  jump?:
+    | { kind: "period"; unit: "month" | "year"; hrefPrefix: string; label: string }
+    | {
+        kind: "range";
+        from: string;
+        to: string;
+        hrefTemplate: string;
+        label: string;
+        fromLabel: string;
+        toLabel: string;
+        confirmLabel: string;
+        closeLabel: string;
+      };
 }) {
   return (
     <Card>
@@ -81,8 +94,10 @@ export function PeriodNav({
         <Link href={prevHref} className={buttonClass("nav")}>
           ← {prevLabel}
         </Link>
-        {jump ? (
+        {jump?.kind === "period" ? (
           <PeriodJump value={label} {...jump} />
+        ) : jump?.kind === "range" ? (
+          <RangeJump value={label} {...jump} />
         ) : (
           <span className="tnum mx-auto font-semibold">{label}</span>
         )}

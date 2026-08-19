@@ -25,10 +25,8 @@ import { PeriodNav } from "../../_components/period-nav";
 import {
   buttonClass,
   Card,
-  compactControlClass,
   EmptyState,
   Hint,
-  Label,
   PageHeader,
   SectionLabel,
 } from "../../_components/ui";
@@ -51,6 +49,7 @@ export default async function IncomeChartPage({
   // something the dates can say. Twelve fixed months and five fixed
   // years — the old, unmovable pair — could answer neither.
   const byYear = unitParam === "year";
+  const currentMonth = yearMonthOf(today(section.timezone));
 
   const start = from > to ? to : from;
   const periods = byYear ? yearsBetween(start, to) : monthsBetween(start, to);
@@ -122,44 +121,7 @@ export default async function IncomeChartPage({
 
   return (
     <div className="space-y-4">
-      <PageHeader title={t("nav.incomeChart")}>
-        <form
-          // 조회 sat on its own line because two date boxes at their
-          // natural width plus a button came to more than the row had.
-          // The dates flex instead of standing at that width — but only
-          // down to 8.5rem, because a date input clips rather than
-          // wraps, and below that the year loses a digit. Under a width
-          // where all three genuinely cannot fit, the button wraps,
-          // which is the right thing to give up.
-          className="flex flex-wrap items-end gap-2"
-          action="/income/chart"
-        >
-          <div className="min-w-[8.5rem] flex-1">
-            <Label>{t("assets.rangeFrom")}</Label>
-            <input
-              type="date"
-              name="from"
-              defaultValue={from}
-              className={`${compactControlClass} tnum`}
-            />
-          </div>
-          <div className="min-w-[8.5rem] flex-1">
-            <Label>{t("assets.rangeTo")}</Label>
-            <input
-              type="date"
-              name="to"
-              defaultValue={to}
-              className={`${compactControlClass} tnum`}
-            />
-          </div>
-          {/* Carried through the form, or 조회 would silently drop the
-              reader back to months. */}
-          <input type="hidden" name="unit" value={byYear ? "year" : "month"} />
-          <button type="submit" className={`${buttonClass("secondary")} shrink-0`}>
-            {t("common.apply")}
-          </button>
-        </form>
-      </PageHeader>
+      <PageHeader title={t("nav.incomeChart")} />
 
       <Card>
         <div className="px-4 py-4">
@@ -194,6 +156,21 @@ export default async function IncomeChartPage({
         label={`${start} ~ ${to}`}
         prevLabel={t("common.prevWindow")}
         nextLabel={t("common.nextWindow")}
+        // The range used to be a 시작/끝/조회 form in the header — three
+        // controls standing there permanently for a question asked once
+        // in a while, on the one period screen that answered "which
+        // period" anywhere but in this bar. Now the label opens them.
+        jump={{
+          kind: "range",
+          from: start,
+          to,
+          hrefTemplate: `/income/chart?from={from}&to={to}&unit=${byYear ? "year" : "month"}`,
+          label: t("common.pickRange"),
+          fromLabel: t("assets.rangeFrom"),
+          toLabel: t("assets.rangeTo"),
+          confirmLabel: t("common.apply"),
+          closeLabel: t("common.close"),
+        }}
         units={[
           { label: t("common.unitMonth"), href: unitHref("month"), active: !byYear },
           { label: t("common.unitYear"), href: unitHref("year"), active: byYear },
@@ -234,6 +211,7 @@ export default async function IncomeChartPage({
             <div className="px-2 py-3 md:px-4">
               <SeriesChart
                 periods={seriesMonths}
+                settledThrough={currentMonth}
                 ticks={seriesMonths.map((m) => m.slice(2).replace("-", "."))}
                 series={reportSeries}
                 initial={initialSeries}
@@ -246,6 +224,7 @@ export default async function IncomeChartPage({
                   period: t("income.period"),
                   empty: t("series.noneOn"),
                   capped: t("series.capped"),
+                  notSettled: t("assets.notSettled"),
                 }}
               />
             </div>

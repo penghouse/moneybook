@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, exchangeRates, transactionLines, transactions } from "../db/schema";
-import { today } from "../lib/date";
+import { addMonths, monthRange, today, yearMonthOf } from "../lib/date";
 import { getOrCreateSection } from "../lib/current-section";
 import { seedSession, SESSION_COOKIE_NAME } from "./auth-helper";
 
@@ -439,6 +439,47 @@ test.describe("reports", () => {
     await expect(page).toHaveURL(/unit=month/);
   });
 
+  test("both chart screens pick their range from the label, with no header form", async ({
+    page,
+  }) => {
+    await page.goto("/income/chart?from=2026-07-01&to=2026-09-30&unit=month");
+
+    // 시작 / 끝 / 조회 used to stand in the header permanently. The bar
+    // below already held the arrows and the 월간/연간 switch, so the
+    // range moved in with them.
+    await expect(page.locator('form[action="/income/chart"]')).toHaveCount(0);
+
+    await page.getByTestId("range-jump").click();
+    await page.getByTestId("range-jump-from").fill("2026-01-01");
+    await page.getByTestId("range-jump-to").fill("2026-03-31");
+    await page.getByTestId("range-jump-confirm").click();
+    await expect(page).toHaveURL(/from=2026-01-01&to=2026-03-31/);
+    // The bar width the reader was on travels with the new range.
+    await expect(page).toHaveURL(/unit=month/);
+    await expect(page.getByTestId("range-jump")).toHaveText("2026-01-01 ~ 2026-03-31");
+
+    // Picked backwards is a slip, not an empty range.
+    await page.getByTestId("range-jump").click();
+    await page.getByTestId("range-jump-from").fill("2026-06-30");
+    await page.getByTestId("range-jump-to").fill("2026-04-01");
+    await page.getByTestId("range-jump-confirm").click();
+    await expect(page).toHaveURL(/from=2026-04-01&to=2026-06-30/);
+
+    // And the arrows still step from wherever it landed.
+    await page.getByRole("link", { name: /이전 기간/ }).click();
+    await expect(page).toHaveURL(/from=2026-01-01&to=2026-03-31/);
+
+    // The net-worth chart reads the same kind of period, so it asks for
+    // it the same way rather than keeping a form of its own.
+    await page.goto("/assets/chart?from=2026-07-01&to=2026-09-30");
+    await expect(page.locator('form[action="/assets/chart"]')).toHaveCount(0);
+    await page.getByTestId("range-jump").click();
+    await page.getByTestId("range-jump-from").fill("2026-01-01");
+    await page.getByTestId("range-jump-to").fill("2026-03-31");
+    await page.getByTestId("range-jump-confirm").click();
+    await expect(page).toHaveURL(/from=2026-01-01&to=2026-03-31/);
+  });
+
   test("the income chart hovers a bar for its numbers, and switches month/year", async ({
     page,
   }) => {
@@ -749,6 +790,95 @@ test.describe("reports", () => {
     await expect(
       page.getByTestId("series-legend").getByRole("button", { name: "현금성" }),
     ).toHaveAttribute("aria-pressed", "false");
+  });
+
+  test("past today every line breaks, and the budget runs on beside them", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const bank = await byName("은행");
+    const opening = await byName("기초자본");
+    // So the by-item chart below has a series to draw at all.
+    await db.update(accounts).set({ category: "유동성자금" }).where(eq(accounts.id, bank.id));
+
+    const thisMonth = yearMonthOf(today(section.timezone));
+    const lastMonth = addMonths(thisMonth, -1);
+    const nextMonth = addMonths(thisMonth, 1);
+    const monthAfter = addMonths(thisMonth, 2);
+
+    const post = async (date: string, amount: number) => {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date, title: "기초" })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: bank.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: opening.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+      ]);
+    };
+    await post(`${lastMonth}-15`, 10_000_000);
+    // Dated two months out — a real entry the reader made in advance,
+    // and the reason a future month is not simply cut off the chart.
+    await post(`${monthAfter}-10`, 3_000_000);
+
+    // Next month is budgeted — earn 4,000,000, spend 1,500,000 — and the
+    // one after it is not.
+    await page.goto(`/budget?period=${nextMonth}`);
+    const row = (name: string) => page.getByTestId("budget-row").filter({ hasText: name });
+    await row("급여").locator('input[name="amount"]').fill("4000000");
+    await row("급여").getByRole("button", { name: "저장" }).click();
+    await expect(row("급여").locator('input[name="amount"]')).toBeHidden();
+    await row("식비").locator('input[name="amount"]').fill("1500000");
+    await row("식비").getByRole("button", { name: "저장" }).click();
+    await expect(row("식비").locator('input[name="amount"]')).toBeHidden();
+
+    await page.goto(
+      `/assets/chart?from=${monthRange(lastMonth).from}&to=${monthRange(monthAfter).to}`,
+    );
+    // The ledger's own line carries on past today, broken rather than
+    // solid, and the budget's forecast runs beside it.
+    await expect(page.getByTestId("net-worth-ahead-netWorth")).toBeVisible();
+    await expect(page.getByTestId("net-worth-projected")).toBeVisible();
+    await expect(page.getByTestId("net-worth-legend")).toContainText("예상 순자산");
+
+    // The table is the same numbers, so it says what the strokes do.
+    await page.getByText("표로 보기").first().click();
+    const rowFor = (month: string) => page.getByRole("row").filter({ hasText: month });
+    await expect(rowFor(thisMonth)).toContainText("₩10,000,000");
+    await expect(rowFor(thisMonth)).not.toContainText("미확정");
+
+    // Next month has no entry of its own, so the balance carries — and
+    // beside it, 10,000,000 plus the 2,500,000 the budget expects to stay.
+    await expect(rowFor(nextMonth)).toContainText("미확정");
+    await expect(rowFor(nextMonth)).toContainText("₩10,000,000");
+    await expect(rowFor(nextMonth)).toContainText("예상 ₩12,500,000");
+
+    // The month after has an entry dated into it. It is drawn, not cut —
+    // and the forecast stops there, because the budget does.
+    await expect(rowFor(monthAfter)).toContainText("미확정");
+    await expect(rowFor(monthAfter)).toContainText("₩13,000,000");
+    await expect(rowFor(monthAfter)).not.toContainText("예상");
+
+    // The by-item chart on the same page breaks in the same place.
+    await expect(page.getByTestId("series-ahead").first()).toBeVisible();
   });
 
   test("the chart page draws all three charts, each with its numbers in a table", async ({
