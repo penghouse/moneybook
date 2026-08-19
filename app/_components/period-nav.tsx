@@ -70,12 +70,13 @@ export function PeriodNav({
   units?: readonly PeriodUnitOption[];
   /**
    * Makes the label itself a way of jumping to any period. A screen
-   * whose period is one key picks it with the browser's month field; one
-   * whose period is a range picks both ends in a small dialog. Omitted
-   * where the screen has its own control for it.
+   * whose period is one key — a month, a year, a single day — picks it
+   * with the browser's own field; one whose period is a range picks both
+   * ends in a small dialog. Omitted where the screen has its own control
+   * for it.
    */
   jump?:
-    | { kind: "period"; unit: "month" | "year"; hrefPrefix: string; label: string }
+    | { kind: "period"; unit: "month" | "year" | "date"; hrefTemplate: string; label: string }
     | {
         kind: "range";
         from: string;

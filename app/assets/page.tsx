@@ -25,11 +25,9 @@ import {
   buttonClass,
   Card,
   Chip,
-  controlClass,
   EmptyState,
   Hint,
   KeyValueRow,
-  Label,
   Money,
   PageHeader,
   SectionLabel,
@@ -318,15 +316,6 @@ export default async function AssetsPage({
         <Link href={`/assets/chart?to=${asOf}`} className={buttonClass("secondary")}>
           {t("assets.viewCharts")}
         </Link>
-        <form className="flex items-end gap-2" action="/assets">
-          <div>
-            <Label>{t("assets.asOf")}</Label>
-            <input type="date" name="asOf" defaultValue={asOf} className={`${controlClass} tnum`} />
-          </div>
-          <button type="submit" className={buttonClass("secondary")}>
-            {t("common.apply")}
-          </button>
-        </form>
       </PageHeader>
 
       {/* The arrows move the instant itself rather than stepping through
@@ -339,6 +328,16 @@ export default async function AssetsPage({
         label={asOf}
         prevLabel={step === "year" ? t("common.prevYear") : t("common.prevMonth")}
         nextLabel={step === "year" ? t("common.nextYear") : t("common.nextMonth")}
+        // Stepping a month at a time is right for "and the month before
+        // that"; the 기준일 form in the header was what everything else
+        // needed, and it stood there permanently to do it. The label is
+        // where the hand already is.
+        jump={{
+          kind: "period",
+          unit: "date",
+          hrefTemplate: `/assets?asOf={value}&step=${step}`,
+          label: t("assets.pickAsOf"),
+        }}
         units={units}
       />
 

@@ -105,6 +105,27 @@ test.describe("reports", () => {
     await expect(page).toHaveURL(/from=2026-07-01&to=2026-07-31/);
   });
 
+  test("the 기준일 label picks a day, and the header carries no form", async ({ page }) => {
+    await page.goto("/assets?asOf=2026-08-06&step=month");
+    // 기준일 / 조회 used to stand in the header permanently. The bar below
+    // already held the arrows and the 월간/연간 switch, so the date moved
+    // in with them.
+    await expect(page.locator('form[action="/assets"]')).toHaveCount(0);
+
+    await page.getByTestId("period-jump").click();
+    const picker = page.getByTestId("period-jump-input");
+    await expect(picker).toHaveAttribute("type", "date");
+    await picker.fill("2026-01-25");
+    await expect(page).toHaveURL(/asOf=2026-01-25/);
+    // The unit travels with the date rather than resetting.
+    await expect(page).toHaveURL(/step=month/);
+    await expect(page.getByTestId("period-jump")).toHaveText("2026-01-25");
+
+    // And the arrows still step from wherever it landed.
+    await page.getByRole("link", { name: /이전 달/ }).click();
+    await expect(page).toHaveURL(/asOf=2025-12-25/);
+  });
+
   test("the year toggle changes what the arrows step, on both reports", async ({ page }) => {
     // The income statement's unit is derived from its range, so 연간
     // widens the range and the arrows follow it without being told.

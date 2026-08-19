@@ -131,7 +131,7 @@ export default async function BudgetPage({
         jump={{
           kind: "period",
           unit: ref.period,
-          hrefPrefix: "/budget?period=",
+          hrefTemplate: "/budget?period={value}",
           label: t(isYear ? "budget.pickYear" : "budget.pickMonth"),
         }}
       />

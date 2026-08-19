@@ -233,6 +233,7 @@ const en: Record<keyof typeof ko, string> = {
   "assets.projectedNetWorth": "Projected net worth",
   "assets.projectedHint":
     "Solid up to this month, where the figures are settled; dashed after it, for months that have not happened — entries dated in advance count, and where there are none the balance carries forward. The dotted line is net worth carried on by the income budget less the expense budget, and it stops where the budget does.",
+  "assets.pickAsOf": "Pick a date",
   "assets.rangeFrom": "From",
   "assets.rangeTo": "To",
   "assets.compositionAsOf": "The mix is as of the end date.",

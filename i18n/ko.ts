@@ -228,6 +228,7 @@ const ko = {
   "assets.projectedNetWorth": "예상 순자산",
   "assets.projectedHint":
     "이번 달까지는 확정된 값이라 실선이고, 그 뒤는 아직 지나지 않은 달이라 파선입니다 — 미리 입력해 둔 거래가 있으면 그대로 반영되고, 없으면 잔액이 이월됩니다. 점선은 수입예산 − 지출예산으로 이어 그린 예상 순자산이며, 예산이 있는 달까지만 그립니다.",
+  "assets.pickAsOf": "기준일 고르기",
   "assets.rangeFrom": "시작",
   "assets.rangeTo": "끝",
   "assets.compositionAsOf": "구성은 끝 시점 기준입니다.",
