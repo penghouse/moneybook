@@ -4,7 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
-import { formulas, roadmaps, roadmapYears } from "@/db/schema";
+import { formulas, roadmaps, roadmapYears, type RoadmapActualSource } from "@/db/schema";
 import { currentSection } from "@/lib/current-request";
 import { toMinorUnits } from "@/lib/money";
 import { MAX_ROADMAP_YEARS } from "@/lib/roadmap";
@@ -52,22 +52,32 @@ export async function saveRoadmapAction(formData: FormData) {
   if (Number(endYear) < Number(startYear)) redirect(`${back}&error=range`);
   if (Number(endYear) - Number(startYear) + 1 > MAX_ROADMAP_YEARS) redirect(`${back}&error=span`);
 
-  // The formula is the roadmap's only link outside itself, and the id
-  // arrives in a form body — so it is checked against this section's
-  // formulas rather than taken at its word. An unknown id becomes null,
-  // which is the same state as "no formula chosen".
-  const formulaId = String(formData.get("actualFormulaId") ?? "").trim();
+  // One control, three answers: 쓰지 않음, 순자산, or one of this
+  // section's 계산식. The field carries either a bare source name or
+  // 'formula:<id>', which keeps the choice a single radio-like menu
+  // rather than a source picker plus a formula picker that have to be
+  // kept consistent with each other.
+  const chosen = String(formData.get("actualSource") ?? "").trim();
+  let actualSource: RoadmapActualSource = chosen === "netWorth" ? "netWorth" : "none";
   let actualFormulaId: string | null = null;
-  if (formulaId) {
+
+  if (chosen.startsWith("formula:")) {
+    // The formula is the roadmap's only link outside itself and the id
+    // arrives in a form body, so it is checked against this section's
+    // formulas rather than taken at its word. An unknown id falls back
+    // to "쓰지 않음" — the same state as choosing nothing.
     const owned = await db.query.formulas.findFirst({
       where: and(
-        eq(formulas.id, formulaId),
+        eq(formulas.id, chosen.slice("formula:".length)),
         eq(formulas.sectionId, section.id),
         eq(formulas.scope, "assets"),
       ),
       columns: { id: true },
     });
-    actualFormulaId = owned?.id ?? null;
+    if (owned) {
+      actualSource = "formula";
+      actualFormulaId = owned.id;
+    }
   }
 
   const values = {
@@ -77,6 +87,7 @@ export async function saveRoadmapAction(formData: FormData) {
     startingAmount: requiredMinor(formData.get("startingAmount"), section.baseCurrency),
     defaultContribution: requiredMinor(formData.get("defaultContribution"), section.baseCurrency),
     defaultReturnRate: optionalRate(formData.get("defaultReturnRate")) ?? 0,
+    actualSource,
     actualFormulaId,
   };
 

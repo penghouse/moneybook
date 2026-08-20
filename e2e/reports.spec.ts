@@ -105,6 +105,58 @@ test.describe("reports", () => {
     await expect(page).toHaveURL(/from=2026-07-01&to=2026-07-31/);
   });
 
+  test("a 상위 그룹 on the balance sheet folds its accounts away", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const bank = await byName("은행");
+    const opening = await byName("기초자본");
+    await db.update(accounts).set({ category: "유동성자금" }).where(eq(accounts.id, bank.id));
+
+    const [tx] = await db
+      .insert(transactions)
+      .values({ sectionId: section.id, date: "2026-08-01", title: "기초" })
+      .returning();
+    await db.insert(transactionLines).values([
+      {
+        transactionId: tx.id,
+        side: "left",
+        accountId: bank.id,
+        currency: "KRW",
+        amount: 4_000_000,
+        rate: 1,
+        baseAmount: 4_000_000,
+      },
+      {
+        transactionId: tx.id,
+        side: "right",
+        accountId: opening.id,
+        currency: "KRW",
+        amount: 4_000_000,
+        rate: 1,
+        baseAmount: 4_000_000,
+      },
+    ]);
+
+    await page.goto("/assets?asOf=2026-08-06");
+    const band = page.getByTestId("assets-category").filter({ hasText: "유동성자금" });
+    await expect(band).toContainText("₩4,000,000");
+    await expect(page.getByRole("link", { name: /은행/ })).toBeVisible();
+
+    // Folded, the subtotal stays and the accounts under it go.
+    await band.click();
+    await expect(page.getByRole("link", { name: /은행/ })).toHaveCount(0);
+    await expect(band).toContainText("₩4,000,000");
+
+    // Stepping the 기준일 is an ordinary navigation and must not undo it.
+    await page.getByRole("link", { name: /이전 달/ }).click();
+    await expect(
+      page.getByTestId("assets-category").filter({ hasText: "유동성자금" }),
+    ).toHaveAttribute("aria-expanded", "false");
+  });
+
   test("the 기준일 label picks a day, and the header carries no form", async ({ page }) => {
     await page.goto("/assets?asOf=2026-08-06&step=month");
     // 기준일 / 조회 used to stand in the header permanently. The bar below

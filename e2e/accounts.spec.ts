@@ -296,11 +296,25 @@ test.describe("accounts", () => {
     }
 
     await page.goto("/income");
-    const heading = page
-      .locator("div")
-      .filter({ hasText: /^먹고사는 것/ })
-      .last();
-    await expect(heading).toContainText("₩15,000");
+    const band = page.getByTestId("income-category").filter({ hasText: "먹고사는 것" });
+    await expect(band).toContainText("₩15,000");
+
+    // And the band puts its rows away, keeping the subtotal on screen —
+    // which is the point of folding it.
+    await expect(page.getByRole("link", { name: /식비/ })).toBeVisible();
+    await band.click();
+    await expect(page.getByRole("link", { name: /식비/ })).toHaveCount(0);
+    await expect(band).toContainText("₩15,000");
+
+    // The fold survives an ordinary navigation, or stepping a month
+    // would undo every fold the reader had made.
+    await page.reload();
+    const after = page.getByTestId("income-category").filter({ hasText: "먹고사는 것" });
+    await expect(after).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("link", { name: /식비/ })).toHaveCount(0);
+
+    await after.click();
+    await expect(page.getByRole("link", { name: /식비/ })).toBeVisible();
   });
 
   test("상위 그룹 suggestions are scoped to their 분류", async ({ page }) => {

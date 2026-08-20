@@ -1,8 +1,11 @@
+import { cookies } from "next/headers";
 import { and, asc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db/client";
 import { accounts, formulas } from "@/db/schema";
 import { GROUP_LABEL_KEY } from "@/i18n/groups";
+import { foldCookieName, parseFolds, UNCATEGORIZED_FOLD } from "@/lib/category-folds";
+import { CategoryFold } from "../_components/category-fold";
 import { isClosedBy } from "@/lib/accounts";
 import { parseGroupOrder } from "@/lib/account-groups";
 import { currentSection } from "@/lib/current-request";
@@ -160,6 +163,10 @@ export default async function AssetsPage({
   );
   const categoryOf = new Map(catalog.map((a) => [a.id, a.category ?? null] as const));
   const hasCategories = catalog.some((a) => a.category);
+  // Read here rather than restored on the client, so the page arrives
+  // already folded instead of showing everything and collapsing after
+  // hydration.
+  const folded = parseFolds((await cookies()).get(foldCookieName("assets"))?.value);
 
   function byCategory(list: typeof balances) {
     const map = new Map<string | null, typeof balances>();
@@ -255,23 +262,35 @@ export default async function AssetsPage({
           {list.length === 0 ? (
             <EmptyState>{t("assets.empty")}</EmptyState>
           ) : (
-            byCategory(list).map(({ category, rows, subtotal }) => (
-              <div key={category ?? "\u0000uncategorized"}>
-                {hasCategories && (
-                  // The same band the income statement uses, so one
-                  // grouping reads the same on every report.
-                  <div className="bg-sunken border-rule-soft flex items-baseline gap-3 border-t px-4 py-1.5 first:border-t-0">
-                    <span className="text-ink-muted min-w-0 truncate text-xs font-semibold">
-                      {category ?? t("accounts.uncategorized")}
+            byCategory(list).map(({ category, rows, subtotal }) =>
+              hasCategories ? (
+                // The same band the income statement uses, so one
+                // grouping reads the same on every report — and folds
+                // the same way.
+                <CategoryFold
+                  key={category ?? UNCATEGORIZED_FOLD}
+                  scope="assets"
+                  name={category ?? UNCATEGORIZED_FOLD}
+                  initialFolded={folded.includes(category ?? UNCATEGORIZED_FOLD)}
+                  allFolded={folded}
+                  testId="assets-category"
+                  band={
+                    <span className="flex items-baseline gap-3">
+                      <span className="text-ink-muted min-w-0 truncate text-xs font-semibold">
+                        {category ?? t("accounts.uncategorized")}
+                      </span>
+                      <span className="tnum text-ink-muted ml-auto text-xs font-semibold">
+                        {base(subtotal)}
+                      </span>
                     </span>
-                    <span className="tnum text-ink-muted ml-auto text-xs font-semibold">
-                      {base(subtotal)}
-                    </span>
-                  </div>
-                )}
-                {rows.map(renderRow)}
-              </div>
-            ))
+                  }
+                >
+                  {rows.map(renderRow)}
+                </CategoryFold>
+              ) : (
+                <div key={category ?? UNCATEGORIZED_FOLD}>{rows.map(renderRow)}</div>
+              ),
+            )
           )}
         </Card>
       </section>

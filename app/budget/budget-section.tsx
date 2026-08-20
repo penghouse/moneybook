@@ -2,6 +2,8 @@ import Link from "next/link";
 import type { Account, AccountGroup } from "@/db/schema";
 import type { TranslationKey } from "@/i18n";
 import { formatMoney, toMajorUnits } from "@/lib/money";
+import { UNCATEGORIZED_FOLD } from "@/lib/category-folds";
+import { CategoryFold } from "../_components/category-fold";
 import { Card, Chip, SectionLabel } from "../_components/ui";
 import { setBudgetAction } from "./actions";
 import { BudgetField } from "./budget-field";
@@ -23,6 +25,7 @@ export function BudgetSection({
   actualByAccountId,
   monthlyByAccountId,
   isYear,
+  folded,
   periodKey,
   from,
   to,
@@ -37,6 +40,8 @@ export function BudgetSection({
   /** Year view only: what the twelve monthly budgets add up to. */
   monthlyByAccountId: ReadonlyMap<string, number>;
   isYear: boolean;
+  /** 상위 항목 the reader has folded away, from the cookie. */
+  folded: readonly string[];
   periodKey: string;
   from: string;
   to: string;
@@ -135,158 +140,166 @@ export function BudgetSection({
           const percentHere = budgeted > 0 ? Math.round((actualHere / budgeted) * 100) : null;
           const overHere = anyBudgetHere && actualHere > budgeted;
 
-          return (
-            <div key={category ?? " uncategorized"}>
-              {hasCategories && (
-                // The 상위 항목 band. Told apart from the rows it covers
-                // by the filled background, the heavier name, and those
-                // rows being indented under it — one signal could be read
-                // as decoration, three cannot.
-                <div
-                  data-testid="budget-category"
-                  className="bg-sunken border-rule-soft border-t px-4 py-2"
-                >
-                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                    <span className="min-w-0 truncate text-sm font-bold">
-                      {category ?? t("accounts.uncategorized")}
-                    </span>
-                    {anyBudgetHere &&
-                      (overHere ? (
-                        <Chip tone={overTone}>
-                          {t("budget.over")} {base(actualHere - budgeted)}
-                        </Chip>
-                      ) : (
-                        percentHere !== null && <Chip>{percentHere}%</Chip>
-                      ))}
-                    <span className="tnum text-ink-muted ml-auto text-xs font-semibold">
-                      {!anyBudgetHere && <span className="font-normal">{actualLabel} </span>}
-                      {base(actualHere)}
-                      {anyBudgetHere && ` / ${base(budgeted)}`}
-                    </span>
-                  </div>
-                  {anyBudgetHere && (
-                    // Thinner than an account's bar: this one summarises
-                    // those, and a heavier bar would read as the more
-                    // important number.
-                    <div className="bg-rule-soft mt-1.5 h-1 overflow-hidden rounded-full">
-                      <div
-                        className={`h-full rounded-full ${overHere ? overBar : "bg-accent"}`}
-                        style={{
-                          width: `${overHere ? 100 : Math.max(0, Math.min(100, percentHere ?? 0))}%`,
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
+          // The 상위 항목 band. Told apart from the rows it covers by the
+          // filled background, the heavier name, and those rows being
+          // indented under it — one signal could be read as decoration,
+          // three cannot.
+          const band = (
+            <span className="block py-0.5">
+              <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <span className="min-w-0 truncate text-sm font-bold">
+                  {category ?? t("accounts.uncategorized")}
+                </span>
+                {anyBudgetHere &&
+                  (overHere ? (
+                    <Chip tone={overTone}>
+                      {t("budget.over")} {base(actualHere - budgeted)}
+                    </Chip>
+                  ) : (
+                    percentHere !== null && <Chip>{percentHere}%</Chip>
+                  ))}
+                <span className="tnum text-ink-muted ml-auto text-xs font-semibold">
+                  {!anyBudgetHere && <span className="font-normal">{actualLabel} </span>}
+                  {base(actualHere)}
+                  {anyBudgetHere && ` / ${base(budgeted)}`}
+                </span>
+              </span>
+              {anyBudgetHere && (
+                // Thinner than an account's bar: this one summarises
+                // those, and a heavier bar would read as the more
+                // important number.
+                <span className="bg-rule-soft mt-1.5 block h-1 overflow-hidden rounded-full">
+                  <span
+                    className={`block h-full rounded-full ${overHere ? overBar : "bg-accent"}`}
+                    style={{
+                      width: `${overHere ? 100 : Math.max(0, Math.min(100, percentHere ?? 0))}%`,
+                    }}
+                  />
+                </span>
               )}
-              {inCategory.map((account) => {
-                const budget = budgetByAccountId.get(account.id);
-                const actual = actualByAccountId.get(account.id) ?? 0;
-                const left = budget !== undefined ? budget - actual : null;
-                // `budget > 0`, not a truthiness check: a budget of exactly 0
-                // is a real setting ("spend nothing here"), and treating it as
-                // unset rendered a bare "(%)". Percent stays null only because
-                // a share of zero is undefined, not because the budget is.
-                const percent =
-                  budget !== undefined && budget > 0 ? Math.round((actual / budget) * 100) : null;
-                const isOver = left !== null && left < 0;
-                const monthlySum = monthlyByAccountId.get(account.id) ?? 0;
+            </span>
+          );
 
-                return (
-                  <div
-                    key={account.id}
-                    data-testid="budget-row"
-                    className={`border-rule-soft border-t py-3 ${
-                      // Indented under its 상위 항목, with a rule down the
-                      // margin: the band above is a heading, not another
-                      // row of the same list.
-                      hasCategories ? "border-rule-soft mx-4 border-l pl-3" : "px-4"
-                    }`}
-                  >
-                    {/* "이 지출이 뭐였지" is answered by the transactions
+          const rows = inCategory.map((account) => {
+            const budget = budgetByAccountId.get(account.id);
+            const actual = actualByAccountId.get(account.id) ?? 0;
+            const left = budget !== undefined ? budget - actual : null;
+            // `budget > 0`, not a truthiness check: a budget of exactly 0
+            // is a real setting ("spend nothing here"), and treating it as
+            // unset rendered a bare "(%)". Percent stays null only because
+            // a share of zero is undefined, not because the budget is.
+            const percent =
+              budget !== undefined && budget > 0 ? Math.round((actual / budget) * 100) : null;
+            const isOver = left !== null && left < 0;
+            const monthlySum = monthlyByAccountId.get(account.id) ?? 0;
+
+            return (
+              <div
+                key={account.id}
+                data-testid="budget-row"
+                className={`border-rule-soft border-t py-3 ${
+                  // Indented under its 상위 항목, with a rule down the
+                  // margin: the band above is a heading, not another
+                  // row of the same list.
+                  hasCategories ? "border-rule-soft mx-4 border-l pl-3" : "px-4"
+                }`}
+              >
+                {/* "이 지출이 뭐였지" is answered by the transactions
                         behind it, so the name and the figure together open
                         the period on screen filtered to this account. The
                         whole line rather than the name alone: a name is a
                         24px target on a page tapped with a thumb, and the
                         amount is the half people reach for. */}
-                    <Link
-                      href={`/?accountId=${account.id}&from=${from}&to=${to}`}
-                      className="hover:bg-sunken rounded-control -mx-2 flex min-h-11 items-center px-2"
-                    >
-                      <span className="flex w-full items-baseline gap-2">
-                        <span className="min-w-0 truncate font-semibold">{account.name}</span>
-                        <span className="tnum text-ink-muted ml-auto text-sm">
-                          {actualLabel} {base(actual)}
-                        </span>
-                      </span>
-                    </Link>
+                <Link
+                  href={`/?accountId=${account.id}&from=${from}&to=${to}`}
+                  className="hover:bg-sunken rounded-control -mx-2 flex min-h-11 items-center px-2"
+                >
+                  <span className="flex w-full items-baseline gap-2">
+                    <span className="min-w-0 truncate font-semibold">{account.name}</span>
+                    <span className="tnum text-ink-muted ml-auto text-sm">
+                      {actualLabel} {base(actual)}
+                    </span>
+                  </span>
+                </Link>
 
-                    {budget !== undefined && (
-                      <div className="bg-rule-soft my-2 h-1.5 overflow-hidden rounded-full">
-                        <div
-                          className={`h-full rounded-full ${isOver ? overBar : "bg-accent"}`}
-                          // Clamped at both ends: a refund can make spend
-                          // negative, and a zero budget that has been spent
-                          // against is fully over rather than 0% used.
-                          style={{
-                            width: `${isOver ? 100 : Math.max(0, Math.min(100, percent ?? 0))}%`,
-                          }}
-                        />
-                      </div>
+                {budget !== undefined && (
+                  <div className="bg-rule-soft my-2 h-1.5 overflow-hidden rounded-full">
+                    <div
+                      className={`h-full rounded-full ${isOver ? overBar : "bg-accent"}`}
+                      // Clamped at both ends: a refund can make spend
+                      // negative, and a zero budget that has been spent
+                      // against is fully over rather than 0% used.
+                      style={{
+                        width: `${isOver ? 100 : Math.max(0, Math.min(100, percent ?? 0))}%`,
+                      }}
+                    />
+                  </div>
+                )}
+
+                {isYear && monthlySum > 0 && (
+                  <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
+                    <span className="text-ink-faint tnum">
+                      {t("budget.monthlySum")} {base(monthlySum)}
+                    </span>
+                    {budget !== undefined && monthlySum > budget && (
+                      <Chip tone="warning">
+                        {t("budget.monthlySumOver")} {base(monthlySum - budget)}
+                      </Chip>
                     )}
+                  </div>
+                )}
 
-                    {isYear && monthlySum > 0 && (
-                      <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
-                        <span className="text-ink-faint tnum">
-                          {t("budget.monthlySum")} {base(monthlySum)}
-                        </span>
-                        {budget !== undefined && monthlySum > budget && (
-                          <Chip tone="warning">
-                            {t("budget.monthlySumOver")} {base(monthlySum - budget)}
-                          </Chip>
-                        )}
-                      </div>
-                    )}
-
-                    {/* The figures ride inside the field so a settled row
+                {/* The figures ride inside the field so a settled row
                         can fold the box away behind 수정 and still say
                         what it is set to. */}
-                    <BudgetField
-                      action={setBudgetAction}
-                      accountId={account.id}
-                      period={periodKey}
-                      amountMajor={
-                        budget !== undefined ? toMajorUnits(budget, currency) : undefined
-                      }
-                      labels={{
-                        field: t(isYear ? "budget.setYearBudget" : "budget.setBudget"),
-                        edit: t("common.edit"),
-                        cancel: t("common.cancel"),
-                        save: t("common.save"),
-                        saving: t("common.saving"),
-                        noBudget: t("budget.noBudget"),
-                      }}
-                    >
-                      {budget !== undefined && (
-                        <div className="text-ink-faint flex flex-wrap gap-x-3 gap-y-1 text-xs">
-                          <span className="tnum">
-                            {t("budget.setBudget")} {base(budget)}
-                            {percent !== null && ` (${percent}%)`}
-                          </span>
-                          <span
-                            className={`tnum ml-auto ${isOver && !income ? "text-negative font-semibold" : ""}`}
-                          >
-                            {isOver
-                              ? `${t("budget.over")} ${base(-left)}`
-                              : `${leftLabel} ${base(left ?? 0)}`}
-                          </span>
-                        </div>
-                      )}
-                    </BudgetField>
-                  </div>
-                );
-              })}
-            </div>
+                <BudgetField
+                  action={setBudgetAction}
+                  accountId={account.id}
+                  period={periodKey}
+                  amountMajor={budget !== undefined ? toMajorUnits(budget, currency) : undefined}
+                  labels={{
+                    field: t(isYear ? "budget.setYearBudget" : "budget.setBudget"),
+                    edit: t("common.edit"),
+                    cancel: t("common.cancel"),
+                    save: t("common.save"),
+                    saving: t("common.saving"),
+                    noBudget: t("budget.noBudget"),
+                  }}
+                >
+                  {budget !== undefined && (
+                    <div className="text-ink-faint flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                      <span className="tnum">
+                        {t("budget.setBudget")} {base(budget)}
+                        {percent !== null && ` (${percent}%)`}
+                      </span>
+                      <span
+                        className={`tnum ml-auto ${isOver && !income ? "text-negative font-semibold" : ""}`}
+                      >
+                        {isOver
+                          ? `${t("budget.over")} ${base(-left)}`
+                          : `${leftLabel} ${base(left ?? 0)}`}
+                      </span>
+                    </div>
+                  )}
+                </BudgetField>
+              </div>
+            );
+          });
+
+          return hasCategories ? (
+            <CategoryFold
+              key={category ?? UNCATEGORIZED_FOLD}
+              scope="budget"
+              name={category ?? UNCATEGORIZED_FOLD}
+              initialFolded={folded.includes(category ?? UNCATEGORIZED_FOLD)}
+              allFolded={folded}
+              testId="budget-category"
+              band={band}
+            >
+              {rows}
+            </CategoryFold>
+          ) : (
+            <div key={category ?? UNCATEGORIZED_FOLD}>{rows}</div>
           );
         })}
       </Card>

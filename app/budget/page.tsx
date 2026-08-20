@@ -1,6 +1,8 @@
+import { cookies } from "next/headers";
 import { and, asc, eq, inArray, like } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, budgets } from "@/db/schema";
+import { foldCookieName, parseFolds } from "@/lib/category-folds";
 import { currentSection } from "@/lib/current-request";
 import { addMonths, addYears, monthRange, today, yearMonthOf, yearOf, yearRange } from "@/lib/date";
 import { activeDuring } from "@/lib/accounts";
@@ -106,6 +108,10 @@ export default async function BudgetPage({
     actualByAccountId,
     monthlyByAccountId,
     isYear,
+    // Read here rather than restored on the client, so the page arrives
+    // already folded instead of showing every item and collapsing after
+    // hydration — and so the folds survive 이전 달 / 다음 달.
+    folded: parseFolds((await cookies()).get(foldCookieName("budget"))?.value),
     periodKey: ref.periodKey,
     from,
     to,

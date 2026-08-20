@@ -1,7 +1,9 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, formulas } from "@/db/schema";
+import { foldCookieName, parseFolds, UNCATEGORIZED_FOLD } from "@/lib/category-folds";
 import { currentSection } from "@/lib/current-request";
 import {
   addMonths,
@@ -14,6 +16,7 @@ import {
   yearRange,
 } from "@/lib/date";
 import { parseGroupOrder } from "@/lib/account-groups";
+import { CategoryFold } from "../_components/category-fold";
 import { PeriodNav } from "../_components/period-nav";
 import { buildFormulaItems } from "@/lib/formula-items";
 import { getAccountFlows } from "@/lib/ledger";
@@ -106,6 +109,10 @@ export default async function IncomePage({
   }
 
   const hasCategories = allAccounts.some((a) => a.category);
+  // Read here rather than restored on the client, so the page arrives
+  // already folded instead of showing everything and collapsing after
+  // hydration.
+  const folded = parseFolds((await cookies()).get(foldCookieName("income"))?.value);
 
   function renderList(label: string, list: typeof flows) {
     return (
@@ -115,37 +122,45 @@ export default async function IncomePage({
           {list.length === 0 ? (
             <EmptyState>{t("assets.empty")}</EmptyState>
           ) : (
-            byCategory(list).map(({ category, rows, subtotal }) => (
-              <div key={category ?? "\u0000uncategorized"}>
-                {hasCategories && (
-                  <div className="bg-sunken border-rule-soft flex items-baseline gap-3 border-t px-4 py-1.5 first:border-t-0">
-                    <span className="text-ink-muted min-w-0 truncate text-xs font-semibold">
-                      {category ?? t("accounts.uncategorized")}
+            byCategory(list).map(({ category, rows, subtotal }) => {
+              const body = rows.map((f) => (
+                <KeyValueRow
+                  key={f.accountId}
+                  // The same move the budget rows make: "왜 이만큼이지"
+                  // is answered by the transactions behind the figure,
+                  // over exactly the period this statement is reading.
+                  href={`/?accountId=${f.accountId}&from=${from}&to=${to}`}
+                  label={f.name}
+                  value={
+                    <Money amount={f.baseAmount} currency={section.baseCurrency} locale={locale} />
+                  }
+                />
+              ));
+              return hasCategories ? (
+                <CategoryFold
+                  key={category ?? UNCATEGORIZED_FOLD}
+                  scope="income"
+                  name={category ?? UNCATEGORIZED_FOLD}
+                  initialFolded={folded.includes(category ?? UNCATEGORIZED_FOLD)}
+                  allFolded={folded}
+                  testId="income-category"
+                  band={
+                    <span className="flex items-baseline gap-3">
+                      <span className="text-ink-muted min-w-0 truncate text-xs font-semibold">
+                        {category ?? t("accounts.uncategorized")}
+                      </span>
+                      <span className="tnum text-ink-muted ml-auto text-xs font-semibold">
+                        {base(subtotal)}
+                      </span>
                     </span>
-                    <span className="tnum text-ink-muted ml-auto text-xs font-semibold">
-                      {base(subtotal)}
-                    </span>
-                  </div>
-                )}
-                {rows.map((f) => (
-                  <KeyValueRow
-                    key={f.accountId}
-                    // The same move the budget rows make: "왜 이만큼이지"
-                    // is answered by the transactions behind the figure,
-                    // over exactly the period this statement is reading.
-                    href={`/?accountId=${f.accountId}&from=${from}&to=${to}`}
-                    label={f.name}
-                    value={
-                      <Money
-                        amount={f.baseAmount}
-                        currency={section.baseCurrency}
-                        locale={locale}
-                      />
-                    }
-                  />
-                ))}
-              </div>
-            ))
+                  }
+                >
+                  {body}
+                </CategoryFold>
+              ) : (
+                <div key={category ?? UNCATEGORIZED_FOLD}>{body}</div>
+              );
+            })
           )}
         </Card>
       </section>
