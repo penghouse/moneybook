@@ -254,6 +254,20 @@ test.describe("budget", () => {
       .filter({ hasText: "식비" })
       .boundingBox())!;
     expect(rowBox.x).toBeGreaterThan(bandBox.x);
+
+    // And the heading puts its items away, keeping its own totals on
+    // screen — a band you can only read past is a band you scroll past.
+    await band.click();
+    await expect(page.getByTestId("budget-row").filter({ hasText: "식비" })).toHaveCount(0);
+    await expect(band).toContainText("₩180,000");
+
+    // The fold survives stepping to another month, or every fold would
+    // have to be made again on every navigation.
+    await page.getByRole("link", { name: /다음 달/ }).click();
+    const next = page.getByTestId("budget-category").filter({ hasText: "먹고사는 것" });
+    await expect(next).toHaveAttribute("aria-expanded", "false");
+    await next.click();
+    await expect(page.getByTestId("budget-row").filter({ hasText: "식비" })).toBeVisible();
   });
 
   test("a settled row folds its box away, and 수정 opens that row alone", async ({ page }) => {

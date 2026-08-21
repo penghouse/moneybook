@@ -139,7 +139,7 @@ test.describe("roadmap", () => {
     await expect(rowFor(page, thisYear)).toContainText("₩1,000,000");
 
     await page.getByRole("link", { name: "버전 설정" }).click();
-    await page.getByLabel("실제값으로 쓸 계산식").selectOption({ label: "총자산" });
+    await page.getByLabel("실제값으로 쓸 항목").selectOption({ label: "총자산" });
     await page.getByRole("button", { name: "저장" }).click();
 
     // The ledger's own figure, not the plan's — and the same number the
@@ -149,6 +149,71 @@ test.describe("roadmap", () => {
     await expect(page.getByTestId("formula-result").filter({ hasText: "총자산" })).toContainText(
       "₩70,000,000",
     );
+  });
+
+  test("순자산 needs no 계산식 at all, and reads what the balance sheet reads", async ({
+    page,
+  }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const bank = await byName("은행");
+    const card = await byName("신용카드");
+    const opening = await byName("기초자본");
+
+    const post = async (left: string, right: string, amount: number) => {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date: today(section.timezone), title: "기초" })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: left,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: right,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+        },
+      ]);
+    };
+    // 80,000,000 in the bank against 5,000,000 owed: 순자산 75,000,000.
+    await post(bank.id, opening.id, 80_000_000);
+    await post(opening.id, card.id, 5_000_000);
+
+    const thisYear = yearOf(today(section.timezone));
+    await addVersion(page, {
+      name: "순자산",
+      start: thisYear,
+      end: String(Number(thisYear) + 1),
+      starting: "1000000",
+      saved: "0",
+      rate: "0",
+    });
+    await expect(rowFor(page, thisYear)).toContainText("₩1,000,000");
+
+    // Nothing in this test ever builds a 계산식 — 순자산 stands in the
+    // menu on its own, which is the whole point of it being there.
+    await page.getByRole("link", { name: "버전 설정" }).click();
+    await page.getByLabel("실제값으로 쓸 항목").selectOption({ label: "순자산 (자산 − 부채)" });
+    await page.getByRole("button", { name: "저장" }).click();
+
+    // 자산 − 부채, and the same figure the balance sheet leads with.
+    await expect(rowFor(page, thisYear)).toContainText("₩75,000,000");
+    await page.goto("/assets");
+    await expect(page.getByText("₩75,000,000").first()).toBeVisible();
   });
 
   test("연저축액 comes from the months — the ledger behind, the budget ahead", async ({ page }) => {
@@ -292,7 +357,7 @@ test.describe("roadmap", () => {
       rate: "3",
     });
     await page.getByRole("link", { name: "버전 설정" }).click();
-    await page.getByLabel("실제값으로 쓸 계산식").selectOption({ label: "총자산" });
+    await page.getByLabel("실제값으로 쓸 항목").selectOption({ label: "총자산" });
     await page.getByRole("button", { name: "저장" }).click();
 
     // What it earned, and the target it is being read against — two

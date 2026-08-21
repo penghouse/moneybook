@@ -105,6 +105,79 @@ test.describe("reports", () => {
     await expect(page).toHaveURL(/from=2026-07-01&to=2026-07-31/);
   });
 
+  test("a 상위 그룹 on the balance sheet folds its accounts away", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const bank = await byName("은행");
+    const opening = await byName("기초자본");
+    await db.update(accounts).set({ category: "유동성자금" }).where(eq(accounts.id, bank.id));
+
+    const [tx] = await db
+      .insert(transactions)
+      .values({ sectionId: section.id, date: "2026-08-01", title: "기초" })
+      .returning();
+    await db.insert(transactionLines).values([
+      {
+        transactionId: tx.id,
+        side: "left",
+        accountId: bank.id,
+        currency: "KRW",
+        amount: 4_000_000,
+        rate: 1,
+        baseAmount: 4_000_000,
+      },
+      {
+        transactionId: tx.id,
+        side: "right",
+        accountId: opening.id,
+        currency: "KRW",
+        amount: 4_000_000,
+        rate: 1,
+        baseAmount: 4_000_000,
+      },
+    ]);
+
+    await page.goto("/assets?asOf=2026-08-06");
+    const band = page.getByTestId("assets-category").filter({ hasText: "유동성자금" });
+    await expect(band).toContainText("₩4,000,000");
+    await expect(page.getByRole("link", { name: /은행/ })).toBeVisible();
+
+    // Folded, the subtotal stays and the accounts under it go.
+    await band.click();
+    await expect(page.getByRole("link", { name: /은행/ })).toHaveCount(0);
+    await expect(band).toContainText("₩4,000,000");
+
+    // Stepping the 기준일 is an ordinary navigation and must not undo it.
+    await page.getByRole("link", { name: /이전 달/ }).click();
+    await expect(
+      page.getByTestId("assets-category").filter({ hasText: "유동성자금" }),
+    ).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("the 기준일 label picks a day, and the header carries no form", async ({ page }) => {
+    await page.goto("/assets?asOf=2026-08-06&step=month");
+    // 기준일 / 조회 used to stand in the header permanently. The bar below
+    // already held the arrows and the 월간/연간 switch, so the date moved
+    // in with them.
+    await expect(page.locator('form[action="/assets"]')).toHaveCount(0);
+
+    await page.getByTestId("period-jump").click();
+    const picker = page.getByTestId("period-jump-input");
+    await expect(picker).toHaveAttribute("type", "date");
+    await picker.fill("2026-01-25");
+    await expect(page).toHaveURL(/asOf=2026-01-25/);
+    // The unit travels with the date rather than resetting.
+    await expect(page).toHaveURL(/step=month/);
+    await expect(page.getByTestId("period-jump")).toHaveText("2026-01-25");
+
+    // And the arrows still step from wherever it landed.
+    await page.getByRole("link", { name: /이전 달/ }).click();
+    await expect(page).toHaveURL(/asOf=2025-12-25/);
+  });
+
   test("the year toggle changes what the arrows step, on both reports", async ({ page }) => {
     // The income statement's unit is derived from its range, so 연간
     // widens the range and the arrows follow it without being told.
@@ -231,11 +304,34 @@ test.describe("reports", () => {
     // carries an edit form, pickers and all, so counting pickers page-wide
     // would never reach zero.
     await expect(page.locator("#entry")).toHaveCount(0);
-    await expect(page.locator("main details[open] input[name='from']")).toBeVisible();
+    await expect(page.locator("main details[open] select[name='accountId']")).toBeVisible();
+    // The period is the bar's, not the filter's: two date boxes repeating
+    // what the arrows above them already say was the third control on
+    // this screen that could change the same thing.
+    await expect(page.locator("main details[open] input[type='date'][name='from']")).toHaveCount(0);
+    // Carried as a hidden field, so 조회 does not drop it.
+    await expect(page.locator("main details[open] input[type='hidden'][name='from']")).toHaveValue(
+      "2026-08-01",
+    );
+    await expect(page.getByTestId("range-jump")).toHaveText("2026-08");
 
     await page.getByRole("link", { name: /이전 달/ }).click();
     await expect(page).toHaveURL(/from=2026-07-01&to=2026-07-31/);
     await expect(page).toHaveURL(/accountId=/);
+
+    // Applying another filter keeps the period the bar is showing.
+    await page.locator("main details[open] input[name='q']").fill("카드");
+    await page.getByRole("button", { name: "조회" }).click();
+    await expect(page).toHaveURL(/from=2026-07-01&to=2026-07-31/);
+
+    // And the label picks any range, carrying the account with it.
+    await page.getByTestId("range-jump").click();
+    await page.getByTestId("range-jump-from").fill("2026-08-01");
+    await page.getByTestId("range-jump-to").fill("2026-08-31");
+    await page.getByTestId("range-jump-confirm").click();
+    await expect(page).toHaveURL(/from=2026-08-01&to=2026-08-31/);
+    await expect(page).toHaveURL(/accountId=/);
+    await expect(page).toHaveURL(/q=%EC%B9%B4%EB%93%9C/);
   });
 
   test("a 거래처관리 account breaks its balance down by counterparty", async ({ page }) => {

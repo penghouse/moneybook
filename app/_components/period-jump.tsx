@@ -11,27 +11,27 @@ import { buttonClass, controlClass, Label } from "./ui";
  * for "what did last month look like" and useless for "what did I budget
  * in January". Eight taps to reach it, and eight more to come back.
  *
- * So the label opens the browser's own month picker. Native rather than
- * a hand-rolled grid: `<input type="month">` already knows what a month
- * is in the reader's locale, is reachable by keyboard, and on a phone
- * gets the platform's full-size wheel — none of which a div of buttons
- * would match.
+ * So the label opens the browser's own picker. Native rather than a
+ * hand-rolled grid: `<input type="month">` and `type="date"` already know
+ * what a month and a day are in the reader's locale, are reachable by
+ * keyboard, and on a phone get the platform's full-size wheel — none of
+ * which a div of buttons would match.
  *
  * The input is mounted only once asked for, because an always-present
- * month field would sit between the two arrows and make the bar read as
- * a form to fill in rather than a place you already are.
+ * field would sit between the two arrows and make the bar read as a form
+ * to fill in rather than a place you already are.
  */
 export function PeriodJump({
   value,
   unit,
-  hrefPrefix,
+  hrefTemplate,
   label,
 }: {
-  /** '2026-08' when the unit is a month, '2026' when it is a year. */
+  /** '2026-08' for a month, '2026' for a year, '2026-08-19' for a day. */
   value: string;
-  unit: "month" | "year";
-  /** The picked value is appended to this, e.g. '/budget?period='. */
-  hrefPrefix: string;
+  unit: "month" | "year" | "date";
+  /** '{value}' is replaced with what was picked, e.g. '/budget?period={value}'. */
+  hrefTemplate: string;
   /** Accessible name — the visible text is a bare date and says nothing. */
   label: string;
 }) {
@@ -60,7 +60,7 @@ export function PeriodJump({
       return;
     }
     setPicking(false);
-    router.push(hrefPrefix + next);
+    router.push(hrefTemplate.replace("{value}", next));
   };
 
   if (!picking) {
@@ -77,21 +77,23 @@ export function PeriodJump({
     );
   }
 
-  const isMonth = unit === "month";
+  // A year has no native picker of its own, so it is a typed number —
+  // and typing is why it is the one unit that waits to be committed.
+  const typed = unit === "year";
   return (
     <input
       ref={ref}
-      type={isMonth ? "month" : "number"}
+      type={typed ? "number" : unit}
       defaultValue={value}
       aria-label={label}
       data-testid="period-jump-input"
-      // A month arrives whole from the picker, so it can navigate the
-      // moment it changes. A year is typed a digit at a time — '2' then
-      // '20' are both valid numbers and neither is a year anyone meant —
-      // so it waits to be committed.
-      {...(isMonth
-        ? { onChange: (e: React.ChangeEvent<HTMLInputElement>) => go(e.target.value) }
-        : { min: 1000, max: 9999, step: 1 })}
+      // A month or a day arrives whole from the picker, so it can
+      // navigate the moment it changes. A year is typed a digit at a time
+      // — '2' then '20' are both valid numbers and neither is a year
+      // anyone meant — so it waits.
+      {...(typed
+        ? { min: 1000, max: 9999, step: 1 }
+        : { onChange: (e: React.ChangeEvent<HTMLInputElement>) => go(e.target.value) })}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();
@@ -100,7 +102,7 @@ export function PeriodJump({
         if (e.key === "Escape") setPicking(false);
       }}
       onBlur={(e) =>
-        isMonth || !/^\d{4}$/.test(e.target.value) ? setPicking(false) : go(e.target.value)
+        !typed || !/^\d{4}$/.test(e.target.value) ? setPicking(false) : go(e.target.value)
       }
       className="bg-sunken rounded-control tnum mx-auto min-h-12 w-40 px-2 text-center font-semibold"
     />

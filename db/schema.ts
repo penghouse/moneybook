@@ -382,6 +382,10 @@ export const formulasRelations = relations(formulas, ({ one }) => ({
  * "10%로 굴렸을 때"와 "5%로 굴렸을 때"는 서로 다른 계획이지 한 계획의 두
  * 줄이 아닙니다.
  */
+/** Where a roadmap's 실적 column is read from. */
+export const ROADMAP_ACTUAL_SOURCES = ["none", "netWorth", "formula"] as const;
+export type RoadmapActualSource = (typeof ROADMAP_ACTUAL_SOURCES)[number];
+
 export const roadmaps = sqliteTable(
   "roadmaps",
   {
@@ -414,6 +418,21 @@ export const roadmaps = sqliteTable(
     actualFormulaId: text("actual_formula_id").references(() => formulas.id, {
       onDelete: "set null",
     }),
+    /**
+     * Where the 실적 column comes from.
+     *
+     * 'netWorth' is the book's own 자산 − 부채, which needs nothing set
+     * up: it is what most roadmaps are about, and requiring a 계산식 for
+     * it made the commonest case the one with the most steps. 'formula'
+     * defers to actual_formula_id for the books that track a narrower
+     * figure — 현금성자산만, 투자자산만.
+     *
+     * Kept separate from the id rather than encoded into it: the id is a
+     * foreign key that goes null on its own when the formula it names is
+     * deleted, and a source that could vanish with it would silently
+     * turn a roadmap into a plan-only one.
+     */
+    actualSource: text("actual_source", { enum: ROADMAP_ACTUAL_SOURCES }).notNull().default("none"),
     sortOrder: integer("sort_order").notNull().default(0),
   },
   (t) => [

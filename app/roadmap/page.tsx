@@ -7,6 +7,7 @@ import { currentSection } from "@/lib/current-request";
 import { monthsBetween, today, yearMonthOf, yearOf } from "@/lib/date";
 import { formatMoney, toMajorUnits } from "@/lib/money";
 import { formatShortMoney } from "@/lib/short-money";
+import { getMonthlyBalanceSheet } from "@/lib/ledger";
 import { buildReportSeries } from "@/lib/report-series";
 import { getMonthlySavings, sumSavings, type MonthlySaving } from "@/lib/savings";
 import { buildRoadmap, MAX_ROADMAP_YEARS, roadmapYearList, type RoadmapRow } from "@/lib/roadmap";
@@ -171,25 +172,30 @@ export default async function RoadmapPage({
               </div>
 
               <div>
-                <Label htmlFor="roadmap-formula">{t("roadmap.actualFormula")}</Label>
+                <Label htmlFor="roadmap-actual">{t("roadmap.actualSource")}</Label>
                 <select
-                  id="roadmap-formula"
-                  name="actualFormulaId"
-                  defaultValue={editing?.actualFormulaId ?? ""}
+                  id="roadmap-actual"
+                  name="actualSource"
+                  defaultValue={
+                    editing?.actualSource === "formula" && editing.actualFormulaId
+                      ? `formula:${editing.actualFormulaId}`
+                      : (editing?.actualSource ?? "none")
+                  }
                   className={controlClass}
                 >
-                  <option value="">{t("roadmap.actualFormulaNone")}</option>
+                  <option value="none">{t("roadmap.actualFormulaNone")}</option>
+                  {/* 순자산 above the 계산식, and needing none of them: it
+                      is what most roadmaps are about, and it was the one
+                      figure you could not pick without building a
+                      계산식 for something the book already knows. */}
+                  <option value="netWorth">{t("roadmap.actualNetWorth")}</option>
                   {formulaRows.map((formula) => (
-                    <option key={formula.id} value={formula.id}>
+                    <option key={formula.id} value={`formula:${formula.id}`}>
                       {formula.name}
                     </option>
                   ))}
                 </select>
-                <Hint>
-                  {formulaRows.length === 0
-                    ? t("roadmap.actualFormulaEmpty")
-                    : t("roadmap.actualFormulaHint")}
-                </Hint>
+                <Hint>{t("roadmap.actualSourceHint")}</Hint>
               </div>
 
               {params.error && errors[params.error] && (
@@ -308,24 +314,37 @@ export default async function RoadmapPage({
   /**
    * What the book says each year actually ended at.
    *
-   * Read through `buildReportSeries` — the very function 자산현황's chart
-   * uses — with December as the month, so the roadmap's 실적 column and
-   * the formula band at the foot of the report cannot say different
-   * things about the same year.
-   *
    * Only years the ledger can speak for are asked about. A figure of
    * zero comes back for a year that is simply outside the book, and
    * printing that as "자산 0원" would be a claim the book never made.
    * The current year *is* included: December is in the future, balances
    * carry forward, so what comes back is where things stand today.
+   *
+   * 순자산 is read from the same balance sheet 자산현황 renders, and a
+   * 계산식 through `buildReportSeries` — the very function 자산현황's
+   * chart uses. Either way the roadmap's 전망 column and the report it
+   * came from cannot say different things about the same year.
    */
   async function loadActuals(): Promise<Map<string, number>> {
-    if (!selected?.actualFormulaId || !firstLedgerMonth) return new Map();
+    if (!selected || selected.actualSource === "none" || !firstLedgerMonth) return new Map();
 
     const thisYear = yearOf(today(section.timezone));
     const known = years.filter((y) => y >= firstLedgerMonth.slice(0, 4) && y <= thisYear);
     if (known.length === 0) return new Map();
+    const months = known.map((y) => `${y}-12`);
 
+    if (selected.actualSource === "netWorth") {
+      const sheet = await getMonthlyBalanceSheet(db, { sectionId: section.id, months });
+      const byMonth = new Map(sheet.map((row) => [row.yearMonth, row.netWorth]));
+      return new Map(
+        known.flatMap((year) => {
+          const value = byMonth.get(`${year}-12`);
+          return value === undefined ? [] : [[year, value] as const];
+        }),
+      );
+    }
+
+    if (!selected.actualFormulaId) return new Map();
     const catalog = await db.query.accounts.findMany({
       where: eq(accounts.sectionId, section.id),
       orderBy: asc(accounts.sortOrder),
@@ -334,7 +353,7 @@ export default async function RoadmapPage({
     const series = await buildReportSeries(db, {
       sectionId: section.id,
       scope: "assets",
-      months: known.map((y) => `${y}-12`),
+      months,
       baseCurrency: section.baseCurrency,
       groupOrder: parseGroupOrder(section.groupOrder),
       accounts: catalog,
@@ -541,7 +560,7 @@ export default async function RoadmapPage({
         </div>
       </Card>
 
-      {!selected.actualFormulaId && <Hint>{t("roadmap.pickFormulaHint")}</Hint>}
+      {selected.actualSource === "none" && <Hint>{t("roadmap.pickActualHint")}</Hint>}
 
       {/* Formatted here rather than in the browser: the money strings
           have to be the section's own currency in the reader's locale,

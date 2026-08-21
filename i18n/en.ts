@@ -233,6 +233,7 @@ const en: Record<keyof typeof ko, string> = {
   "assets.projectedNetWorth": "Projected net worth",
   "assets.projectedHint":
     "Solid up to this month, where the figures are settled; dashed after it, for months that have not happened — entries dated in advance count, and where there are none the balance carries forward. The dotted line is net worth carried on by the income budget less the expense budget, and it stops where the budget does.",
+  "assets.pickAsOf": "Pick a date",
   "assets.rangeFrom": "From",
   "assets.rangeTo": "To",
   "assets.compositionAsOf": "The mix is as of the end date.",
@@ -319,12 +320,13 @@ const en: Record<keyof typeof ko, string> = {
   "roadmap.startingAmount": "Starting assets",
   "roadmap.defaultContribution": "Saved per year",
   "roadmap.defaultReturnRate": "Target return",
-  "roadmap.actualFormula": "Formula for the actuals",
-  "roadmap.actualFormulaNone": "None (plan only)",
-  "roadmap.actualFormulaHint":
-    "Past years and this one take this formula's December figure as their standing end.",
-  "roadmap.actualFormulaEmpty": "No asset formulas yet. Build one on the formulas screen first.",
-  "roadmap.pickFormulaHint": "Pick a formula and the past years fill in from the ledger.",
+  "roadmap.actualSource": "Where the actuals come from",
+  "roadmap.actualFormulaNone": "Nowhere (plan only)",
+  "roadmap.actualNetWorth": "Net worth (assets − liabilities)",
+  "roadmap.actualSourceHint":
+    "Past years and this one fill their 전망 column from whatever is picked here, read at December. Net worth needs nothing set up; for a narrower figure — cash only, investments only — build a formula and pick that.",
+  "roadmap.pickActualHint":
+    "Say where the actuals come from and the past years fill in from the ledger.",
   "roadmap.nameRequired": "Please name this version.",
   "roadmap.yearInvalid": "Years are four digits.",
   "roadmap.rangeBackwards": "The last year cannot come before the first.",
