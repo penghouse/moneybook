@@ -304,11 +304,34 @@ test.describe("reports", () => {
     // carries an edit form, pickers and all, so counting pickers page-wide
     // would never reach zero.
     await expect(page.locator("#entry")).toHaveCount(0);
-    await expect(page.locator("main details[open] input[name='from']")).toBeVisible();
+    await expect(page.locator("main details[open] select[name='accountId']")).toBeVisible();
+    // The period is the bar's, not the filter's: two date boxes repeating
+    // what the arrows above them already say was the third control on
+    // this screen that could change the same thing.
+    await expect(page.locator("main details[open] input[type='date'][name='from']")).toHaveCount(0);
+    // Carried as a hidden field, so 조회 does not drop it.
+    await expect(page.locator("main details[open] input[type='hidden'][name='from']")).toHaveValue(
+      "2026-08-01",
+    );
+    await expect(page.getByTestId("range-jump")).toHaveText("2026-08");
 
     await page.getByRole("link", { name: /이전 달/ }).click();
     await expect(page).toHaveURL(/from=2026-07-01&to=2026-07-31/);
     await expect(page).toHaveURL(/accountId=/);
+
+    // Applying another filter keeps the period the bar is showing.
+    await page.locator("main details[open] input[name='q']").fill("카드");
+    await page.getByRole("button", { name: "조회" }).click();
+    await expect(page).toHaveURL(/from=2026-07-01&to=2026-07-31/);
+
+    // And the label picks any range, carrying the account with it.
+    await page.getByTestId("range-jump").click();
+    await page.getByTestId("range-jump-from").fill("2026-08-01");
+    await page.getByTestId("range-jump-to").fill("2026-08-31");
+    await page.getByTestId("range-jump-confirm").click();
+    await expect(page).toHaveURL(/from=2026-08-01&to=2026-08-31/);
+    await expect(page).toHaveURL(/accountId=/);
+    await expect(page).toHaveURL(/q=%EC%B9%B4%EB%93%9C/);
   });
 
   test("a 거래처관리 account breaks its balance down by counterparty", async ({ page }) => {

@@ -19,6 +19,7 @@ import {
   addYears,
   monthRange,
   rangeUnit,
+  shiftWindow,
   today,
   yearMonthOf,
   yearOf,
@@ -321,17 +322,45 @@ export default async function Home({
    *
    */
   const isLedger = !!filtered;
-  const ledgerUnit = from && to ? rangeUnit(from, to) : "custom";
-  const ledgerStep = (delta: number) => {
-    const range =
-      ledgerUnit === "year"
-        ? yearRange(addYears(yearOf(from!), delta))
-        : monthRange(addMonths(yearMonthOf(from!), delta));
+  /**
+   * Whether the list is reading a period at all.
+   *
+   * When it is, the bar owns it — arrows and a picker, the same control
+   * 예산 / 자산현황 / the two charts use — and the filter carries the two
+   * dates as hidden fields so applying a 계정 or a 태그 does not drop the
+   * period underneath it. When it is not, the filter's own date boxes are
+   * the only way to make one, so they stay.
+   */
+  const hasPeriod = !!(from && to);
+  const listUnit = hasPeriod ? rangeUnit(from!, to!) : "custom";
+  const periodHref = (range: { from: string; to: string }) => {
     const next = new URLSearchParams(listParams);
     next.set("from", range.from);
     next.set("to", range.to);
     return `/?${next}`;
   };
+  // Built by hand rather than through periodHref: URLSearchParams
+  // percent-encodes the braces, and the picker would then find no
+  // placeholder to replace.
+  const rangeTemplate = (() => {
+    const rest = new URLSearchParams(listParams);
+    rest.delete("from");
+    rest.delete("to");
+    const query = rest.toString();
+    return `/?from={from}&to={to}${query ? `&${query}` : ""}`;
+  })();
+  // A whole month steps to the next whole month; anything else moves by
+  // its own length, which is what the chart screens settled on — a fixed
+  // month step across a ten-week window would leave most of it on screen
+  // and make the press look like nothing happened.
+  const listStep = (delta: number) =>
+    periodHref(
+      listUnit === "year"
+        ? yearRange(addYears(yearOf(from!), delta))
+        : listUnit === "month"
+          ? monthRange(addMonths(yearMonthOf(from!), delta))
+          : shiftWindow(from!, to!, delta),
+    );
 
   /**
    * What this transaction has written on it, transaction memo first and
@@ -421,6 +450,36 @@ export default async function Home({
         </div>
       )}
 
+      {/* Above the filter, not below the summary: the period is the
+          first thing a reader arriving from a report wants to move,
+          and it used to sit past three cards where nobody found it. */}
+      {hasPeriod && (
+        <PeriodNav
+          prevHref={listStep(-1)}
+          nextHref={listStep(1)}
+          label={
+            listUnit === "year"
+              ? yearOf(from!)
+              : listUnit === "month"
+                ? yearMonthOf(from!)
+                : `${from} ~ ${to}`
+          }
+          prevLabel={listUnit === "year" ? t("common.prevYear") : t("common.prevMonth")}
+          nextLabel={listUnit === "year" ? t("common.nextYear") : t("common.nextMonth")}
+          jump={{
+            kind: "range",
+            from: from!,
+            to: to!,
+            hrefTemplate: rangeTemplate,
+            label: t("common.pickRange"),
+            fromLabel: t("entry.filterFrom"),
+            toLabel: t("entry.filterTo"),
+            confirmLabel: t("common.apply"),
+            closeLabel: t("common.close"),
+          }}
+        />
+      )}
+
       {filtered?.tracksCounterparties && (
         <section>
           <div className="flex flex-wrap items-baseline justify-between gap-x-3">
@@ -479,19 +538,36 @@ export default async function Home({
               className="border-rule-soft grid grid-cols-2 gap-3 border-t px-4 py-3 md:grid-cols-4"
               action="/"
             >
-              <div className="min-w-0">
-                <Label>{t("entry.filterFrom")}</Label>
-                <input
-                  type="date"
-                  name="from"
-                  defaultValue={from}
-                  className={`${controlClass} tnum`}
-                />
-              </div>
-              <div className="min-w-0">
-                <Label>{t("entry.filterTo")}</Label>
-                <input type="date" name="to" defaultValue={to} className={`${controlClass} tnum`} />
-              </div>
+              {hasPeriod ? (
+                // Carried, not shown. The bar above is the period control
+                // now, and two date boxes repeating it were the third
+                // place on this screen that could change the same thing.
+                <>
+                  <input type="hidden" name="from" value={from} />
+                  <input type="hidden" name="to" value={to} />
+                </>
+              ) : (
+                <>
+                  <div className="min-w-0">
+                    <Label>{t("entry.filterFrom")}</Label>
+                    <input
+                      type="date"
+                      name="from"
+                      defaultValue={from}
+                      className={`${controlClass} tnum`}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <Label>{t("entry.filterTo")}</Label>
+                    <input
+                      type="date"
+                      name="to"
+                      defaultValue={to}
+                      className={`${controlClass} tnum`}
+                    />
+                  </div>
+                </>
+              )}
               <div className="min-w-0">
                 <Label>{t("entry.filterAccount")}</Label>
                 <select name="accountId" defaultValue={accountId ?? ""} className={controlClass}>
@@ -582,18 +658,6 @@ export default async function Home({
               />
             </Card>
           </section>
-        )}
-
-        {isLedger && ledgerUnit !== "custom" && (
-          <div className="mb-3">
-            <PeriodNav
-              prevHref={ledgerStep(-1)}
-              nextHref={ledgerStep(1)}
-              label={ledgerUnit === "year" ? yearOf(from!) : yearMonthOf(from!)}
-              prevLabel={ledgerUnit === "year" ? t("common.prevYear") : t("common.prevMonth")}
-              nextLabel={ledgerUnit === "year" ? t("common.nextYear") : t("common.nextMonth")}
-            />
-          </div>
         )}
 
         <Card>
