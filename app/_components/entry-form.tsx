@@ -5,12 +5,27 @@ import { unstable_rethrow, useRouter } from "next/navigation";
 import type { AccountGroup } from "@/db/schema";
 import { AccountCombobox, type ComboboxAccount } from "./account-combobox";
 import { useDialogClose } from "./dialog";
+import { findEntryBlocker } from "@/lib/entry-blockers";
+import type { EntryRejection } from "../entry-actions";
 import { SubmitButton } from "./submit-button";
 import { buttonClass, controlClass, Label } from "./ui";
 import { matchesQuery } from "@/lib/hangul";
 import { convertMinorUnits, formatMoney, toMinorUnits } from "@/lib/money";
 
 export interface EntryFormLabels {
+  /** Why 저장 cannot be pressed. One per reason findEntryBlocker gives. */
+  blockedAccount: string;
+  blockedAmount: string;
+  /** '{currency}' is replaced. */
+  blockedRate: string;
+  /** '{name}' is replaced. */
+  blockedInactive: string;
+  blockedUnbalanced: string;
+  /** What the server sent back when it refused the save. */
+  rejectedUnbalanced: string;
+  rejectedAccountMissing: string;
+  /** '{name}' is replaced. */
+  rejectedAccountInactive: string;
   date: string;
   title: string;
   memo: string;
@@ -47,7 +62,11 @@ interface Line {
   memo: string;
 }
 
-export type EntryFormAccount = ComboboxAccount;
+export interface EntryFormAccount extends ComboboxAccount {
+  /** Null on either end means unbounded. Absent means the same. */
+  activeFrom?: string | null;
+  activeTo?: string | null;
+}
 
 export interface TitleSuggestion {
   title: string;
@@ -120,7 +139,7 @@ export function EntryForm({
   suggestions = [],
   afterSaveHref,
 }: {
-  action: (formData: FormData) => void | Promise<void>;
+  action: (formData: FormData) => Promise<EntryRejection | undefined>;
   accounts: EntryFormAccount[];
   baseCurrency: string;
   defaultDate: string;
@@ -152,10 +171,17 @@ export function EntryForm({
   // written. Reloading showed it saved while the screen still said it
   // was saving.
   const [saved, dispatch] = useActionState(
-    async (state: { count: number; unconfirmed: boolean }, formData: FormData) => {
+    async (
+      state: { count: number; unconfirmed: boolean; rejection: EntryRejection | null },
+      formData: FormData,
+    ) => {
       try {
-        await action(formData);
-        return { count: state.count + 1, unconfirmed: false };
+        // A refusal comes back as a value, not a redirect. It used to
+        // navigate to /?error=…, and navigating remounted this form —
+        // every field blank, the save button off, and the entry gone.
+        const rejection = (await action(formData)) ?? null;
+        if (rejection) return { ...state, unconfirmed: false, rejection };
+        return { count: state.count + 1, unconfirmed: false, rejection: null };
       } catch (error) {
         // redirect() and notFound() travel as errors and belong to the
         // framework; swallowing them would break both.
@@ -163,10 +189,10 @@ export function EntryForm({
         // The re-read happens in an effect, not here: refreshing inside
         // the transition discards the state this returns, and the notice
         // never painted at all.
-        return { count: state.count, unconfirmed: true };
+        return { count: state.count, unconfirmed: true, rejection: null };
       }
     },
-    { count: 0, unconfirmed: false },
+    { count: 0, unconfirmed: false, rejection: null },
   );
   const submitCount = saved.count;
   const lastSubmitCount = useRef(0);
@@ -443,6 +469,41 @@ export function EntryForm({
   const isBalanced =
     allFilled && leftTotal !== null && rightTotal !== null && leftTotal === rightTotal;
 
+  /**
+   * Why the save button is off, in words.
+   *
+   * Disabled was the only feedback there was, and two of the reasons are
+   * invisible on screen: a leg whose exchange rate never arrived shows
+   * an amount and totals nothing, and a date outside an account's active
+   * window looks fine here and is refused by the server.
+   */
+  const accountsById = new Map(accounts.map((a) => [a.id, a]));
+  const blocker = findEntryBlocker({
+    lines,
+    baseCurrency,
+    date,
+    windowsByAccountId: new Map(
+      accounts.map((a) => [
+        a.id,
+        { activeFrom: a.activeFrom ?? null, activeTo: a.activeTo ?? null },
+      ]),
+    ),
+    balanced: isBalanced,
+    nameOf: (id) => accountsById.get(id)?.name ?? "",
+  });
+  const blockedMessage =
+    blocker === null
+      ? null
+      : blocker.kind === "account"
+        ? labels.blockedAccount
+        : blocker.kind === "amount"
+          ? labels.blockedAmount
+          : blocker.kind === "rate"
+            ? labels.blockedRate.replace("{currency}", blocker.currency)
+            : blocker.kind === "inactive"
+              ? labels.blockedInactive.replace("{name}", blocker.name)
+              : labels.blockedUnbalanced;
+
   const left = lines.find((l) => l.side === "left")!;
   const right = lines.find((l) => l.side === "right")!;
 
@@ -479,6 +540,33 @@ export function EntryForm({
   // Both layouts render it, so it is written once — the simple form is
   // the one this happens on most, and it is the one that had no notice
   // when the first version of this only patched the split view.
+  /**
+   * Shown only once the reader has started — an empty form saying
+   * 「계정을 고르세요」 before a finger has touched it is nagging, not
+   * help.
+   */
+  const started = lines.some((l) => l.accountId || l.amountStr) || !!title;
+  const blockedNotice =
+    blockedMessage && started ? (
+      <p role="status" data-testid="save-blocked" className="text-ink-muted px-1 text-xs">
+        {blockedMessage}
+      </p>
+    ) : null;
+
+  const rejectionNotice = saved.rejection ? (
+    <p
+      role="status"
+      data-testid="save-rejected"
+      className="bg-negative-soft text-negative rounded-control px-3 py-2 text-sm"
+    >
+      {saved.rejection.reason === "unbalanced"
+        ? labels.rejectedUnbalanced
+        : saved.rejection.reason === "account_missing"
+          ? labels.rejectedAccountMissing
+          : labels.rejectedAccountInactive.replace("{name}", saved.rejection.name ?? "")}
+    </p>
+  ) : null;
+
   const unconfirmedNotice = saved.unconfirmed ? (
     <p
       role="status"
@@ -596,13 +684,17 @@ export function EntryForm({
                 <SubmitButton
                   variant="primary"
                   full
-                  disabled={!isBalanced || (isEditing && !isDirty)}
+                  disabled={blocker !== null || (isEditing && !isDirty)}
                   pendingLabel={labels.saving}
                 >
                   {labels.save}
                 </SubmitButton>
               </div>
-              <div className="col-span-3">{unconfirmedNotice}</div>
+              <div className="col-span-3">
+                {blockedNotice}
+                {rejectionNotice}
+                {unconfirmedNotice}
+              </div>
             </div>
           </div>
 
@@ -783,12 +875,14 @@ export function EntryForm({
         </div>
       </div>
 
+      {blockedNotice}
+      {rejectionNotice}
       {unconfirmedNotice}
 
       <SubmitButton
         variant="primary"
         full
-        disabled={!isBalanced || (isEditing && !isDirty)}
+        disabled={blocker !== null || (isEditing && !isDirty)}
         pendingLabel={labels.saving}
       >
         {labels.save}

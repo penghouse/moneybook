@@ -55,6 +55,7 @@ const ko = {
   "common.pickRange": "기간 고르기",
   "common.apply": "조회",
   "common.saving": "저장 중…",
+  "common.loading": "불러오는 중…",
   "common.working": "처리 중…",
 
   "auth.logout": "로그아웃",
@@ -177,6 +178,13 @@ const ko = {
   "entry.counterpartiesHint": "조회 기간과 무관하게 계정 시작일부터 오늘까지의 잔액입니다.",
   "entry.noCounterparties": "남은 잔액이 있는 거래처가 없습니다.",
   "entry.filters": "검색·필터",
+  "entry.blockedAccount": "계정을 목록에서 골라 주세요.",
+  "entry.blockedAmount": "금액을 넣어 주세요.",
+  "entry.blockedRate":
+    "{currency} 환율이 없어 금액을 환산할 수 없습니다. 설정에서 환율을 등록하거나 상세 입력에서 직접 넣어 주세요.",
+  "entry.blockedInactive":
+    "「{name}」 — 이 날짜에는 쓸 수 없는 계정입니다. 계정과목에서 사용 기간을 확인해 주세요.",
+  "entry.blockedUnbalanced": "왼쪽과 오른쪽 합계가 맞지 않습니다.",
   "entry.details": "세부내역",
   "entry.share": "적요별 비중",
   "entry.balance": "잔액",

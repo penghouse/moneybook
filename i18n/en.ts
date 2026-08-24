@@ -57,6 +57,7 @@ const en: Record<keyof typeof ko, string> = {
   "common.pickRange": "Pick a range",
   "common.apply": "Show",
   "common.saving": "Saving…",
+  "common.loading": "Loading…",
   "common.working": "Working…",
 
   "auth.logout": "Sign out",
@@ -182,6 +183,13 @@ const en: Record<keyof typeof ko, string> = {
     "Balances from the account's start date to today, whatever period is filtered above.",
   "entry.noCounterparties": "No counterparty has an outstanding balance.",
   "entry.filters": "Search & filter",
+  "entry.blockedAccount": "Pick an account from the list.",
+  "entry.blockedAmount": "Enter an amount.",
+  "entry.blockedRate":
+    "No {currency} rate, so the amount cannot be converted. Add one in settings, or type it in the detailed view.",
+  "entry.blockedInactive":
+    "{name} cannot be used on this date. Check its active period under 계정과목.",
+  "entry.blockedUnbalanced": "The two sides do not add up to the same figure.",
   "entry.details": "Details",
   "entry.share": "By title",
   "entry.balance": "Balance",

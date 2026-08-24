@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, exchangeRates, sections } from "../db/schema";
 import { today } from "../lib/date";
@@ -569,6 +569,65 @@ test.describe("entry", () => {
     await expect(page.locator("main li").filter({ hasText: "점심" })).toHaveCount(2);
     // The stored 적요 keeps whatever was typed; only the suggestion is bare.
     await expect(page.getByText("점심 (회사 앞)")).toBeVisible();
+  });
+
+  test("a dead save button says why, and comes back when the reason is fixed", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const food = (await db.query.accounts.findFirst({
+      where: and(eq(accounts.sectionId, section.id), eq(accounts.name, "식비")),
+    }))!;
+    // Opened this month, so the picker — which offers what is usable
+    // *today* — still lists it. The date on the form is the one that has
+    // to agree, and it is free to be any day.
+    await db.update(accounts).set({ activeFrom: "2026-08-01" }).where(eq(accounts.id, food.id));
+
+    await page.goto("/");
+    const form = createForm(page);
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("12000");
+    await form.locator('input[name="title"]').fill("커피");
+    await form.locator('input[name="date"]').fill("2026-07-15");
+
+    // Disabled was the only feedback there was; now it is disabled *and*
+    // it names the account and the field to fix.
+    const save = form.getByRole("button", { name: "저장" });
+    await expect(save).toBeDisabled();
+    await expect(page.getByTestId("save-blocked")).toContainText("식비");
+
+    // And nothing was lost while it was refusing.
+    await form.locator('input[name="date"]').fill("2026-08-15");
+    await expect(save).toBeEnabled();
+    await expect(page.getByTestId("save-blocked")).toHaveCount(0);
+    await expect(form.locator('input[type="number"]').first()).toHaveValue("12000");
+  });
+
+  test("a save the server refuses keeps every field it was given", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const food = (await db.query.accounts.findFirst({
+      where: and(eq(accounts.sectionId, section.id), eq(accounts.name, "식비")),
+    }))!;
+
+    await page.goto("/");
+    const form = createForm(page);
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("12000");
+    await form.locator('input[name="title"]').fill("커피");
+
+    // Gone from under an open page — the one refusal the form cannot see
+    // coming. It used to redirect to /?error=…, and the redirect
+    // remounted the form: every field blank and the button off, with a
+    // message about one of them.
+    await db.delete(accounts).where(eq(accounts.id, food.id));
+
+    const save = form.getByRole("button", { name: "저장" });
+    await save.click();
+    await expect(page.getByTestId("save-rejected")).toBeVisible();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(form.locator('input[type="number"]').first()).toHaveValue("12000");
+    await expect(form.locator('input[name="title"]')).toHaveValue("커피");
+    await expect(save).toBeEnabled();
   });
 
   test("deleting a transaction removes it from the list", async ({ page }) => {

@@ -64,8 +64,6 @@ export default async function Home({
   searchParams,
 }: {
   searchParams: Promise<{
-    error?: string;
-    name?: string;
     from?: string;
     to?: string;
     accountId?: string;
@@ -74,15 +72,7 @@ export default async function Home({
   }>;
 }) {
   const { section, t, locale } = await currentSection();
-  const {
-    error,
-    name: errorAccountName,
-    from,
-    to,
-    accountId,
-    q,
-    tag: tagParam,
-  } = await searchParams;
+  const { from, to, accountId, q, tag: tagParam } = await searchParams;
   const tag = normalizeTag(tagParam);
 
   // Three reads that need nothing from each other, issued together: one
@@ -117,6 +107,14 @@ export default async function Home({
   const filterAccounts = byGroupOrder(filterCatalog, groupOrder);
 
   const labels: EntryFormLabels = {
+    blockedAccount: t("entry.blockedAccount"),
+    blockedAmount: t("entry.blockedAmount"),
+    blockedRate: t("entry.blockedRate"),
+    blockedInactive: t("entry.blockedInactive"),
+    blockedUnbalanced: t("entry.blockedUnbalanced"),
+    rejectedUnbalanced: t("entry.unbalancedError"),
+    rejectedAccountMissing: t("entry.accountMissingError"),
+    rejectedAccountInactive: t("entry.accountInactiveError"),
     date: t("common.date"),
     title: t("common.title"),
     memo: t("common.memo"),
@@ -419,22 +417,6 @@ export default async function Home({
   return (
     <div className="space-y-4">
       <PageHeader title={isLedger ? filtered!.name : t("nav.entry")} />
-
-      {error === "unbalanced" && (
-        <p className="bg-negative-soft text-negative rounded-control px-3 py-2 text-sm">
-          {t("entry.unbalancedError")}
-        </p>
-      )}
-      {error === "account_missing" && (
-        <p className="bg-negative-soft text-negative rounded-control px-3 py-2 text-sm">
-          {t("entry.accountMissingError")}
-        </p>
-      )}
-      {error === "account_inactive" && (
-        <p className="bg-negative-soft text-negative rounded-control px-3 py-2 text-sm">
-          {interpolate(t("entry.accountInactiveError"), { name: errorAccountName ?? "" })}
-        </p>
-      )}
 
       {!isLedger && (
         <div className="space-y-4">
