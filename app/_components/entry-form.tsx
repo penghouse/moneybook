@@ -6,6 +6,7 @@ import type { AccountGroup } from "@/db/schema";
 import { AccountCombobox, type ComboboxAccount } from "./account-combobox";
 import { useDialogClose } from "./dialog";
 import { findEntryBlocker } from "@/lib/entry-blockers";
+import type { QuickEntry } from "@/lib/quick-entries";
 import type { EntryRejection } from "../entry-actions";
 import { SubmitButton } from "./submit-button";
 import { buttonClass, controlClass, Label } from "./ui";
@@ -21,6 +22,10 @@ export interface EntryFormLabels {
   /** '{name}' is replaced. */
   blockedInactive: string;
   blockedUnbalanced: string;
+  /** The heading over the one-tap repeats. */
+  quick: string;
+  /** Marks one this month has not had yet. */
+  quickDue: string;
   /** What the server sent back when it refused the save. */
   rejectedUnbalanced: string;
   rejectedAccountMissing: string;
@@ -137,6 +142,7 @@ export function EntryForm({
   labels,
   initial,
   suggestions = [],
+  quickEntries = [],
   afterSaveHref,
 }: {
   action: (formData: FormData) => Promise<EntryRejection | undefined>;
@@ -148,6 +154,12 @@ export function EntryForm({
   initial?: EntryFormInitial;
   /** Recent 적요 with the accounts each was last posted between. */
   suggestions?: TitleSuggestion[];
+  /**
+   * One-tap repeats, worked out from the book. Empty on the edit form:
+   * a screen for correcting one transaction is not a screen for filing
+   * a different one.
+   */
+  quickEntries?: QuickEntry[];
   /**
    * Where to go once a save lands. Used by the duplicate flow to drop
    * `?duplicate=` from the URL: left there, the form would re-fill from
@@ -335,6 +347,71 @@ export function EntryForm({
       if (account) void handleAccountSelect(line.key, account);
     }
   }
+
+  /**
+   * Fills the whole thing in — the accounts *and* the amount.
+   *
+   * The 적요 suggestions deliberately leave the amount alone, because for
+   * a lunch it is the one part that differs. These are the other kind:
+   * 월세 and 통신비 repeat at the same figure, and typing it out again
+   * every month is exactly the work this is here to remove. It is a
+   * starting point, not a claim — the box is right there to correct.
+   */
+  function applyQuickEntry(entry: QuickEntry) {
+    setTitle(entry.title);
+    setTitleOpen(false);
+    setSharedAmount(entry.amountMajor ? String(entry.amountMajor) : "");
+
+    const left = lines.filter((l) => l.side === "left");
+    const right = lines.filter((l) => l.side === "right");
+    if (left.length !== 1 || right.length !== 1) return;
+
+    for (const [line, accountId] of [
+      [left[0], entry.leftAccountId],
+      [right[0], entry.rightAccountId],
+    ] as const) {
+      // Absent when the account has since closed, the same as a 적요
+      // suggestion: it is out of the picker, so putting its name in the
+      // box would offer something that cannot be saved.
+      const account = accounts.find((a) => a.id === accountId);
+      if (account) void handleAccountSelect(line.key, account);
+    }
+  }
+
+  /**
+   * The row of repeats, above the fields it fills.
+   *
+   * What is missing this month comes first and is marked, because it is
+   * the only part of the row with a deadline — and because forgetting,
+   * not typing, is what a standing payment actually costs you. Nothing
+   * is posted on its own: the book's rows stay things that happened, and
+   * pressing 저장 stays the reader's.
+   */
+  const quickRow =
+    quickEntries.length > 0 && !isEditing ? (
+      <div className="border-rule-soft border-b px-4 py-2.5">
+        <div className="text-ink-faint mb-1.5 text-xs tracking-wide">{labels.quick}</div>
+        <div className="flex flex-wrap gap-1.5" data-testid="quick-entries">
+          {quickEntries.map((entry) => (
+            <button
+              key={entry.title}
+              type="button"
+              onClick={() => applyQuickEntry(entry)}
+              data-testid="quick-entry"
+              data-due={entry.due ? "true" : undefined}
+              className={`inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 text-sm ${
+                entry.due
+                  ? "border-accent bg-accent-soft text-ink font-semibold"
+                  : "border-rule-soft bg-sunken text-ink-muted"
+              }`}
+            >
+              <span className="max-w-[9rem] truncate">{entry.title}</span>
+              {entry.due && <span className="text-accent text-xs">{labels.quickDue}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+    ) : null;
 
   const nameOfAccount = (id: string | null) => accounts.find((a) => a.id === id)?.name;
 
@@ -582,7 +659,8 @@ export function EntryForm({
       <form action={dispatch} className="space-y-3">
         {formIdentityFields}
 
-        <div className="bg-card rounded-card">
+        <div className="bg-card rounded-card overflow-hidden">
+          {quickRow}
           {/* Date, title and amount share one row from md up; on a phone
               the date takes its own row and the other two split the next.
               One set of fields, not a mobile copy and a desktop copy —
@@ -728,6 +806,7 @@ export function EntryForm({
       {formIdentityFields}
 
       <div className="bg-card rounded-card overflow-hidden">
+        {quickRow}
         <div className="grid grid-cols-2 gap-3 px-4 py-3 md:grid-cols-[10.5rem_1fr_1fr]">
           <div className="min-w-0">
             <Label>{labels.date}</Label>

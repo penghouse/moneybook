@@ -183,6 +183,8 @@ const en: Record<keyof typeof ko, string> = {
     "Balances from the account's start date to today, whatever period is filtered above.",
   "entry.noCounterparties": "No counterparty has an outstanding balance.",
   "entry.filters": "Search & filter",
+  "entry.quick": "Frequent entries",
+  "entry.quickDue": "not yet this month",
   "entry.blockedAccount": "Pick an account from the list.",
   "entry.blockedAmount": "Enter an amount.",
   "entry.blockedRate":

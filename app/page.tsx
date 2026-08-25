@@ -27,6 +27,7 @@ import {
 } from "@/lib/date";
 import {
   findTaggedTransactionIds,
+  getQuickEntries,
   getTitleTotals,
   getRunningBalances,
   getTitleSuggestions,
@@ -78,7 +79,7 @@ export default async function Home({
   // Three reads that need nothing from each other, issued together: one
   // after another they were three network round trips on a deployment
   // where the database is not in this process.
-  const [catalog, filterCatalog, suggestions] = await Promise.all([
+  const [catalog, filterCatalog, suggestions, quickEntries] = await Promise.all([
     db.query.accounts.findMany({
       // The picker offers what can be posted to *now*; a closed account
       // stays out of it even though its past transactions still read and
@@ -97,6 +98,14 @@ export default async function Home({
     // by how far back it reaches: the suggestions are for what you are
     // about to type, not for what you are looking at.
     getTitleSuggestions(db, { sectionId: section.id }),
+    // Read from the book rather than registered: it already knows that
+    // 월세 moved between the same two accounts for the same figure six
+    // months running, and asking the reader to write that down again in
+    // a settings screen would be asking them to repeat themselves.
+    getQuickEntries(db, {
+      sectionId: section.id,
+      currentMonth: yearMonthOf(today(section.timezone)),
+    }),
   ]);
 
   // Both lists read in the book's own order — 분류 first, then the order
@@ -112,6 +121,8 @@ export default async function Home({
     blockedRate: t("entry.blockedRate"),
     blockedInactive: t("entry.blockedInactive"),
     blockedUnbalanced: t("entry.blockedUnbalanced"),
+    quick: t("entry.quick"),
+    quickDue: t("entry.quickDue"),
     rejectedUnbalanced: t("entry.unbalancedError"),
     rejectedAccountMissing: t("entry.accountMissingError"),
     rejectedAccountInactive: t("entry.accountInactiveError"),
@@ -428,6 +439,7 @@ export default async function Home({
             locale={locale}
             labels={labels}
             suggestions={suggestions}
+            quickEntries={quickEntries}
           />
         </div>
       )}
@@ -702,6 +714,7 @@ export default async function Home({
                             labels={labels}
                             initial={{ transactionId: tx.id, ...prefillFrom(tx) }}
                             suggestions={suggestions}
+                            quickEntries={quickEntries}
                           />
                         }
                         copy={
@@ -717,6 +730,7 @@ export default async function Home({
                             labels={labels}
                             initial={prefillFrom(tx)}
                             suggestions={suggestions}
+                            quickEntries={quickEntries}
                           />
                         }
                       >

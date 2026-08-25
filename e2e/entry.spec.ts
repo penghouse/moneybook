@@ -461,9 +461,13 @@ test.describe("entry", () => {
     await form.locator('input[type="number"]').first().fill("4000");
     await form.locator('input[name="title"]').fill("같은 거래");
     await form.getByRole("button", { name: "저장" }).click();
-    await expect(page.getByText("같은 거래")).toHaveCount(1);
+    // Counted in the list, not page-wide: once it has been entered twice
+    // the 자주 쓰는 항목 row offers it as well, and that is a control
+    // rather than a record.
+    const rows = page.locator("main li").filter({ hasText: "같은 거래" });
+    await expect(rows).toHaveCount(1);
 
-    await page.getByText("같은 거래").click();
+    await rows.first().click();
     const dialog = page.getByRole("dialog");
     await dialog.getByTestId("duplicate").click();
 
@@ -472,7 +476,7 @@ test.describe("entry", () => {
     const copy = dialog.locator("form").first();
     await expect(copy.getByRole("button", { name: "저장" })).toBeEnabled();
     await copy.getByRole("button", { name: "저장" }).click();
-    await expect(page.getByText("같은 거래")).toHaveCount(2);
+    await expect(rows).toHaveCount(2);
   });
 
   test("the list shows what was written on a transaction", async ({ page }) => {

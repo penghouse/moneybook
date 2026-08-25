@@ -178,6 +178,8 @@ const ko = {
   "entry.counterpartiesHint": "조회 기간과 무관하게 계정 시작일부터 오늘까지의 잔액입니다.",
   "entry.noCounterparties": "남은 잔액이 있는 거래처가 없습니다.",
   "entry.filters": "검색·필터",
+  "entry.quick": "자주 쓰는 항목",
+  "entry.quickDue": "이번 달 아직",
   "entry.blockedAccount": "계정을 목록에서 골라 주세요.",
   "entry.blockedAmount": "금액을 넣어 주세요.",
   "entry.blockedRate":
