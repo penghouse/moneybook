@@ -184,7 +184,7 @@ const en: Record<keyof typeof ko, string> = {
   "entry.noCounterparties": "No counterparty has an outstanding balance.",
   "entry.filters": "Search & filter",
   "entry.quick": "Frequent entries",
-  "entry.quickDue": "not yet this month",
+  "entry.quickDue": "due",
   "entry.blockedAccount": "Pick an account from the list.",
   "entry.blockedAmount": "Enter an amount.",
   "entry.blockedRate":

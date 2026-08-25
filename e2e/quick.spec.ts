@@ -92,7 +92,7 @@ test.describe("quick entries", () => {
     // sits beside it saying nothing.
     await expect(chips.first()).toContainText("통신비");
     await expect(bill).toHaveAttribute("data-due", "true");
-    await expect(bill).toContainText("이번 달 아직");
+    await expect(bill).toContainText("미입력");
     await expect(lunch).not.toHaveAttribute("data-due", "true");
 
     // One tap fills the accounts *and* the amount — for a bill the
@@ -124,6 +124,6 @@ test.describe("quick entries", () => {
     const bill = page.getByTestId("quick-entry").filter({ hasText: "통신비" });
     await expect(bill).toBeVisible();
     await expect(bill).not.toHaveAttribute("data-due", "true");
-    await expect(bill).not.toContainText("이번 달 아직");
+    await expect(bill).not.toContainText("미입력");
   });
 });

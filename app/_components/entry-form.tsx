@@ -391,7 +391,12 @@ export function EntryForm({
     quickEntries.length > 0 && !isEditing ? (
       <div className="border-rule-soft border-b px-4 py-2.5">
         <div className="text-ink-faint mb-1.5 text-xs tracking-wide">{labels.quick}</div>
-        <div className="flex flex-wrap gap-1.5" data-testid="quick-entries">
+        {/* Stacked, not side by side: the mark beside the name doubled
+            the width of the one chip the reader most wants to hit, and a
+            row of eight of them ran off the screen. Under the name it
+            costs a line the row already has — the chips stretch to the
+            tallest — and none of the width. */}
+        <div className="flex flex-wrap items-stretch gap-1.5" data-testid="quick-entries">
           {quickEntries.map((entry) => (
             <button
               key={entry.title}
@@ -399,14 +404,18 @@ export function EntryForm({
               onClick={() => applyQuickEntry(entry)}
               data-testid="quick-entry"
               data-due={entry.due ? "true" : undefined}
-              className={`inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 text-sm ${
+              className={`rounded-control flex min-h-11 flex-col items-start justify-center border px-2.5 py-1 text-left text-sm ${
                 entry.due
                   ? "border-accent bg-accent-soft text-ink font-semibold"
                   : "border-rule-soft bg-sunken text-ink-muted"
               }`}
             >
-              <span className="max-w-[9rem] truncate">{entry.title}</span>
-              {entry.due && <span className="text-accent text-xs">{labels.quickDue}</span>}
+              <span className="max-w-[7rem] truncate leading-tight">{entry.title}</span>
+              {entry.due && (
+                <span className="text-accent text-[0.625rem] leading-tight font-normal">
+                  {labels.quickDue}
+                </span>
+              )}
             </button>
           ))}
         </div>
