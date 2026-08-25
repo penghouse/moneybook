@@ -28,6 +28,7 @@ export {
   type MonthlyBalanceSheet,
 } from "./monthly";
 export { getPeriodTotals, type PeriodTotal } from "./periods";
+export { getQuickEntries } from "./quick";
 export { getRunningBalances, type RunningBalance } from "./running";
 export {
   getTitleSuggestions,

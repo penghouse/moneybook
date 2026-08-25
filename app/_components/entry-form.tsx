@@ -5,12 +5,32 @@ import { unstable_rethrow, useRouter } from "next/navigation";
 import type { AccountGroup } from "@/db/schema";
 import { AccountCombobox, type ComboboxAccount } from "./account-combobox";
 import { useDialogClose } from "./dialog";
+import { findEntryBlocker } from "@/lib/entry-blockers";
+import type { QuickEntry } from "@/lib/quick-entries";
+import type { EntryRejection } from "../entry-actions";
 import { SubmitButton } from "./submit-button";
 import { buttonClass, controlClass, Label } from "./ui";
 import { matchesQuery } from "@/lib/hangul";
 import { convertMinorUnits, formatMoney, toMinorUnits } from "@/lib/money";
 
 export interface EntryFormLabels {
+  /** Why 저장 cannot be pressed. One per reason findEntryBlocker gives. */
+  blockedAccount: string;
+  blockedAmount: string;
+  /** '{currency}' is replaced. */
+  blockedRate: string;
+  /** '{name}' is replaced. */
+  blockedInactive: string;
+  blockedUnbalanced: string;
+  /** The heading over the one-tap repeats. */
+  quick: string;
+  /** Marks one this month has not had yet. */
+  quickDue: string;
+  /** What the server sent back when it refused the save. */
+  rejectedUnbalanced: string;
+  rejectedAccountMissing: string;
+  /** '{name}' is replaced. */
+  rejectedAccountInactive: string;
   date: string;
   title: string;
   memo: string;
@@ -47,7 +67,11 @@ interface Line {
   memo: string;
 }
 
-export type EntryFormAccount = ComboboxAccount;
+export interface EntryFormAccount extends ComboboxAccount {
+  /** Null on either end means unbounded. Absent means the same. */
+  activeFrom?: string | null;
+  activeTo?: string | null;
+}
 
 export interface TitleSuggestion {
   title: string;
@@ -118,9 +142,10 @@ export function EntryForm({
   labels,
   initial,
   suggestions = [],
+  quickEntries = [],
   afterSaveHref,
 }: {
-  action: (formData: FormData) => void | Promise<void>;
+  action: (formData: FormData) => Promise<EntryRejection | undefined>;
   accounts: EntryFormAccount[];
   baseCurrency: string;
   defaultDate: string;
@@ -129,6 +154,12 @@ export function EntryForm({
   initial?: EntryFormInitial;
   /** Recent 적요 with the accounts each was last posted between. */
   suggestions?: TitleSuggestion[];
+  /**
+   * One-tap repeats, worked out from the book. Empty on the edit form:
+   * a screen for correcting one transaction is not a screen for filing
+   * a different one.
+   */
+  quickEntries?: QuickEntry[];
   /**
    * Where to go once a save lands. Used by the duplicate flow to drop
    * `?duplicate=` from the URL: left there, the form would re-fill from
@@ -152,10 +183,17 @@ export function EntryForm({
   // written. Reloading showed it saved while the screen still said it
   // was saving.
   const [saved, dispatch] = useActionState(
-    async (state: { count: number; unconfirmed: boolean }, formData: FormData) => {
+    async (
+      state: { count: number; unconfirmed: boolean; rejection: EntryRejection | null },
+      formData: FormData,
+    ) => {
       try {
-        await action(formData);
-        return { count: state.count + 1, unconfirmed: false };
+        // A refusal comes back as a value, not a redirect. It used to
+        // navigate to /?error=…, and navigating remounted this form —
+        // every field blank, the save button off, and the entry gone.
+        const rejection = (await action(formData)) ?? null;
+        if (rejection) return { ...state, unconfirmed: false, rejection };
+        return { count: state.count + 1, unconfirmed: false, rejection: null };
       } catch (error) {
         // redirect() and notFound() travel as errors and belong to the
         // framework; swallowing them would break both.
@@ -163,10 +201,10 @@ export function EntryForm({
         // The re-read happens in an effect, not here: refreshing inside
         // the transition discards the state this returns, and the notice
         // never painted at all.
-        return { count: state.count, unconfirmed: true };
+        return { count: state.count, unconfirmed: true, rejection: null };
       }
     },
-    { count: 0, unconfirmed: false },
+    { count: 0, unconfirmed: false, rejection: null },
   );
   const submitCount = saved.count;
   const lastSubmitCount = useRef(0);
@@ -310,6 +348,71 @@ export function EntryForm({
     }
   }
 
+  /**
+   * Fills the whole thing in — the accounts *and* the amount.
+   *
+   * The 적요 suggestions deliberately leave the amount alone, because for
+   * a lunch it is the one part that differs. These are the other kind:
+   * 월세 and 통신비 repeat at the same figure, and typing it out again
+   * every month is exactly the work this is here to remove. It is a
+   * starting point, not a claim — the box is right there to correct.
+   */
+  function applyQuickEntry(entry: QuickEntry) {
+    setTitle(entry.title);
+    setTitleOpen(false);
+    setSharedAmount(entry.amountMajor ? String(entry.amountMajor) : "");
+
+    const left = lines.filter((l) => l.side === "left");
+    const right = lines.filter((l) => l.side === "right");
+    if (left.length !== 1 || right.length !== 1) return;
+
+    for (const [line, accountId] of [
+      [left[0], entry.leftAccountId],
+      [right[0], entry.rightAccountId],
+    ] as const) {
+      // Absent when the account has since closed, the same as a 적요
+      // suggestion: it is out of the picker, so putting its name in the
+      // box would offer something that cannot be saved.
+      const account = accounts.find((a) => a.id === accountId);
+      if (account) void handleAccountSelect(line.key, account);
+    }
+  }
+
+  /**
+   * The row of repeats, above the fields it fills.
+   *
+   * What is missing this month comes first and is marked, because it is
+   * the only part of the row with a deadline — and because forgetting,
+   * not typing, is what a standing payment actually costs you. Nothing
+   * is posted on its own: the book's rows stay things that happened, and
+   * pressing 저장 stays the reader's.
+   */
+  const quickRow =
+    quickEntries.length > 0 && !isEditing ? (
+      <div className="border-rule-soft border-b px-4 py-2.5">
+        <div className="text-ink-faint mb-1.5 text-xs tracking-wide">{labels.quick}</div>
+        <div className="flex flex-wrap gap-1.5" data-testid="quick-entries">
+          {quickEntries.map((entry) => (
+            <button
+              key={entry.title}
+              type="button"
+              onClick={() => applyQuickEntry(entry)}
+              data-testid="quick-entry"
+              data-due={entry.due ? "true" : undefined}
+              className={`inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 text-sm ${
+                entry.due
+                  ? "border-accent bg-accent-soft text-ink font-semibold"
+                  : "border-rule-soft bg-sunken text-ink-muted"
+              }`}
+            >
+              <span className="max-w-[9rem] truncate">{entry.title}</span>
+              {entry.due && <span className="text-accent text-xs">{labels.quickDue}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+    ) : null;
+
   const nameOfAccount = (id: string | null) => accounts.find((a) => a.id === id)?.name;
 
   /**
@@ -443,6 +546,41 @@ export function EntryForm({
   const isBalanced =
     allFilled && leftTotal !== null && rightTotal !== null && leftTotal === rightTotal;
 
+  /**
+   * Why the save button is off, in words.
+   *
+   * Disabled was the only feedback there was, and two of the reasons are
+   * invisible on screen: a leg whose exchange rate never arrived shows
+   * an amount and totals nothing, and a date outside an account's active
+   * window looks fine here and is refused by the server.
+   */
+  const accountsById = new Map(accounts.map((a) => [a.id, a]));
+  const blocker = findEntryBlocker({
+    lines,
+    baseCurrency,
+    date,
+    windowsByAccountId: new Map(
+      accounts.map((a) => [
+        a.id,
+        { activeFrom: a.activeFrom ?? null, activeTo: a.activeTo ?? null },
+      ]),
+    ),
+    balanced: isBalanced,
+    nameOf: (id) => accountsById.get(id)?.name ?? "",
+  });
+  const blockedMessage =
+    blocker === null
+      ? null
+      : blocker.kind === "account"
+        ? labels.blockedAccount
+        : blocker.kind === "amount"
+          ? labels.blockedAmount
+          : blocker.kind === "rate"
+            ? labels.blockedRate.replace("{currency}", blocker.currency)
+            : blocker.kind === "inactive"
+              ? labels.blockedInactive.replace("{name}", blocker.name)
+              : labels.blockedUnbalanced;
+
   const left = lines.find((l) => l.side === "left")!;
   const right = lines.find((l) => l.side === "right")!;
 
@@ -479,6 +617,33 @@ export function EntryForm({
   // Both layouts render it, so it is written once — the simple form is
   // the one this happens on most, and it is the one that had no notice
   // when the first version of this only patched the split view.
+  /**
+   * Shown only once the reader has started — an empty form saying
+   * 「계정을 고르세요」 before a finger has touched it is nagging, not
+   * help.
+   */
+  const started = lines.some((l) => l.accountId || l.amountStr) || !!title;
+  const blockedNotice =
+    blockedMessage && started ? (
+      <p role="status" data-testid="save-blocked" className="text-ink-muted px-1 text-xs">
+        {blockedMessage}
+      </p>
+    ) : null;
+
+  const rejectionNotice = saved.rejection ? (
+    <p
+      role="status"
+      data-testid="save-rejected"
+      className="bg-negative-soft text-negative rounded-control px-3 py-2 text-sm"
+    >
+      {saved.rejection.reason === "unbalanced"
+        ? labels.rejectedUnbalanced
+        : saved.rejection.reason === "account_missing"
+          ? labels.rejectedAccountMissing
+          : labels.rejectedAccountInactive.replace("{name}", saved.rejection.name ?? "")}
+    </p>
+  ) : null;
+
   const unconfirmedNotice = saved.unconfirmed ? (
     <p
       role="status"
@@ -494,7 +659,8 @@ export function EntryForm({
       <form action={dispatch} className="space-y-3">
         {formIdentityFields}
 
-        <div className="bg-card rounded-card">
+        <div className="bg-card rounded-card overflow-hidden">
+          {quickRow}
           {/* Date, title and amount share one row from md up; on a phone
               the date takes its own row and the other two split the next.
               One set of fields, not a mobile copy and a desktop copy —
@@ -596,13 +762,17 @@ export function EntryForm({
                 <SubmitButton
                   variant="primary"
                   full
-                  disabled={!isBalanced || (isEditing && !isDirty)}
+                  disabled={blocker !== null || (isEditing && !isDirty)}
                   pendingLabel={labels.saving}
                 >
                   {labels.save}
                 </SubmitButton>
               </div>
-              <div className="col-span-3">{unconfirmedNotice}</div>
+              <div className="col-span-3">
+                {blockedNotice}
+                {rejectionNotice}
+                {unconfirmedNotice}
+              </div>
             </div>
           </div>
 
@@ -636,6 +806,7 @@ export function EntryForm({
       {formIdentityFields}
 
       <div className="bg-card rounded-card overflow-hidden">
+        {quickRow}
         <div className="grid grid-cols-2 gap-3 px-4 py-3 md:grid-cols-[10.5rem_1fr_1fr]">
           <div className="min-w-0">
             <Label>{labels.date}</Label>
@@ -783,12 +954,14 @@ export function EntryForm({
         </div>
       </div>
 
+      {blockedNotice}
+      {rejectionNotice}
       {unconfirmedNotice}
 
       <SubmitButton
         variant="primary"
         full
-        disabled={!isBalanced || (isEditing && !isDirty)}
+        disabled={blocker !== null || (isEditing && !isDirty)}
         pendingLabel={labels.saving}
       >
         {labels.save}

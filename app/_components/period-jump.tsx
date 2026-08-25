@@ -1,8 +1,29 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { buttonClass, controlClass, Label } from "./ui";
+
+/**
+ * The same spinner LinkPending draws, for the two pickers that navigate
+ * through the router rather than through a `<Link>`.
+ *
+ * Fixed size and always rendered, opacity toggled: an indicator that
+ * appears out of nothing shifts the label it sits beside, and that label
+ * is between two arrows being tapped with a thumb.
+ */
+function PendingDot({ pending }: { pending: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-testid="jump-pending"
+      data-pending={pending ? "true" : undefined}
+      className={`border-rule border-t-accent inline-block size-3 shrink-0 rounded-full border-2 transition-opacity ${
+        pending ? "animate-spin opacity-100" : "opacity-0"
+      }`}
+    />
+  );
+}
 
 /**
  * The period label, made into a way of getting somewhere.
@@ -37,6 +58,10 @@ export function PeriodJump({
 }) {
   const router = useRouter();
   const [picking, setPicking] = useState(false);
+  // The bar changes the query string on the same route, so no segment
+  // changes and loading.tsx never fires. Without this the label just
+  // sits there while the next month is read.
+  const [pending, startTransition] = useTransition();
   const ref = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -60,7 +85,7 @@ export function PeriodJump({
       return;
     }
     setPicking(false);
-    router.push(hrefTemplate.replace("{value}", next));
+    startTransition(() => router.push(hrefTemplate.replace("{value}", next)));
   };
 
   if (!picking) {
@@ -70,9 +95,10 @@ export function PeriodJump({
         onClick={() => setPicking(true)}
         aria-label={label}
         data-testid="period-jump"
-        className="tnum hover:text-accent mx-auto min-h-12 px-3 font-semibold underline decoration-dotted underline-offset-4"
+        className="tnum hover:text-accent mx-auto inline-flex min-h-12 items-center gap-1.5 px-3 font-semibold underline decoration-dotted underline-offset-4"
       >
         {value}
+        <PendingDot pending={pending} />
       </button>
     );
   }
@@ -149,6 +175,7 @@ export function RangeJump({
   closeLabel: string;
 }) {
   const router = useRouter();
+  const [pending, startTransition] = useTransition();
   const dialog = useRef<HTMLDialogElement>(null);
   const [nextFrom, setNextFrom] = useState(from);
   const [nextTo, setNextTo] = useState(to);
@@ -159,7 +186,7 @@ export function RangeJump({
     // Picked backwards is a slip, not a range: the reader means the two
     // dates they chose, in the order that makes a window.
     const [a, b] = nextFrom > nextTo ? [nextTo, nextFrom] : [nextFrom, nextTo];
-    router.push(hrefTemplate.replace("{from}", a).replace("{to}", b));
+    startTransition(() => router.push(hrefTemplate.replace("{from}", a).replace("{to}", b)));
   };
 
   return (
@@ -176,9 +203,10 @@ export function RangeJump({
         }}
         aria-label={label}
         data-testid="range-jump"
-        className="tnum hover:text-accent mx-auto min-h-12 px-3 text-sm font-semibold underline decoration-dotted underline-offset-4"
+        className="tnum hover:text-accent mx-auto inline-flex min-h-12 items-center gap-1.5 px-3 text-sm font-semibold underline decoration-dotted underline-offset-4"
       >
         {value}
+        <PendingDot pending={pending} />
       </button>
 
       <dialog

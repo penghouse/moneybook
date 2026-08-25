@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LinkPending } from "./link-pending";
 import { PeriodJump, RangeJump } from "./period-jump";
 import { buttonClass, Card } from "./ui";
 
@@ -45,6 +46,7 @@ export function PeriodUnits({
           className={`${buttonClass(unit.active ? "primary" : "ghost")} flex-1 justify-center`}
         >
           {unit.label}
+          <LinkPending />
         </Link>
       ))}
     </div>
@@ -94,6 +96,7 @@ export function PeriodNav({
       <div className="flex items-center px-1 py-1">
         <Link href={prevHref} className={buttonClass("nav")}>
           ← {prevLabel}
+          <LinkPending />
         </Link>
         {jump?.kind === "period" ? (
           <PeriodJump value={label} {...jump} />
@@ -104,6 +107,7 @@ export function PeriodNav({
         )}
         <Link href={nextHref} className={buttonClass("nav")}>
           {nextLabel} →
+          <LinkPending />
         </Link>
       </div>
       {units && (

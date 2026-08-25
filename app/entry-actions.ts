@@ -1,7 +1,6 @@
 "use server";
 
 import { and, eq, inArray } from "drizzle-orm";
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { accounts, transactionLines, transactions } from "@/db/schema";
@@ -34,6 +33,38 @@ type LineWithAccount = BalanceLineInput & { accountId: string; memo: string | nu
  * thing a backup format has to guarantee. Import is a replay of what
  * already happened; this is the gate on what happens next.
  */
+/**
+ * What the server refused, said in a way the form can show without
+ * losing what was typed.
+ *
+ * These used to be `redirect("/?error=…")`. The redirect worked — the
+ * banner appeared — but navigating remounted the entry form, so every
+ * field went back to blank and the save button switched off with it.
+ * The reader had filled in a payment, pressed 저장, and watched the whole
+ * thing disappear behind a message about one field.
+ */
+export interface EntryRejection {
+  reason: "account_missing" | "account_inactive" | "unbalanced";
+  /** The account the reason is about, where there is one. */
+  name?: string;
+}
+
+class RejectedEntry extends Error {
+  constructor(readonly detail: EntryRejection) {
+    super(detail.reason);
+  }
+}
+
+/** Runs the write and turns a refusal back into a value. */
+async function rejectable(run: () => Promise<void>): Promise<EntryRejection | undefined> {
+  try {
+    await run();
+  } catch (error) {
+    if (error instanceof RejectedEntry) return error.detail;
+    throw error;
+  }
+}
+
 async function buildLines(
   formData: FormData,
   sectionId: string,
@@ -70,10 +101,10 @@ async function buildLines(
       // here as an id that no longer resolves. Throwing put the whole
       // screen behind "A server error occurred", which says nothing
       // about the one field that needs fixing and loses the entry.
-      redirect("/?error=account_missing");
+      throw new RejectedEntry({ reason: "account_missing" });
     }
     if (!isActiveOn(account, date)) {
-      redirect(`/?error=account_inactive&name=${encodeURIComponent(account.name)}`);
+      throw new RejectedEntry({ reason: "account_inactive", name: account.name });
     }
 
     const amountMajor = Number(amounts[i]);
@@ -114,78 +145,29 @@ function readHeader(formData: FormData) {
   };
 }
 
-export async function createTransactionAction(formData: FormData) {
-  const { section } = await currentSection();
+export async function createTransactionAction(
+  formData: FormData,
+): Promise<EntryRejection | undefined> {
+  return rejectable(async () => {
+    const { section } = await currentSection();
 
-  const header = readHeader(formData);
-  const lines = await buildLines(formData, section.id, section.baseCurrency, header.date);
+    const header = readHeader(formData);
+    const lines = await buildLines(formData, section.id, section.baseCurrency, header.date);
 
-  try {
-    assertBalanced(lines, section.baseCurrency, "normal");
-  } catch {
-    redirect("/?error=unbalanced");
-  }
+    try {
+      assertBalanced(lines, section.baseCurrency, "normal");
+    } catch {
+      throw new RejectedEntry({ reason: "unbalanced" });
+    }
 
-  const [tx] = await db
-    .insert(transactions)
-    .values({ sectionId: section.id, ...header })
-    .returning();
+    const [tx] = await db
+      .insert(transactions)
+      .values({ sectionId: section.id, ...header })
+      .returning();
 
-  await db.insert(transactionLines).values(
-    lines.map((line, i) => ({
-      transactionId: tx.id,
-      lineOrder: i,
-      side: line.side,
-      accountId: line.accountId,
-      currency: line.currency,
-      amount: line.amount,
-      rate: line.rate,
-      baseAmount: line.baseAmount,
-      memo: line.memo,
-    })),
-  );
-
-  revalidatePath("/");
-
-  // No redirect here, deliberately. `redirect()` throws, and this action
-  // is awaited inside the entry form's useActionState reducer, where the
-  // throw never resolves the transition — the save button sat on
-  // 저장 중… forever. Dropping `?duplicate=` afterwards is the client's
-  // job instead; see EntryForm's afterSaveHref.
-}
-
-export async function updateTransactionAction(formData: FormData) {
-  const { section } = await currentSection();
-
-  const transactionId = formData.get("transactionId");
-  if (typeof transactionId !== "string") throw new Error("Missing transactionId");
-
-  const existing = await db.query.transactions.findFirst({
-    where: eq(transactions.id, transactionId),
-  });
-  if (!existing || existing.sectionId !== section.id) {
-    throw new Error("Transaction not found");
-  }
-
-  const header = readHeader(formData);
-  const lines = await buildLines(formData, section.id, section.baseCurrency, header.date);
-
-  try {
-    assertBalanced(lines, section.baseCurrency, existing.kind);
-  } catch {
-    redirect("/?error=unbalanced");
-  }
-
-  await db.transaction(async (tx) => {
-    await tx
-      .update(transactions)
-      .set({ ...header, updatedAt: new Date() })
-      .where(eq(transactions.id, transactionId));
-
-    await tx.delete(transactionLines).where(eq(transactionLines.transactionId, transactionId));
-    await tx.insert(transactionLines).values(
+    await db.insert(transactionLines).values(
       lines.map((line, i) => ({
-        transactionId,
+        transactionId: tx.id,
         lineOrder: i,
         side: line.side,
         accountId: line.accountId,
@@ -196,9 +178,67 @@ export async function updateTransactionAction(formData: FormData) {
         memo: line.memo,
       })),
     );
-  });
 
-  revalidatePath("/");
+    revalidatePath("/");
+
+    // Nothing throws its way out of here on the happy path either.
+    // `redirect()` throws, and this action is awaited inside the entry
+    // form's useActionState reducer, where the throw never resolves the
+    // transition — the save button sat on 저장 중… forever. Dropping
+    // `?duplicate=` afterwards is the client's job instead; see
+    // EntryForm's afterSaveHref.
+  });
+}
+
+export async function updateTransactionAction(
+  formData: FormData,
+): Promise<EntryRejection | undefined> {
+  return rejectable(async () => {
+    const { section } = await currentSection();
+
+    const transactionId = formData.get("transactionId");
+    if (typeof transactionId !== "string") throw new Error("Missing transactionId");
+
+    const existing = await db.query.transactions.findFirst({
+      where: eq(transactions.id, transactionId),
+    });
+    if (!existing || existing.sectionId !== section.id) {
+      throw new Error("Transaction not found");
+    }
+
+    const header = readHeader(formData);
+    const lines = await buildLines(formData, section.id, section.baseCurrency, header.date);
+
+    try {
+      assertBalanced(lines, section.baseCurrency, existing.kind);
+    } catch {
+      throw new RejectedEntry({ reason: "unbalanced" });
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(transactions)
+        .set({ ...header, updatedAt: new Date() })
+        .where(eq(transactions.id, transactionId));
+
+      await tx.delete(transactionLines).where(eq(transactionLines.transactionId, transactionId));
+      await tx.insert(transactionLines).values(
+        lines.map((line, i) => ({
+          transactionId,
+          lineOrder: i,
+          side: line.side,
+          accountId: line.accountId,
+          currency: line.currency,
+          amount: line.amount,
+          rate: line.rate,
+          baseAmount: line.baseAmount,
+          memo: line.memo,
+        })),
+      );
+    });
+
+    revalidatePath("/");
+  });
 }
 
 export async function deleteTransactionAction(formData: FormData) {

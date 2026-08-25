@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../db/client";
-import { accounts, exchangeRates, sections } from "../db/schema";
+import { accounts, exchangeRates, sections, transactionLines, transactions } from "../db/schema";
 import { today } from "../lib/date";
 import { getOrCreateSection } from "../lib/current-section";
 import { seedSession, SESSION_COOKIE_NAME } from "./auth-helper";
@@ -461,9 +461,13 @@ test.describe("entry", () => {
     await form.locator('input[type="number"]').first().fill("4000");
     await form.locator('input[name="title"]').fill("같은 거래");
     await form.getByRole("button", { name: "저장" }).click();
-    await expect(page.getByText("같은 거래")).toHaveCount(1);
+    // Counted in the list, not page-wide: once it has been entered twice
+    // the 자주 쓰는 항목 row offers it as well, and that is a control
+    // rather than a record.
+    const rows = page.locator("main li").filter({ hasText: "같은 거래" });
+    await expect(rows).toHaveCount(1);
 
-    await page.getByText("같은 거래").click();
+    await rows.first().click();
     const dialog = page.getByRole("dialog");
     await dialog.getByTestId("duplicate").click();
 
@@ -472,7 +476,7 @@ test.describe("entry", () => {
     const copy = dialog.locator("form").first();
     await expect(copy.getByRole("button", { name: "저장" })).toBeEnabled();
     await copy.getByRole("button", { name: "저장" }).click();
-    await expect(page.getByText("같은 거래")).toHaveCount(2);
+    await expect(rows).toHaveCount(2);
   });
 
   test("the list shows what was written on a transaction", async ({ page }) => {
@@ -569,6 +573,125 @@ test.describe("entry", () => {
     await expect(page.locator("main li").filter({ hasText: "점심" })).toHaveCount(2);
     // The stored 적요 keeps whatever was typed; only the suggestion is bare.
     await expect(page.getByText("점심 (회사 앞)")).toBeVisible();
+  });
+
+  test("a dead save button says why, and comes back when the reason is fixed", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const food = (await db.query.accounts.findFirst({
+      where: and(eq(accounts.sectionId, section.id), eq(accounts.name, "식비")),
+    }))!;
+    // Opened this month, so the picker — which offers what is usable
+    // *today* — still lists it. The date on the form is the one that has
+    // to agree, and it is free to be any day.
+    await db.update(accounts).set({ activeFrom: "2026-08-01" }).where(eq(accounts.id, food.id));
+
+    await page.goto("/");
+    const form = createForm(page);
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("12000");
+    await form.locator('input[name="title"]').fill("커피");
+    await form.locator('input[name="date"]').fill("2026-07-15");
+
+    // Disabled was the only feedback there was; now it is disabled *and*
+    // it names the account and the field to fix.
+    const save = form.getByRole("button", { name: "저장" });
+    await expect(save).toBeDisabled();
+    await expect(page.getByTestId("save-blocked")).toContainText("식비");
+
+    // And nothing was lost while it was refusing.
+    await form.locator('input[name="date"]').fill("2026-08-15");
+    await expect(save).toBeEnabled();
+    await expect(page.getByTestId("save-blocked")).toHaveCount(0);
+    await expect(form.locator('input[type="number"]').first()).toHaveValue("12000");
+  });
+
+  test("a save the server refuses keeps every field it was given", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const food = (await db.query.accounts.findFirst({
+      where: and(eq(accounts.sectionId, section.id), eq(accounts.name, "식비")),
+    }))!;
+
+    await page.goto("/");
+    const form = createForm(page);
+    await pickAccount(form, 0, "식비");
+    await pickAccount(form, 1, "신용카드");
+    await form.locator('input[type="number"]').first().fill("12000");
+    await form.locator('input[name="title"]').fill("커피");
+
+    // Gone from under an open page — the one refusal the form cannot see
+    // coming. It used to redirect to /?error=…, and the redirect
+    // remounted the form: every field blank and the button off, with a
+    // message about one of them.
+    await db.delete(accounts).where(eq(accounts.id, food.id));
+
+    const save = form.getByRole("button", { name: "저장" });
+    await save.click();
+    await expect(page.getByTestId("save-rejected")).toBeVisible();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(form.locator('input[type="number"]').first()).toHaveValue("12000");
+    await expect(form.locator('input[name="title"]')).toHaveValue("커피");
+    await expect(save).toBeEnabled();
+  });
+
+  test("적요별 비중 stays on screen in a month too simple to draw a share of", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const food = await byName("식비");
+    const card = await byName("신용카드");
+
+    const post = async (date: string, title: string, amount: number) => {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date, title })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: food.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+          lineOrder: 0,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: card.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+          lineOrder: 1,
+        },
+      ]);
+    };
+
+    // August has two 적요; July has one.
+    await post("2026-08-05", "장보기", 40_000);
+    await post("2026-08-12", "커피", 6_000);
+    await post("2026-07-05", "장보기", 30_000);
+
+    const url = (from: string, to: string) => `/?accountId=${food.id}&from=${from}&to=${to}`;
+
+    await page.goto(url("2026-08-01", "2026-08-31"));
+    await expect(page.getByText("적요별 비중", { exact: true })).toBeVisible();
+    await expect(page.getByText("장보기").first()).toBeVisible();
+
+    // A single 적요 is a bar filling the width, which says nothing — so
+    // the figures are listed instead. What it must not do is vanish:
+    // the section being there in a busy month and gone in a quiet one
+    // reads as the screen having lost something.
+    await page.goto(url("2026-07-01", "2026-07-31"));
+    const share = page.locator("section").filter({ hasText: "적요별 비중" }).last();
+    await expect(page.getByText("적요별 비중", { exact: true })).toBeVisible();
+    await expect(share).toContainText("장보기");
+    await expect(share).toContainText("₩30,000");
   });
 
   test("deleting a transaction removes it from the list", async ({ page }) => {
