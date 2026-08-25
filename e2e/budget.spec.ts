@@ -448,6 +448,31 @@ test.describe("budget", () => {
     await expect(page).toHaveURL(/period=2030/);
   });
 
+  test("stepping a month says a press registered, even before the next one arrives", async ({
+    page,
+  }) => {
+    await page.goto("/budget?period=2026-08");
+
+    // loading.tsx covers a change of route. This is not one — the bar
+    // changes the query string on the same route, so no segment changes
+    // and no boundary re-suspends. Without the arrow saying so, the
+    // screen sits there for as long as the database takes.
+    await page.route("**/*", async (route) => {
+      if (route.request().headers()["rsc"] !== undefined) {
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      await route.continue();
+    });
+
+    await page.getByRole("link", { name: /이전 달/ }).click();
+    await expect(page.locator('[data-testid="link-pending"][data-pending]')).toHaveCount(1);
+
+    await page.unroute("**/*");
+    await expect(page).toHaveURL(/period=2026-07/);
+    // And it stops once the month is on screen.
+    await expect(page.locator('[data-testid="link-pending"][data-pending]')).toHaveCount(0);
+  });
+
   test("month navigation keeps the selected month in the URL", async ({ page }) => {
     await page.goto("/budget");
     await page.getByRole("link", { name: /다음 달/ }).click();

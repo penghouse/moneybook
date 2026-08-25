@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/client";
-import { accounts, exchangeRates, sections } from "../db/schema";
+import { accounts, exchangeRates, sections, transactionLines, transactions } from "../db/schema";
 import { today } from "../lib/date";
 import { getOrCreateSection } from "../lib/current-section";
 import { seedSession, SESSION_COOKIE_NAME } from "./auth-helper";
@@ -632,6 +632,66 @@ test.describe("entry", () => {
     await expect(form.locator('input[type="number"]').first()).toHaveValue("12000");
     await expect(form.locator('input[name="title"]')).toHaveValue("커피");
     await expect(save).toBeEnabled();
+  });
+
+  test("적요별 비중 stays on screen in a month too simple to draw a share of", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const food = await byName("식비");
+    const card = await byName("신용카드");
+
+    const post = async (date: string, title: string, amount: number) => {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date, title })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: food.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+          lineOrder: 0,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: card.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+          lineOrder: 1,
+        },
+      ]);
+    };
+
+    // August has two 적요; July has one.
+    await post("2026-08-05", "장보기", 40_000);
+    await post("2026-08-12", "커피", 6_000);
+    await post("2026-07-05", "장보기", 30_000);
+
+    const url = (from: string, to: string) => `/?accountId=${food.id}&from=${from}&to=${to}`;
+
+    await page.goto(url("2026-08-01", "2026-08-31"));
+    await expect(page.getByText("적요별 비중", { exact: true })).toBeVisible();
+    await expect(page.getByText("장보기").first()).toBeVisible();
+
+    // A single 적요 is a bar filling the width, which says nothing — so
+    // the figures are listed instead. What it must not do is vanish:
+    // the section being there in a busy month and gone in a quiet one
+    // reads as the screen having lost something.
+    await page.goto(url("2026-07-01", "2026-07-31"));
+    const share = page.locator("section").filter({ hasText: "적요별 비중" }).last();
+    await expect(page.getByText("적요별 비중", { exact: true })).toBeVisible();
+    await expect(share).toContainText("장보기");
+    await expect(share).toContainText("₩30,000");
   });
 
   test("deleting a transaction removes it from the list", async ({ page }) => {

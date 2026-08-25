@@ -286,6 +286,22 @@ export default async function Home({
   const showShares = counterpartyTotal > 0 && counterparties.every((c) => c.amount > 0);
 
   /**
+   * Whether the 적요 figures can be drawn as shares of each other.
+   *
+   * A share is only defined over same-signed amounts, so a month with a
+   * refund in it cannot have one — and a single 적요 is a bar filling
+   * the width, which says "all of it" at the cost of a whole card.
+   *
+   * Both fall back to the figures rather than to nothing. Vanishing was
+   * the complaint: the section was there in a busy month and gone in a
+   * quiet one, which reads as the screen having lost something rather
+   * than as the month having been simple.
+   */
+  const titleTotal = titleShares.reduce((sum, s) => sum + s.amount, 0);
+  const showTitleShares =
+    titleShares.length > 1 && titleTotal > 0 && titleShares.every((s) => s.amount > 0);
+
+  /**
    * The entry form's picker offers what can be posted to *today*, but a
    * form prefilled from an old transaction must still be able to show
    * the accounts that transaction used — including one closed since.
@@ -637,19 +653,37 @@ export default async function Home({
           </Card>
         )}
 
-        {/* A share is only defined over same-signed amounts, so a month
-            with a refund in it falls back to the list of figures rather
-            than drawing a bar whose length lies. */}
-        {titleShares.length > 1 && titleShares.every((s) => s.amount > 0) && (
+        {titleShares.length > 0 && (
           <section className="mb-3">
-            <SectionLabel>{t("entry.share")}</SectionLabel>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+              <SectionLabel>{t("entry.share")}</SectionLabel>
+              <span className="tnum text-ink-faint text-xs">
+                {formatMoney(titleTotal, filtered!.currency, locale)}
+              </span>
+            </div>
             <Card>
-              <CompositionChart
-                slices={titleShares.map((s) => ({ id: s.name, name: s.name, amount: s.amount }))}
-                currency={filtered!.currency}
-                locale={locale}
-                shareLabel={t("entry.share")}
-              />
+              {showTitleShares ? (
+                <CompositionChart
+                  slices={titleShares.map((s) => ({ id: s.name, name: s.name, amount: s.amount }))}
+                  currency={filtered!.currency}
+                  locale={locale}
+                  shareLabel={t("entry.share")}
+                />
+              ) : (
+                // The same fallback 거래처별 잔액 above already uses: every
+                // 적요 is still named with its figure, which is what was
+                // asked for — only the bar, which needs shares to be
+                // meaningful, is left out.
+                titleShares.map((share) => (
+                  <KeyValueRow
+                    key={share.name}
+                    label={share.name}
+                    value={
+                      <Money amount={share.amount} currency={filtered!.currency} locale={locale} />
+                    }
+                  />
+                ))
+              )}
             </Card>
           </section>
         )}
