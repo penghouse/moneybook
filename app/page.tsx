@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { and, asc, desc, eq, exists, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db/client";
@@ -33,6 +34,7 @@ import {
   getTitleSuggestions,
 } from "@/lib/ledger";
 import { formatMoney, toMajorUnits } from "@/lib/money";
+import { parseHidden, QUICK_COLLAPSED_COOKIE, QUICK_HIDDEN_COOKIE } from "@/lib/quick-prefs";
 import { collectTags, normalizeTag } from "@/lib/tags";
 import { CompositionChart } from "./_components/composition-chart";
 import { DialogActionForm, RowDialog } from "./_components/dialog";
@@ -73,6 +75,8 @@ export default async function Home({
   }>;
 }) {
   const { section, t, locale } = await currentSection();
+  const currentMonth = yearMonthOf(today(section.timezone));
+  const quickCookies = await cookies();
   const { from, to, accountId, q, tag: tagParam } = await searchParams;
   const tag = normalizeTag(tagParam);
 
@@ -102,10 +106,7 @@ export default async function Home({
     // 월세 moved between the same two accounts for the same figure six
     // months running, and asking the reader to write that down again in
     // a settings screen would be asking them to repeat themselves.
-    getQuickEntries(db, {
-      sectionId: section.id,
-      currentMonth: yearMonthOf(today(section.timezone)),
-    }),
+    getQuickEntries(db, { sectionId: section.id, currentMonth }),
   ]);
 
   // Both lists read in the book's own order — 분류 first, then the order
@@ -123,6 +124,8 @@ export default async function Home({
     blockedUnbalanced: t("entry.blockedUnbalanced"),
     quick: t("entry.quick"),
     quickDue: t("entry.quickDue"),
+    quickHide: t("entry.quickHide"),
+    quickRestore: t("entry.quickRestore"),
     rejectedUnbalanced: t("entry.unbalancedError"),
     rejectedAccountMissing: t("entry.accountMissingError"),
     rejectedAccountInactive: t("entry.accountInactiveError"),
@@ -456,6 +459,12 @@ export default async function Home({
             labels={labels}
             suggestions={suggestions}
             quickEntries={quickEntries}
+            currentMonth={currentMonth}
+            // Read here rather than restored on the client, so the row
+            // arrives folded — or short a chip — instead of rearranging
+            // itself after hydration.
+            quickHidden={parseHidden(quickCookies.get(QUICK_HIDDEN_COOKIE)?.value, currentMonth)}
+            quickCollapsed={quickCookies.get(QUICK_COLLAPSED_COOKIE)?.value === "1"}
           />
         </div>
       )}

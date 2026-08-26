@@ -7,6 +7,7 @@ import { AccountCombobox, type ComboboxAccount } from "./account-combobox";
 import { useDialogClose } from "./dialog";
 import { findEntryBlocker } from "@/lib/entry-blockers";
 import type { QuickEntry } from "@/lib/quick-entries";
+import { QUICK_COLLAPSED_COOKIE, QUICK_HIDDEN_COOKIE, serializeHidden } from "@/lib/quick-prefs";
 import type { EntryRejection } from "../entry-actions";
 import { SubmitButton } from "./submit-button";
 import { buttonClass, controlClass, Label } from "./ui";
@@ -26,6 +27,10 @@ export interface EntryFormLabels {
   quick: string;
   /** Marks one this month has not had yet. */
   quickDue: string;
+  /** What a long press does, for the screen reader and the title. */
+  quickHide: string;
+  /** Brings back everything put away this month. */
+  quickRestore: string;
   /** What the server sent back when it refused the save. */
   rejectedUnbalanced: string;
   rejectedAccountMissing: string;
@@ -78,6 +83,9 @@ export interface TitleSuggestion {
   leftAccountId: string | null;
   rightAccountId: string | null;
 }
+
+/** A year, so a choice survives being away from the app for a while. */
+const COOKIE_KEEP = `path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
 
 let keySeq = 0;
 function newKey() {
@@ -143,6 +151,9 @@ export function EntryForm({
   initial,
   suggestions = [],
   quickEntries = [],
+  currentMonth = "",
+  quickHidden = [],
+  quickCollapsed = false,
   afterSaveHref,
 }: {
   action: (formData: FormData) => Promise<EntryRejection | undefined>;
@@ -160,6 +171,12 @@ export function EntryForm({
    * a different one.
    */
   quickEntries?: QuickEntry[];
+  /** 'YYYY-MM'. What a hide is scoped to, and what expires it. */
+  currentMonth?: string;
+  /** Chips put away for this month, from the cookie. */
+  quickHidden?: readonly string[];
+  /** Whether the row arrived folded, from the cookie. */
+  quickCollapsed?: boolean;
   /**
    * Where to go once a save lands. Used by the duplicate flow to drop
    * `?duplicate=` from the URL: left there, the form would re-fill from
@@ -378,6 +395,56 @@ export function EntryForm({
     }
   }
 
+  // Folding and hiding are the reader's, and both are kept in cookies so
+  // the row arrives the way they left it rather than rearranging itself
+  // after hydration.
+  const [collapsed, setCollapsed] = useState(quickCollapsed);
+  const [hidden, setHidden] = useState<readonly string[]>(quickHidden);
+  const held = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fired = useRef(false);
+
+  // Persisted from an effect rather than from the handlers: the state is
+  // what the row renders from, and one of the three ways to change it —
+  // the press-and-hold — fires from a timer rather than from an event,
+  // so writing at each call site would mean three writes and one of them
+  // outside a handler.
+  useEffect(() => {
+    document.cookie = `${QUICK_HIDDEN_COOKIE}=${serializeHidden(currentMonth, hidden)}; ${COOKIE_KEEP}`;
+  }, [currentMonth, hidden]);
+
+  useEffect(() => {
+    document.cookie = `${QUICK_COLLAPSED_COOKIE}=${collapsed ? "1" : "0"}; ${COOKIE_KEEP}`;
+  }, [collapsed]);
+
+  /**
+   * Put a chip away until next month.
+   *
+   * A press and hold, because the short press is already the thing the
+   * chip is for and a second control on each one would cost more width
+   * than the chip has. Held rather than swiped: a swipe inside a row
+   * that itself scrolls sideways is a gesture the row cannot reliably
+   * tell from a scroll.
+   */
+  const hide = (title: string) => {
+    if (!hidden.includes(title)) setHidden([...hidden, title]);
+  };
+
+  const holdToHide = {
+    onPointerDown: (title: string) => {
+      fired.current = false;
+      held.current = setTimeout(() => {
+        fired.current = true;
+        hide(title);
+      }, 500);
+    },
+    release: () => {
+      if (held.current) clearTimeout(held.current);
+      held.current = null;
+    },
+  };
+
+  const visibleQuick = quickEntries.filter((entry) => !hidden.includes(entry.title));
+
   /**
    * The row of repeats, above the fields it fills.
    *
@@ -390,42 +457,91 @@ export function EntryForm({
   const quickRow =
     quickEntries.length > 0 && !isEditing ? (
       <div className="border-rule-soft border-b px-4 py-2.5">
-        <div className="text-ink-faint mb-1.5 text-xs tracking-wide">{labels.quick}</div>
-        {/* Stacked, not side by side: the mark beside the name doubled
-            the width of the one chip the reader most wants to hit, and a
-            row of eight of them ran off the screen. Under the name it
-            costs a line the row already has — the chips stretch to the
-            tallest — and none of the width.
- 
-            Equal widths filling each line, rather than each chip taking
-            what its name happens to need: a ragged right edge over two
-            lines reads as a list that ran out, and the widths carried no
-            meaning anyway. `basis-0` is what makes them equal; the
-            min-width is what makes the line wrap rather than squeezing
-            all eight onto one. */}
-        <div className="flex flex-wrap items-stretch gap-1.5" data-testid="quick-entries">
-          {quickEntries.map((entry) => (
-            <button
-              key={entry.title}
-              type="button"
-              onClick={() => applyQuickEntry(entry)}
-              data-testid="quick-entry"
-              data-due={entry.due ? "true" : undefined}
-              className={`rounded-control flex min-h-11 min-w-[4.5rem] flex-1 basis-0 flex-col items-center justify-center border px-2 py-1 text-center text-sm ${
-                entry.due
-                  ? "border-accent bg-accent-soft text-ink font-semibold"
-                  : "border-rule-soft bg-sunken text-ink-muted"
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setCollapsed(!collapsed);
+            }}
+            aria-expanded={!collapsed}
+            data-testid="quick-fold"
+            className="text-ink-faint hover:text-ink -my-1 -ml-1 inline-flex min-h-11 items-center gap-1.5 py-1 pr-2 pl-1 text-xs tracking-wide"
+          >
+            <span
+              aria-hidden="true"
+              className={`shrink-0 text-[9px] leading-none transition-transform ${
+                collapsed ? "" : "rotate-90"
               }`}
             >
-              <span className="w-full truncate leading-tight">{entry.title}</span>
-              {entry.due && (
-                <span className="text-accent text-[0.625rem] leading-tight font-normal">
-                  {labels.quickDue}
-                </span>
-              )}
+              ▶
+            </span>
+            {labels.quick}
+          </button>
+          {!collapsed && hidden.length > 0 && (
+            // The only way back from a long press, and the only sign
+            // that anything was put away at all. Gone once the list is
+            // empty, and gone by itself next month.
+            <button
+              type="button"
+              onClick={() => setHidden([])}
+              data-testid="quick-restore"
+              className="text-accent -my-1 ml-auto inline-flex min-h-11 items-center py-1 pl-2 text-xs"
+            >
+              {labels.quickRestore}
             </button>
-          ))}
+          )}
         </div>
+
+        {!collapsed && (
+          <div className="flex flex-wrap items-stretch gap-1.5" data-testid="quick-entries">
+            {visibleQuick.map((entry) => (
+              <button
+                key={entry.title}
+                type="button"
+                onClick={() => {
+                  // The hold already did something; the release that
+                  // ends it must not also fill the form in.
+                  if (fired.current) return;
+                  applyQuickEntry(entry);
+                }}
+                onPointerDown={() => holdToHide.onPointerDown(entry.title)}
+                onPointerUp={holdToHide.release}
+                onPointerLeave={holdToHide.release}
+                onPointerCancel={holdToHide.release}
+                // A long press on a button raises the platform's own menu
+                // on both phones and desktops, over the top of ours.
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  hide(entry.title);
+                }}
+                // The keyboard's version of the same gesture: a press and
+                // hold is not reachable without a pointer, and putting a
+                // chip away should not need one.
+                onKeyDown={(e) => {
+                  if (e.key === "Delete" || e.key === "Backspace") {
+                    e.preventDefault();
+                    hide(entry.title);
+                  }
+                }}
+                title={labels.quickHide}
+                data-testid="quick-entry"
+                data-due={entry.due ? "true" : undefined}
+                className={`rounded-control flex min-h-11 min-w-[4.5rem] flex-1 basis-0 touch-none flex-col items-center justify-center border px-2 py-1 text-center text-sm select-none ${
+                  entry.due
+                    ? "border-accent bg-accent-soft text-ink font-semibold"
+                    : "border-rule-soft bg-sunken text-ink-muted"
+                }`}
+              >
+                <span className="w-full truncate leading-tight">{entry.title}</span>
+                {entry.due && (
+                  <span className="text-accent text-[0.625rem] leading-tight font-normal">
+                    {labels.quickDue}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     ) : null;
 

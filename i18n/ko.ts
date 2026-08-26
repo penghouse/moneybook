@@ -180,6 +180,8 @@ const ko = {
   "entry.filters": "검색·필터",
   "entry.quick": "자주 쓰는 항목",
   "entry.quickDue": "미입력",
+  "entry.quickHide": "길게 누르면 이번 달은 숨깁니다",
+  "entry.quickRestore": "숨긴 항목 보이기",
   "entry.blockedAccount": "계정을 목록에서 골라 주세요.",
   "entry.blockedAmount": "금액을 넣어 주세요.",
   "entry.blockedRate":

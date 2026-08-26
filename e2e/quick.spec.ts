@@ -137,6 +137,57 @@ test.describe("quick entries", () => {
     for (const box of boxes) expect(box.height).toBeGreaterThanOrEqual(44);
   });
 
+  test("a chip nobody needs this month is put away with a long press", async ({ page }) => {
+    await seedHistory(currentUserId);
+    await page.goto("/");
+
+    const bill = () => page.getByTestId("quick-entry").filter({ hasText: "통신비" });
+    await expect(bill()).toBeVisible();
+
+    // Held, not tapped: the short press is already what the chip is for.
+    const box = (await bill().boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(700);
+    await page.mouse.up();
+
+    await expect(bill()).toHaveCount(0);
+    // And the hold did not also fill the form in on the way past.
+    await expect(page.locator("main form").first().locator('input[name="title"]')).toHaveValue("");
+
+    // It stays away across a reload — this is a choice, not a filter.
+    await page.reload();
+    await expect(bill()).toHaveCount(0);
+
+    // With the only way back on screen for as long as anything is away.
+    await page.getByTestId("quick-restore").click();
+    await expect(bill()).toBeVisible();
+    await expect(page.getByTestId("quick-restore")).toHaveCount(0);
+  });
+
+  test("the whole row folds behind its heading", async ({ page }) => {
+    await seedHistory(currentUserId);
+    await page.goto("/");
+
+    const fold = page.getByTestId("quick-fold");
+    await expect(page.getByTestId("quick-entries")).toBeVisible();
+    await expect(fold).toHaveAttribute("aria-expanded", "true");
+
+    await fold.click();
+    await expect(page.getByTestId("quick-entries")).toHaveCount(0);
+    // The heading stays, or there would be no way back.
+    await expect(fold).toBeVisible();
+
+    // Folded is a choice too, and it survives the navigation that saving
+    // an entry causes.
+    await page.reload();
+    await expect(page.getByTestId("quick-fold")).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByTestId("quick-entries")).toHaveCount(0);
+
+    await page.getByTestId("quick-fold").click();
+    await expect(page.getByTestId("quick-entries")).toBeVisible();
+  });
+
   test("the mark comes off once this month has one", async ({ page }) => {
     await seedHistory(currentUserId);
     await page.goto("/");
