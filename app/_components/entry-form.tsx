@@ -395,7 +395,14 @@ export function EntryForm({
             the width of the one chip the reader most wants to hit, and a
             row of eight of them ran off the screen. Under the name it
             costs a line the row already has — the chips stretch to the
-            tallest — and none of the width. */}
+            tallest — and none of the width.
+ 
+            Equal widths filling each line, rather than each chip taking
+            what its name happens to need: a ragged right edge over two
+            lines reads as a list that ran out, and the widths carried no
+            meaning anyway. `basis-0` is what makes them equal; the
+            min-width is what makes the line wrap rather than squeezing
+            all eight onto one. */}
         <div className="flex flex-wrap items-stretch gap-1.5" data-testid="quick-entries">
           {quickEntries.map((entry) => (
             <button
@@ -404,13 +411,13 @@ export function EntryForm({
               onClick={() => applyQuickEntry(entry)}
               data-testid="quick-entry"
               data-due={entry.due ? "true" : undefined}
-              className={`rounded-control flex min-h-11 flex-col items-start justify-center border px-2.5 py-1 text-left text-sm ${
+              className={`rounded-control flex min-h-11 min-w-[4.5rem] flex-1 basis-0 flex-col items-center justify-center border px-2 py-1 text-center text-sm ${
                 entry.due
                   ? "border-accent bg-accent-soft text-ink font-semibold"
                   : "border-rule-soft bg-sunken text-ink-muted"
               }`}
             >
-              <span className="max-w-[7rem] truncate leading-tight">{entry.title}</span>
+              <span className="w-full truncate leading-tight">{entry.title}</span>
               {entry.due && (
                 <span className="text-accent text-[0.625rem] leading-tight font-normal">
                   {labels.quickDue}

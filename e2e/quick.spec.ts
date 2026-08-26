@@ -111,6 +111,32 @@ test.describe("quick entries", () => {
     await expect(page.locator("main li")).toHaveCount(before);
   });
 
+  test("the chips fill the line they sit on, at equal widths", async ({ page }) => {
+    await seedHistory(currentUserId);
+    await page.setViewportSize({ width: 393, height: 900 });
+    await page.goto("/");
+
+    const row = page.getByTestId("quick-entries");
+    const rowBox = (await row.boundingBox())!;
+    const chips = await page.getByTestId("quick-entry").all();
+    expect(chips.length).toBeGreaterThan(1);
+
+    const boxes = await Promise.all(chips.map(async (chip) => (await chip.boundingBox())!));
+    // Equal widths on a line, not each taking what its name needs: a
+    // ragged right edge over two lines reads as a list that ran out.
+    const firstLine = boxes.filter((b) => Math.round(b.y) === Math.round(boxes[0].y));
+    for (const box of firstLine) expect(Math.round(box.width)).toBe(Math.round(boxes[0].width));
+
+    // And the line is full — right edge flush with the row, give or take
+    // a rounding pixel.
+    const last = firstLine[firstLine.length - 1];
+    expect(last.x + last.width).toBeGreaterThan(rowBox.x + rowBox.width - 2);
+
+    // Still a real touch target, and still stacked rather than widened
+    // by the mark.
+    for (const box of boxes) expect(box.height).toBeGreaterThanOrEqual(44);
+  });
+
   test("the mark comes off once this month has one", async ({ page }) => {
     await seedHistory(currentUserId);
     await page.goto("/");
