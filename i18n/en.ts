@@ -185,6 +185,8 @@ const en: Record<keyof typeof ko, string> = {
   "entry.filters": "Search & filter",
   "entry.quick": "Frequent entries",
   "entry.quickDue": "due",
+  "entry.quickHide": "Press and hold to hide it for this month",
+  "entry.quickRestore": "Show hidden",
   "entry.blockedAccount": "Pick an account from the list.",
   "entry.blockedAmount": "Enter an amount.",
   "entry.blockedRate":
