@@ -137,6 +137,8 @@ export default async function AssetsChartPage({
         label={`${start} ~ ${to}`}
         prevLabel={t("common.prevWindow")}
         nextLabel={t("common.nextWindow")}
+        shortPrev={t("common.prev")}
+        shortNext={t("common.next")}
         jump={{
           kind: "range",
           from: start,

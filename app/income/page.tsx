@@ -241,6 +241,8 @@ export default async function IncomePage({
         }
         prevLabel={unit === "year" ? t("common.prevYear") : t("common.prevMonth")}
         nextLabel={unit === "year" ? t("common.nextYear") : t("common.nextMonth")}
+        shortPrev={t("common.prev")}
+        shortNext={t("common.next")}
         units={units}
       />
 

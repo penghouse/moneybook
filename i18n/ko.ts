@@ -41,6 +41,8 @@ const ko = {
   "common.currency": "통화",
   "common.moveUp": "위로",
   "common.moveDown": "아래로",
+  "common.prev": "이전",
+  "common.next": "다음",
   "common.prevMonth": "이전 달",
   "common.nextMonth": "다음 달",
   "common.prevYear": "이전 해",

@@ -130,6 +130,8 @@ export default async function BudgetPage({
         label={ref.periodKey}
         prevLabel={isYear ? t("common.prevYear") : t("common.prevMonth")}
         nextLabel={isYear ? t("common.nextYear") : t("common.nextMonth")}
+        shortPrev={t("common.prev")}
+        shortNext={t("common.next")}
         units={units}
         // Stepping one month at a time is right for "how did last month
         // go" and eight taps too many for "what did I budget in

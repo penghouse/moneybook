@@ -43,6 +43,8 @@ const en: Record<keyof typeof ko, string> = {
   "common.currency": "Currency",
   "common.moveUp": "Move up",
   "common.moveDown": "Move down",
+  "common.prev": "Back",
+  "common.next": "Next",
   "common.prevMonth": "Previous month",
   "common.nextMonth": "Next month",
   "common.prevYear": "Previous year",

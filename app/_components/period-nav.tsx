@@ -59,6 +59,8 @@ export function PeriodNav({
   label,
   prevLabel,
   nextLabel,
+  shortPrev,
+  shortNext,
   units,
   jump,
 }: {
@@ -66,8 +68,25 @@ export function PeriodNav({
   nextHref: string;
   /** What period is on screen, e.g. "2026-08" or "2026-08-06". */
   label: string;
+  /**
+   * What the arrow *is* — 이전 달, 이전 해, 이전 기간.
+   *
+   * The accessible name rather than the visible text: the unit matters
+   * to someone who cannot see the period sitting between the two arrows,
+   * and it is what the tests address them by.
+   */
   prevLabel: string;
   nextLabel: string;
+  /**
+   * What the arrow *says* — 이전, 다음.
+   *
+   * The unit is already on screen twice, in the label between the arrows
+   * and in the 월간/연간 switch under them, and spelling it out a third
+   * time is what made the bar too tight to sit a picker in the middle
+   * of. Falls back to the long form where a caller has none.
+   */
+  shortPrev?: string;
+  shortNext?: string;
   /** 월/년 switch, omitted on screens that only step one unit. */
   units?: readonly PeriodUnitOption[];
   /**
@@ -94,8 +113,8 @@ export function PeriodNav({
   return (
     <Card>
       <div className="flex items-center px-1 py-1">
-        <Link href={prevHref} className={buttonClass("nav")}>
-          ← {prevLabel}
+        <Link href={prevHref} aria-label={prevLabel} className={buttonClass("nav")}>
+          ← {shortPrev ?? prevLabel}
           <LinkPending />
         </Link>
         {jump?.kind === "period" ? (
@@ -105,8 +124,8 @@ export function PeriodNav({
         ) : (
           <span className="tnum mx-auto font-semibold">{label}</span>
         )}
-        <Link href={nextHref} className={buttonClass("nav")}>
-          {nextLabel} →
+        <Link href={nextHref} aria-label={nextLabel} className={buttonClass("nav")}>
+          {shortNext ?? nextLabel} →
           <LinkPending />
         </Link>
       </div>

@@ -191,6 +191,20 @@ test("tapping the tab you are already on reloads the page", async ({ page }) => 
   await expect(page).toHaveURL(/\/budget$/);
 });
 
+test("the period arrows read short and still say which unit they step", async ({ page }) => {
+  await page.goto("/budget?period=2026-08");
+  const back = page.getByRole("link", { name: "이전 달" });
+
+  // Short on screen — the unit is already there twice, between the
+  // arrows and in the 월간/연간 switch below them.
+  await expect(back).toHaveText(/^← 이전$/);
+  // And still named in full for anyone who cannot see either of those.
+  await expect(back).toHaveAttribute("aria-label", "이전 달");
+
+  await page.getByRole("link", { name: "연간" }).click();
+  await expect(page.getByRole("link", { name: "이전 해" })).toHaveText(/^← 이전$/);
+});
+
 test("desktop shows the horizontal bar and no bottom bar", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
