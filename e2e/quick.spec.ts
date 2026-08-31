@@ -83,7 +83,9 @@ test.describe("quick entries", () => {
     await seedHistory(currentUserId);
     await page.goto("/");
 
-    const before = await page.locator("main li").count();
+    // Counted on the rows themselves: the account picker's own options
+    // are <li> too, and picking one is exactly what a chip does.
+    const before = await page.getByTestId("transaction-row").count();
     const chips = page.getByTestId("quick-entry");
     const bill = chips.filter({ hasText: "통신비" });
     const lunch = chips.filter({ hasText: "점심" });
@@ -108,7 +110,7 @@ test.describe("quick entries", () => {
     // Nothing was posted on its own: the form is filled in and waiting,
     // and the ledger has not grown a row behind the reader's back.
     await expect(form.getByRole("button", { name: "저장" })).toBeEnabled();
-    await expect(page.locator("main li")).toHaveCount(before);
+    await expect(page.getByTestId("transaction-row")).toHaveCount(before);
   });
 
   test("the chips fill the line they sit on, at equal widths", async ({ page }) => {
@@ -188,14 +190,31 @@ test.describe("quick entries", () => {
     await expect(page.getByTestId("quick-entries")).toBeVisible();
   });
 
+  test("the row stays out of a form already filled from one transaction", async ({ page }) => {
+    await seedHistory(currentUserId);
+    await page.goto("/");
+    await expect(page.getByTestId("quick-entries")).toBeVisible();
+
+    // A duplicate carries no transactionId, so it used to read as a
+    // blank form and get the row — offering to fill it from a *different*
+    // transaction, over the top of the one being copied.
+    await page.getByTestId("transaction-row").first().locator("button").first().click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByTestId("quick-entries")).toHaveCount(0);
+
+    await dialog.getByTestId("duplicate").click();
+    await expect(dialog.getByTestId("quick-entries")).toHaveCount(0);
+  });
+
   test("the mark comes off once this month has one", async ({ page }) => {
     await seedHistory(currentUserId);
     await page.goto("/");
 
-    const before = await page.locator("main li").count();
+    const before = await page.getByTestId("transaction-row").count();
     await page.getByTestId("quick-entry").filter({ hasText: "통신비" }).click();
     await page.locator("main form").first().getByRole("button", { name: "저장" }).click();
-    await expect(page.locator("main li")).toHaveCount(before + 1);
+    await expect(page.getByTestId("transaction-row")).toHaveCount(before + 1);
 
     // Still offered — it is a repeat either way — but no longer owed.
     const bill = page.getByTestId("quick-entry").filter({ hasText: "통신비" });

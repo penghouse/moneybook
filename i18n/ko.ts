@@ -198,6 +198,7 @@ const ko = {
   "entry.unbalanced": "불일치",
   "entry.searchPlaceholder": "계정 검색",
   "entry.transactions": "거래내역",
+  "entry.filterToDay": "이 날짜만 보기",
   "entry.filterFrom": "시작일",
   "entry.filterTo": "종료일",
   "entry.filterAccount": "계정",

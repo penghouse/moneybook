@@ -203,6 +203,7 @@ const en: Record<keyof typeof ko, string> = {
   "entry.unbalanced": "doesn't match",
   "entry.searchPlaceholder": "Search accounts",
   "entry.transactions": "Transactions",
+  "entry.filterToDay": "Show this day only",
   "entry.filterFrom": "From",
   "entry.filterTo": "To",
   "entry.filterAccount": "Account",

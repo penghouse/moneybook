@@ -441,6 +441,30 @@ export default async function Home({
     return query ? `/?${query}` : "/";
   };
 
+  /**
+   * One day of the list, keeping whatever else is filtered.
+   *
+   * The dates in the rows were the one column that named something
+   * specific and could not be pressed — every other one opens what it
+   * names.
+   */
+  const dayHref = (date: string) => {
+    const next = new URLSearchParams(listParams);
+    next.set("from", date);
+    next.set("to", date);
+    return `/?${next}`;
+  };
+
+  /**
+   * Whether the rows on screen need their year spelled out.
+   *
+   * 08-26 is enough while everything on screen is one year, and
+   * ambiguous the moment it is not — a range can be as long as the
+   * reader asks for, and two rows reading 08-26 a year apart look like
+   * the same day.
+   */
+  const spansYears = new Set(list.map((tx) => tx.date.slice(0, 4))).size > 1;
+
   /** The period the list is reading, if it is filtered to one. */
   const listPeriod = from && to ? { from, to } : undefined;
 
@@ -712,16 +736,27 @@ export default async function Home({
                 const balance = balanceByTransactionId.get(tx.id);
 
                 return (
-                  <li key={tx.id} className="not-first:border-rule-soft not-first:border-t">
+                  <li
+                    key={tx.id}
+                    data-testid="transaction-row"
+                    className="not-first:border-rule-soft not-first:border-t"
+                  >
                     <RowDialog
                       title={tx.title || tx.date}
                       closeLabel={t("common.close")}
+                      lead={
+                        <Link
+                          href={dayHref(tx.date)}
+                          aria-label={`${tx.date} · ${t("entry.filterToDay")}`}
+                          data-testid="row-date"
+                          className="text-ink-faint hover:text-accent tnum flex shrink-0 items-baseline py-3 pr-2.5 pl-4 font-mono text-xs"
+                        >
+                          {spansYears ? tx.date.slice(2) : tx.date.slice(5)}
+                        </Link>
+                      }
                       trigger={
                         <>
                           <span className="flex items-baseline gap-2.5">
-                            <span className="text-ink-faint tnum shrink-0 font-mono text-xs">
-                              {tx.date.slice(5)}
-                            </span>
                             <span className="min-w-0 flex-1 truncate font-semibold">
                               {tx.title}
                             </span>
@@ -757,7 +792,6 @@ export default async function Home({
                             labels={labels}
                             initial={{ transactionId: tx.id, ...prefillFrom(tx) }}
                             suggestions={suggestions}
-                            quickEntries={quickEntries}
                           />
                         }
                         copy={
@@ -773,7 +807,6 @@ export default async function Home({
                             labels={labels}
                             initial={prefillFrom(tx)}
                             suggestions={suggestions}
-                            quickEntries={quickEntries}
                           />
                         }
                       >

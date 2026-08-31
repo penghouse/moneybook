@@ -48,12 +48,22 @@ export function useDialogHeading(): ((text: string) => void) | null {
  */
 export function RowDialog({
   trigger,
+  lead,
   title,
   closeLabel,
   children,
 }: {
   /** The row itself, as it reads when closed. */
   trigger: ReactNode;
+  /**
+   * Rendered to the left of the trigger and *outside* it, for the part
+   * of a row that has somewhere of its own to go.
+   *
+   * Outside because it has to be: a link inside a button is invalid, and
+   * the button would swallow its clicks in the browsers that render it
+   * anyway. The row still opens from everywhere else it is pressed.
+   */
+  lead?: ReactNode;
   title: string;
   closeLabel: string;
   children: ReactNode;
@@ -65,16 +75,21 @@ export function RowDialog({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => {
-          setOpen(true);
-          ref.current?.showModal();
-        }}
-        className="hover:bg-sunken w-full cursor-pointer px-4 py-3 text-left"
-      >
-        {trigger}
-      </button>
+      <div className="flex items-stretch">
+        {lead}
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(true);
+            ref.current?.showModal();
+          }}
+          className={`hover:bg-sunken min-w-0 flex-1 cursor-pointer py-3 pr-4 text-left ${
+            lead ? "pl-0" : "pl-4"
+          }`}
+        >
+          {trigger}
+        </button>
+      </div>
 
       <dialog
         ref={ref}

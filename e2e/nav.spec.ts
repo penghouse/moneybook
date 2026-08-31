@@ -170,6 +170,27 @@ test("the bottom bar does not cover the end of the page", async ({ page }) => {
   expect(last.y + last.height).toBeLessThanOrEqual(bar.y + 1);
 });
 
+test("tapping the tab you are already on reloads the page", async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await page.goto("/budget");
+
+  const tab = page.getByRole("navigation", { name: "메뉴" }).getByRole("link", { name: "예산" });
+  await expect(tab).toHaveAttribute("aria-current", "page");
+
+  // A <Link> to where you already are does nothing, which is right for a
+  // page that cannot have changed and wrong for every page here — they
+  // all read a database a phone in a pocket has no way of hearing about.
+  let refetched = false;
+  page.on("request", (request) => {
+    if (request.url().includes("/budget") && request.headers()["rsc"] !== undefined) {
+      refetched = true;
+    }
+  });
+  await tab.click();
+  await expect.poll(() => refetched, { timeout: 5000 }).toBe(true);
+  await expect(page).toHaveURL(/\/budget$/);
+});
+
 test("desktop shows the horizontal bar and no bottom bar", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
