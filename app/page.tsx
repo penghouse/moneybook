@@ -542,6 +542,7 @@ export default async function Home({
                 currency={filtered.currency}
                 locale={locale}
                 shareLabel={t("entry.counterparties")}
+                restLabel={t("common.rest")}
               />
             ) : (
               // A share is only defined over same-signed amounts, and a
@@ -703,6 +704,7 @@ export default async function Home({
                   currency={filtered!.currency}
                   locale={locale}
                   shareLabel={t("entry.share")}
+                  restLabel={t("common.rest")}
                 />
               ) : (
                 // The same fallback 거래처별 잔액 above already uses: every

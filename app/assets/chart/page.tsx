@@ -190,6 +190,7 @@ export default async function AssetsChartPage({
               currency={section.baseCurrency}
               locale={locale}
               shareLabel={t("assets.share")}
+              restLabel={t("common.rest")}
             />
           ) : (
             <EmptyState>{t("assets.empty")}</EmptyState>

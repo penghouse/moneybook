@@ -53,6 +53,7 @@ const ko = {
   "common.unitYear": "연간",
   "common.archive": "보관",
   "common.unarchive": "보관 해제",
+  "common.rest": "기타 {n}개",
   "common.viewTable": "표로 보기",
   "common.pickRange": "기간 고르기",
   "common.apply": "조회",

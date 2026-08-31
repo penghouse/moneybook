@@ -55,6 +55,7 @@ const en: Record<keyof typeof ko, string> = {
   "common.unitYear": "Yearly",
   "common.archive": "Archive",
   "common.unarchive": "Unarchive",
+  "common.rest": "Other ({n})",
   "common.viewTable": "View as table",
   "common.pickRange": "Pick a range",
   "common.apply": "Show",
