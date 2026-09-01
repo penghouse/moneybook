@@ -141,7 +141,11 @@ export default async function BudgetPage({
    * another. This is the same figures, in one image.
    */
   const base = (minor: number) => formatMoney(minor, section.baseCurrency, locale);
-  const imageSection = (label: string, list: typeof incomeAccounts): BudgetImageSection | null => {
+  const imageSection = (
+    key: string,
+    label: string,
+    list: typeof incomeAccounts,
+  ): BudgetImageSection | null => {
     if (list.length === 0) return null;
     const actual = sum(list, actualByAccountId);
     const budget = sum(list, budgetByAccountId);
@@ -157,37 +161,49 @@ export default async function BudgetPage({
     ].sort((a, b) => (a === null ? 1 : b === null ? -1 : 0));
 
     return {
+      key,
       label,
       actual: base(actual),
       budget: anyBudget ? base(budget) : null,
       bar: budgetBarPercent(progress),
       percent: progress.percent,
       over: progress.over,
-      bands: categories.map((category) => ({
-        category: hasCategories ? (category ?? t("accounts.uncategorized")) : null,
-        rows: list
-          .filter((a) => (a.category ?? null) === category)
-          .map((account) => {
-            const rowBudget = budgetByAccountId.get(account.id);
-            const rowActual = actualByAccountId.get(account.id) ?? 0;
-            const rowProgress = budgetProgress(rowActual, rowBudget);
-            return {
-              name: account.name,
-              actual: base(rowActual),
-              budget: rowBudget === undefined ? null : base(rowBudget),
-              bar: budgetBarPercent(rowProgress),
-              percent: rowProgress.percent,
-              over: rowProgress.over,
-            };
-          }),
-      })),
+      bands: categories
+        .map((category) => ({
+          category: hasCategories ? (category ?? t("accounts.uncategorized")) : null,
+          rows: list
+            .filter((a) => (a.category ?? null) === category)
+            // Nothing planned and nothing spent is not part of a
+            // settlement — it is an account that sat out the month. On
+            // screen it costs a line you scroll past; in a picture it is
+            // length, which is the thing the picture is for removing.
+            // A budget of zero stays: 「여기엔 쓰지 않는다」 is a plan, and
+            // whether it held is exactly what settling asks.
+            .filter((a) => budgetByAccountId.has(a.id) || (actualByAccountId.get(a.id) ?? 0) !== 0)
+            .map((account) => {
+              const rowBudget = budgetByAccountId.get(account.id);
+              const rowActual = actualByAccountId.get(account.id) ?? 0;
+              const rowProgress = budgetProgress(rowActual, rowBudget);
+              return {
+                name: account.name,
+                actual: base(rowActual),
+                budget: rowBudget === undefined ? null : base(rowBudget),
+                bar: budgetBarPercent(rowProgress),
+                percent: rowProgress.percent,
+                over: rowProgress.over,
+              };
+            }),
+        }))
+        // A band whose every account sat out the month is a heading over
+        // nothing.
+        .filter((band) => band.rows.length > 0),
     };
   };
 
   const imageSections = [
-    imageSection(t("budget.incomeSide"), incomeAccounts),
-    imageSection(t("budget.expenseSide"), expenseAccounts),
-  ].filter((s): s is BudgetImageSection => s !== null);
+    imageSection("income", t("budget.incomeSide"), incomeAccounts),
+    imageSection("expense", t("budget.expenseSide"), expenseAccounts),
+  ].filter((s): s is BudgetImageSection => s !== null && s.bands.length > 0);
 
   const exportButton = (
     <BudgetImage
@@ -200,6 +216,8 @@ export default async function BudgetPage({
       labels={{
         save: t("budget.saveImage"),
         saving: t("common.saving"),
+        confirm: t("budget.makeImage"),
+        close: t("common.close"),
         title: t("nav.budget"),
         uncategorized: t("accounts.uncategorized"),
         over: t("budget.over"),

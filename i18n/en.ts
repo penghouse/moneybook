@@ -274,6 +274,7 @@ const en: Record<keyof typeof ko, string> = {
   "budget.setYearBudget": "Set yearly budget",
   "budget.fromMonths": "from the months",
   "budget.saveImage": "Save as image",
+  "budget.makeImage": "Make the image",
   "budget.monthlySum": "Monthly budgets",
   "budget.monthlySumOver": "Over yearly budget by",
   "budget.incomeSide": "Income budget",
