@@ -1,6 +1,8 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import type { Account, AccountGroup } from "@/db/schema";
 import type { TranslationKey } from "@/i18n";
+import { budgetProgress } from "@/lib/budget-view";
 import { formatMoney, toMajorUnits } from "@/lib/money";
 import { UNCATEGORIZED_FOLD } from "@/lib/category-folds";
 import { CategoryFold } from "../_components/category-fold";
@@ -26,6 +28,7 @@ export function BudgetSection({
   monthlyByAccountId,
   isYear,
   derivedYearIds,
+  action,
   folded,
   periodKey,
   from,
@@ -47,6 +50,8 @@ export function BudgetSection({
    * and say where the figure came from.
    */
   derivedYearIds: ReadonlySet<string>;
+  /** Sits beside this side's heading — the export button, on 지출. */
+  action?: ReactNode;
   /** 상위 항목 the reader has folded away, from the cookie. */
   folded: readonly string[];
   periodKey: string;
@@ -81,7 +86,10 @@ export function BudgetSection({
 
   return (
     <section>
-      <SectionLabel>{t(income ? "budget.incomeSide" : "budget.expenseSide")}</SectionLabel>
+      <div className="flex items-center justify-between gap-2">
+        <SectionLabel>{t(income ? "budget.incomeSide" : "budget.expenseSide")}</SectionLabel>
+        {action}
+      </div>
 
       <Card>
         {/* 전체: the same shape as a 상위 항목 band and an account row,
@@ -190,14 +198,11 @@ export function BudgetSection({
           const rows = inCategory.map((account) => {
             const budget = budgetByAccountId.get(account.id);
             const actual = actualByAccountId.get(account.id) ?? 0;
-            const left = budget !== undefined ? budget - actual : null;
-            // `budget > 0`, not a truthiness check: a budget of exactly 0
-            // is a real setting ("spend nothing here"), and treating it as
-            // unset rendered a bare "(%)". Percent stays null only because
-            // a share of zero is undefined, not because the budget is.
-            const percent =
-              budget !== undefined && budget > 0 ? Math.round((actual / budget) * 100) : null;
-            const isOver = left !== null && left < 0;
+            // The same three lines the exported picture works from, so
+            // the two cannot disagree about what is over. A budget of
+            // exactly 0 is a real setting there too — it is the *share*
+            // that goes missing, not the budget.
+            const { left, percent, over: isOver } = budgetProgress(actual, budget);
             const monthlySum = monthlyByAccountId.get(account.id) ?? 0;
             const derived = derivedYearIds.has(account.id);
 
@@ -289,7 +294,7 @@ export function BudgetSection({
                         className={`tnum ml-auto ${isOver && !income ? "text-negative font-semibold" : ""}`}
                       >
                         {isOver
-                          ? `${t("budget.over")} ${base(-left)}`
+                          ? `${t("budget.over")} ${base(-(left ?? 0))}`
                           : `${leftLabel} ${base(left ?? 0)}`}
                       </span>
                     </div>
