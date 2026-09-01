@@ -454,8 +454,13 @@ export function EntryForm({
    * is posted on its own: the book's rows stay things that happened, and
    * pressing 저장 stays the reader's.
    */
+  // `!initial`, not `!isEditing`: a duplicate carries no transactionId,
+  // so it read as a blank form and got the row — on a form already
+  // filled from one transaction, offering to fill it from a different
+  // one is destructive and beside the point. The row belongs to the
+  // blank form at the top of the screen and nowhere else.
   const quickRow =
-    quickEntries.length > 0 && !isEditing ? (
+    quickEntries.length > 0 && !initial ? (
       <div className="border-rule-soft border-b px-4 py-2.5">
         <div className="flex items-center gap-2">
           <button

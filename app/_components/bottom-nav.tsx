@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode, RefObject } from "react";
 
 /**
@@ -103,6 +103,29 @@ export function BottomNav({
   onMore: () => void;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  /**
+   * Tapping the tab you are already on reloads it.
+   *
+   * A `<Link>` to where you already are does nothing, which is right for
+   * a page that cannot have changed and wrong for every page here — they
+   * all read a database that a phone in a pocket has no way of hearing
+   * about. Reaching for the tab again is what a person does when they
+   * want to see the current state, and it was the one gesture that did
+   * nothing at all.
+   *
+   * `window.location.search` rather than `useSearchParams`: this only
+   * matters inside the handler, on the client, and the hook would put a
+   * Suspense requirement on every page that renders the bar. A tab whose
+   * page is showing with a query string on it — 예산 sitting on another
+   * month — is a real navigation, so it is left to the link.
+   */
+  const retap = (href: string) => (event: React.MouseEvent) => {
+    if (href !== pathname || window.location.search) return;
+    event.preventDefault();
+    router.refresh();
+  };
 
   return (
     <nav
@@ -131,6 +154,7 @@ export function BottomNav({
             <Link
               key={item.href}
               href={item.href}
+              onClick={retap(item.href)}
               aria-current={active ? "page" : undefined}
               className={`${cellClass} ${active ? "text-accent" : "text-ink-faint"}`}
             >

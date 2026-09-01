@@ -347,6 +347,8 @@ export default async function AssetsPage({
         label={asOf}
         prevLabel={step === "year" ? t("common.prevYear") : t("common.prevMonth")}
         nextLabel={step === "year" ? t("common.nextYear") : t("common.nextMonth")}
+        shortPrev={t("common.prev")}
+        shortNext={t("common.next")}
         // Stepping a month at a time is right for "and the month before
         // that"; the 기준일 form in the header was what everything else
         // needed, and it stood there permanently to do it. The label is

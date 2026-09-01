@@ -156,6 +156,8 @@ export default async function IncomeChartPage({
         label={`${start} ~ ${to}`}
         prevLabel={t("common.prevWindow")}
         nextLabel={t("common.nextWindow")}
+        shortPrev={t("common.prev")}
+        shortNext={t("common.next")}
         // The range used to be a 시작/끝/조회 form in the header — three
         // controls standing there permanently for a question asked once
         // in a while, on the one period screen that answered "which

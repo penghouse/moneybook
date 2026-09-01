@@ -694,6 +694,122 @@ test.describe("entry", () => {
     await expect(share).toContainText("₩30,000");
   });
 
+  test("a row's date opens that day, and spells out the year when it has to", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const food = await byName("식비");
+    const card = await byName("신용카드");
+
+    const post = async (date: string, title: string) => {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date, title })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: food.id,
+          currency: "KRW",
+          amount: 9000,
+          rate: 1,
+          baseAmount: 9000,
+          lineOrder: 0,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: card.id,
+          currency: "KRW",
+          amount: 9000,
+          rate: 1,
+          baseAmount: 9000,
+          lineOrder: 1,
+        },
+      ]);
+    };
+    await post("2026-08-26", "올해 점심");
+    await post("2026-08-27", "다음날 점심");
+    await post("2025-08-26", "작년 점심");
+
+    // One year on screen: the year would be four characters saying
+    // nothing.
+    await page.goto("/?from=2026-08-01&to=2026-08-31");
+    await expect(page.getByTestId("row-date").first()).toHaveText("08-27");
+
+    // Two, and 08-26 twice over would look like the same day.
+    await page.goto("/?from=2025-01-01&to=2026-12-31");
+    await expect(page.getByTestId("row-date").first()).toHaveText("26-08-27");
+
+    // Pressing one opens that day and nothing else.
+    await page.getByTestId("row-date").filter({ hasText: "26-08-26" }).click();
+    await expect(page).toHaveURL(/from=2026-08-26&to=2026-08-26/);
+    await expect(page.getByTestId("transaction-row")).toHaveCount(1);
+    await expect(page.getByText("올해 점심")).toBeVisible();
+
+    // The row still opens from everywhere else it is pressed.
+    await page.getByTestId("transaction-row").first().locator("button").first().click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+  });
+
+  test("적요별 비중 keeps its height whatever the month contained", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const food = await byName("식비");
+    const card = await byName("신용카드");
+
+    const post = async (title: string, amount: number) => {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date: "2026-08-10", title })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: food.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+          lineOrder: 0,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: card.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+          lineOrder: 1,
+        },
+      ]);
+    };
+    // One big one and a long tail of small ones — the shape a real month
+    // takes, and the one that used to run the card off the screen.
+    await post("장보기", 400_000);
+    for (let i = 0; i < 12; i++) await post(`간식${i}`, 1_000);
+
+    await page.goto(`/?accountId=${food.id}&from=2026-08-01&to=2026-08-31`);
+    const share = page.locator("section").filter({ hasText: "적요별 비중" }).last();
+    const rows = share.locator("li");
+
+    // Six named rows and one 기타, however many 적요 there were.
+    await expect(rows).toHaveCount(7);
+    await expect(rows.first()).toContainText("장보기");
+    await expect(rows.last()).toContainText("기타 7개");
+
+    // The whole is still the whole: the tail is summed, not dropped.
+    await expect(rows.last()).toContainText("₩7,000");
+  });
+
   test("deleting a transaction removes it from the list", async ({ page }) => {
     await page.goto("/");
     const form = createForm(page);
