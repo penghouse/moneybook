@@ -25,6 +25,7 @@ export function BudgetSection({
   actualByAccountId,
   monthlyByAccountId,
   isYear,
+  derivedYearIds,
   folded,
   periodKey,
   from,
@@ -40,6 +41,12 @@ export function BudgetSection({
   /** Year view only: what the twelve monthly budgets add up to. */
   monthlyByAccountId: ReadonlyMap<string, number>;
   isYear: boolean;
+  /**
+   * Year view: accounts whose budget is the twelve months underneath it
+   * rather than a cap anyone typed. They read as set — because they are —
+   * and say where the figure came from.
+   */
+  derivedYearIds: ReadonlySet<string>;
   /** 상위 항목 the reader has folded away, from the cookie. */
   folded: readonly string[];
   periodKey: string;
@@ -192,6 +199,7 @@ export function BudgetSection({
               budget !== undefined && budget > 0 ? Math.round((actual / budget) * 100) : null;
             const isOver = left !== null && left < 0;
             const monthlySum = monthlyByAccountId.get(account.id) ?? 0;
+            const derived = derivedYearIds.has(account.id);
 
             return (
               <div
@@ -236,7 +244,7 @@ export function BudgetSection({
                   </div>
                 )}
 
-                {isYear && monthlySum > 0 && (
+                {isYear && monthlySum > 0 && !derived && (
                   <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
                     <span className="text-ink-faint tnum">
                       {t("budget.monthlySum")} {base(monthlySum)}
@@ -272,6 +280,11 @@ export function BudgetSection({
                         {t("budget.setBudget")} {base(budget)}
                         {percent !== null && ` (${percent}%)`}
                       </span>
+                      {derived && (
+                        // Where the figure came from, because nobody typed
+                        // it and 수정 writes a real year budget over it.
+                        <span data-testid="budget-derived">{t("budget.fromMonths")}</span>
+                      )}
                       <span
                         className={`tnum ml-auto ${isOver && !income ? "text-negative font-semibold" : ""}`}
                       >

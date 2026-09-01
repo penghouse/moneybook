@@ -267,6 +267,7 @@ const ko = {
   "budget.noBudget": "예산 미설정",
   "budget.grandTotal": "전체",
   "budget.setYearBudget": "연 예산 설정",
+  "budget.fromMonths": "월예산에서",
   "budget.monthlySum": "월 예산 합계",
   "budget.monthlySumOver": "연 예산 초과",
   "budget.incomeSide": "수입 예산",

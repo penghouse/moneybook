@@ -6,6 +6,7 @@ import { foldCookieName, parseFolds } from "@/lib/category-folds";
 import { currentSection } from "@/lib/current-request";
 import { addMonths, addYears, monthRange, today, yearMonthOf, yearOf, yearRange } from "@/lib/date";
 import { activeDuring } from "@/lib/accounts";
+import { monthsCoverYear } from "@/lib/budget-coverage";
 import { parseBudgetPeriod } from "@/lib/budgets";
 import { getAccountFlows } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
@@ -60,6 +61,21 @@ export default async function BudgetPage({
   // This is the comparison the year budget exists for: a cap is only
   // useful next to the monthly plan it is supposed to contain.
   const monthlyByAccountId = new Map<string, number>();
+  /**
+   * Accounts whose year budget is the twelve months underneath it.
+   *
+   * The screen used to ask for a year's cap even where every month
+   * already had one — an empty box and a 저장 button sitting over a
+   * figure the book had worked out already. Where the months cover the
+   * year the sum stands in for the cap, and it stands in *everywhere*:
+   * the row, the 상위 항목 band, the section total and the 저축 line all
+   * read from this one map, so none of them can disagree about what is
+   * budgeted.
+   *
+   * A real year budget still wins. This fills a hole; it overrules
+   * nothing anyone typed.
+   */
+  const derivedYearIds = new Set<string>();
   if (isYear) {
     const monthRows = await db.query.budgets.findMany({
       where: and(
@@ -68,11 +84,23 @@ export default async function BudgetPage({
         like(budgets.periodKey, `${ref.periodKey}-%`),
       ),
     });
+    const monthsByAccountId = new Map<string, Set<string>>();
     for (const row of monthRows) {
       monthlyByAccountId.set(
         row.accountId,
         (monthlyByAccountId.get(row.accountId) ?? 0) + row.amount,
       );
+      const seen = monthsByAccountId.get(row.accountId) ?? new Set<string>();
+      seen.add(row.periodKey);
+      monthsByAccountId.set(row.accountId, seen);
+    }
+
+    for (const account of catalog) {
+      if (budgetByAccountId.has(account.id)) continue;
+      const budgeted = monthsByAccountId.get(account.id);
+      if (!budgeted || !monthsCoverYear({ year: ref.periodKey, account, budgeted })) continue;
+      budgetByAccountId.set(account.id, monthlyByAccountId.get(account.id) ?? 0);
+      derivedYearIds.add(account.id);
     }
   }
 
@@ -108,6 +136,7 @@ export default async function BudgetPage({
     actualByAccountId,
     monthlyByAccountId,
     isYear,
+    derivedYearIds,
     // Read here rather than restored on the client, so the page arrives
     // already folded instead of showing every item and collapsing after
     // hydration — and so the folds survive 이전 달 / 다음 달.
