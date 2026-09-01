@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
 import type { Account, AccountGroup } from "@/db/schema";
 import type { TranslationKey } from "@/i18n";
 import { budgetProgress } from "@/lib/budget-view";
@@ -28,7 +27,6 @@ export function BudgetSection({
   monthlyByAccountId,
   isYear,
   derivedYearIds,
-  action,
   folded,
   periodKey,
   from,
@@ -50,8 +48,6 @@ export function BudgetSection({
    * and say where the figure came from.
    */
   derivedYearIds: ReadonlySet<string>;
-  /** Sits beside this side's heading — the export button, on 지출. */
-  action?: ReactNode;
   /** 상위 항목 the reader has folded away, from the cookie. */
   folded: readonly string[];
   periodKey: string;
@@ -86,10 +82,7 @@ export function BudgetSection({
 
   return (
     <section>
-      <div className="flex items-center justify-between gap-2">
-        <SectionLabel>{t(income ? "budget.incomeSide" : "budget.expenseSide")}</SectionLabel>
-        {action}
-      </div>
+      <SectionLabel>{t(income ? "budget.incomeSide" : "budget.expenseSide")}</SectionLabel>
 
       <Card>
         {/* 전체: the same shape as a 상위 항목 band and an account row,

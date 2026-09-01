@@ -552,7 +552,9 @@ test.describe("reports", () => {
     await expect(page).toHaveURL(/from=2026-01-01&to=2026-03-31/);
     // The bar width the reader was on travels with the new range.
     await expect(page).toHaveURL(/unit=month/);
-    await expect(page.getByTestId("range-jump")).toHaveText("2026-01-01 ~ 2026-03-31");
+    // The year is said once when both ends share it — the repeated half
+    // was what pushed this label into truncating on a phone.
+    await expect(page.getByTestId("range-jump")).toHaveText("2026-01-01 ~ 03-31");
 
     // Picked backwards is a slip, not an empty range.
     await page.getByTestId("range-jump").click();

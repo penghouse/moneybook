@@ -37,8 +37,14 @@ export type ContributionSource = "override" | "derived" | "default";
 
 export interface RoadmapRow {
   year: string;
-  /** After the override, so this is what the row was actually computed with. */
+  /** After the override, so this is what 전망 was actually computed with. */
   contribution: number;
+  /**
+   * What 계획 put in — the reader's own figure, never the derived one.
+   * Differs from `contribution` exactly on the years the book could
+   * speak for and the reader had not overridden.
+   */
+  planContribution: number;
   /**
    * How much of `contribution` has actually gone in already.
    *
@@ -139,6 +145,17 @@ export function buildRoadmap(params: {
     const contribution = override?.contribution ?? derived ?? params.defaultContribution;
     const contributionSource: ContributionSource =
       override?.contribution != null ? "override" : derived !== undefined ? "derived" : "default";
+    /**
+     * What the *plan* puts in, which is only ever what someone typed.
+     *
+     * The derived figure is deliberately not allowed in here. 계획 is the
+     * answer to "what did I say I would do", and a line that moves every
+     * time a transaction is entered or a budget edited cannot answer it —
+     * it also kinked for a reason nobody chose, since only the years the
+     * book can speak for got the derived figure and the rest fell back to
+     * the default. 전망 is where the book's own arithmetic belongs.
+     */
+    const planContribution = override?.contribution ?? params.defaultContribution;
     const returnRate = override?.returnRate ?? params.defaultReturnRate;
 
     // Rounded once per year, not once at the end. This figure is both
@@ -146,7 +163,7 @@ export function buildRoadmap(params: {
     // the fraction on would make the column fail to add up against
     // itself — the reader would be checking rounded numbers against an
     // unrounded chain.
-    const planEnd = Math.round((planStart + contribution) * (1 + returnRate));
+    const planEnd = Math.round((planStart + planContribution) * (1 + returnRate));
 
     const actual = params.actualByYear?.get(year) ?? null;
     const base = liveStart + contribution;
@@ -165,6 +182,7 @@ export function buildRoadmap(params: {
     rows.push({
       year,
       contribution,
+      planContribution,
       settledContribution,
       contributionSource,
       returnRate,

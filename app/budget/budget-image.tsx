@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { summaryBelongs } from "@/lib/budget-view";
 import { columnCountFor, packColumns, type Sliver } from "@/lib/image-columns";
 import { buttonClass } from "../_components/ui";
 
@@ -178,9 +179,11 @@ export function BudgetImage({
       const picked = sections.filter((section) => chosen.includes(section.key));
       if (picked.length === 0) return;
 
+      const lines = summaryBelongs(picked.length, sections.length) ? summary : [];
+
       const pieces = piecesOf(picked);
       const slivers = sliversOf(pieces);
-      const head = PAD + 56 + 40 + summary.length * 56;
+      const head = PAD + 56 + 40 + lines.length * 56;
       const body = slivers.reduce((sum, sliver) => sum + sliver.height, 0);
       const columns = packColumns(slivers, columnCountFor(body, COLUMN_MAX_H));
 
@@ -232,7 +235,7 @@ export function BudgetImage({
 
       // The summary spans the whole sheet, above the columns: 저축 is the
       // month's answer, not a part of either side.
-      for (const line of summary) {
+      for (const line of lines) {
         ctx.textAlign = "left";
         ctx.fillStyle = INK_MUTED;
         ctx.font = font(30);
@@ -366,7 +369,7 @@ export function BudgetImage({
         type="button"
         onClick={() => dialog.current?.showModal()}
         data-testid="budget-image"
-        className={`${buttonClass("ghost")} min-h-9 px-2.5 text-xs`}
+        className={buttonClass("secondary")}
       >
         {labels.save}
       </button>

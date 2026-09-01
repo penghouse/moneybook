@@ -8,6 +8,7 @@ import {
   addMonths,
   monthRange,
   monthsBetween,
+  rangeLabel,
   shiftWindow,
   today,
   yearMonthOf,
@@ -153,7 +154,7 @@ export default async function IncomeChartPage({
       <PeriodNav
         prevHref={stepHref(-1)}
         nextHref={stepHref(1)}
-        label={`${start} ~ ${to}`}
+        label={rangeLabel(start, to)}
         prevLabel={t("common.prevWindow")}
         nextLabel={t("common.nextWindow")}
         shortPrev={t("common.prev")}

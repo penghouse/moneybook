@@ -4,7 +4,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, formulas } from "@/db/schema";
 import { currentSection } from "@/lib/current-request";
-import { addMonths, monthsBetween, shiftWindow, today, yearMonthOf } from "@/lib/date";
+import { addMonths, monthsBetween, rangeLabel, shiftWindow, today, yearMonthOf } from "@/lib/date";
 import { getMonthlySavings } from "@/lib/savings";
 import { projectNetWorth } from "@/lib/net-worth-projection";
 import { parseGroupOrder } from "@/lib/account-groups";
@@ -134,7 +134,7 @@ export default async function AssetsChartPage({
       <PeriodNav
         prevHref={stepHref(-1)}
         nextHref={stepHref(1)}
-        label={`${start} ~ ${to}`}
+        label={rangeLabel(start, to)}
         prevLabel={t("common.prevWindow")}
         nextLabel={t("common.nextWindow")}
         shortPrev={t("common.prev")}

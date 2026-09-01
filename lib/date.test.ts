@@ -6,6 +6,7 @@ import {
   addYears,
   monthRange,
   monthsBetween,
+  rangeLabel,
   rangeUnit,
   shiftWindow,
   today,
@@ -241,5 +242,19 @@ describe("shiftWindow", () => {
       from: "2026-01-01",
       to: "2026-06-30",
     });
+  });
+});
+
+describe("rangeLabel", () => {
+  it("says the year once when both dates share it", () => {
+    expect(rangeLabel("2026-09-01", "2026-09-30")).toBe("2026-09-01 ~ 09-30");
+  });
+
+  it("says it twice when the range really crosses a year", () => {
+    expect(rangeLabel("2025-09-01", "2026-08-31")).toBe("2025-09-01 ~ 2026-08-31");
+  });
+
+  it("handles a single day", () => {
+    expect(rangeLabel("2026-09-01", "2026-09-01")).toBe("2026-09-01 ~ 09-01");
   });
 });

@@ -285,7 +285,10 @@ test.describe("roadmap", () => {
     // 2,000,000 from the month behind us plus 2,500,000 planned for this
     // one. Every other month of the year is blank and adds nothing.
     await expect(rowFor(page, thisYear)).toContainText("₩4,500,000");
-    await expect(rowFor(page, thisYear)).not.toContainText("₩999,999,999");
+    // And 계획 still runs on the version's own figure. It is the answer
+    // to "what did I say I would do", so the book working something out
+    // must not move it — that is what 전망 is for.
+    await expect(rowFor(page, thisYear)).toContainText("₩999,999,999");
 
     // And the twelve months it was worked out from, one row each.
     await rowFor(page, thisYear).getByRole("link").first().click();

@@ -598,9 +598,14 @@ test.describe("budget", () => {
     ]);
 
     await page.goto("/budget?period=2026-08");
-    // Beside 지출 예산, where the settling is done.
-    const expenseHeading = page.locator("section").filter({ hasText: "지출 예산" }).first();
-    await expect(expenseHeading.getByTestId("budget-image")).toBeVisible();
+    // Beside the screen name, where the other reports keep their own
+    // screen-level action: the picture is of the whole month, not of
+    // either side of it.
+    const header = page
+      .locator("main div")
+      .filter({ has: page.getByRole("heading", { name: "예산", level: 1 }) })
+      .first();
+    await expect(header.getByTestId("budget-image")).toBeVisible();
 
     await page.getByTestId("budget-image").click();
     const [download] = await Promise.all([

@@ -123,8 +123,48 @@ describe("buildRoadmap", () => {
     expect(rows[0].contributionSource).toBe("default");
     expect(rows[1].contribution).toBe(9_000_000);
     expect(rows[1].contributionSource).toBe("derived");
-    // And it is the figure the year actually compounds on.
-    expect(rows[1].planEnd).toBe(Math.round((rows[1].planStart + 9_000_000) * 1.1));
+    // And it is the figure 전망 compounds on.
+    expect(rows[1].liveEnd).toBe(Math.round((rows[1].liveStart + 9_000_000) * 1.1));
+  });
+
+  it("keeps the derived figure out of 계획", () => {
+    // 계획 answers "what did I say I would do". A line that moves every
+    // time a transaction is entered cannot answer it — and it kinked
+    // besides, since only the years the book could speak for got the
+    // derived figure and the rest fell back to the default.
+    const rows = buildRoadmap({
+      ...base,
+      contributionByYear: new Map([["2026", 9_000_000]]),
+    });
+
+    expect(rows[1].planContribution).toBe(6_000_000);
+    expect(rows[1].planEnd).toBe(Math.round((rows[1].planStart + 6_000_000) * 1.1));
+  });
+
+  it("lets an override into 계획, because the reader typed that too", () => {
+    const rows = buildRoadmap({
+      ...base,
+      contributionByYear: new Map([["2026", 9_000_000]]),
+      overrides: [{ year: "2026", contribution: 1_000_000, returnRate: null, note: null }],
+    });
+
+    expect(rows[1].planContribution).toBe(1_000_000);
+    expect(rows[1].planEnd).toBe(Math.round((rows[1].planStart + 1_000_000) * 1.1));
+  });
+
+  it("leaves 계획 alone as the book fills in around it", () => {
+    // The whole point: entering a month must not move the plan.
+    const plain = buildRoadmap({ ...base });
+    const filled = buildRoadmap({
+      ...base,
+      contributionByYear: new Map([
+        ["2026", 9_000_000],
+        ["2027", 12_000_000],
+      ]),
+      actualByYear: new Map([["2026", 80_000_000]]),
+    });
+
+    expect(filled.map((r) => r.planEnd)).toEqual(plain.map((r) => r.planEnd));
   });
 
   it("still lets the reader have the last word over a derived year", () => {
