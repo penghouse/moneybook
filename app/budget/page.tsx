@@ -6,12 +6,14 @@ import { foldCookieName, parseFolds } from "@/lib/category-folds";
 import { currentSection } from "@/lib/current-request";
 import { addMonths, addYears, monthRange, today, yearMonthOf, yearOf, yearRange } from "@/lib/date";
 import { activeDuring } from "@/lib/accounts";
+import { budgetBarPercent, budgetProgress } from "@/lib/budget-view";
 import { monthsCoverYear } from "@/lib/budget-coverage";
 import { parseBudgetPeriod } from "@/lib/budgets";
 import { getAccountFlows } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
 import { PeriodNav } from "../_components/period-nav";
 import { Card, EmptyState, Hint, Money, PageHeader } from "../_components/ui";
+import { BudgetImage, type BudgetImageSection } from "./budget-image";
 import { BudgetSection } from "./budget-section";
 
 export default async function BudgetPage({
@@ -131,6 +133,80 @@ export default async function BudgetPage({
     { label: t("common.unitYear"), href: `/budget?period=${year}`, active: isYear },
   ];
 
+  /**
+   * The month as one picture, built from the very maps the screen reads.
+   *
+   * Settling a month meant screenshotting a page taller than any phone —
+   * three or four captures with the totals in one and the items in
+   * another. This is the same figures, in one image.
+   */
+  const base = (minor: number) => formatMoney(minor, section.baseCurrency, locale);
+  const imageSection = (label: string, list: typeof incomeAccounts): BudgetImageSection | null => {
+    if (list.length === 0) return null;
+    const actual = sum(list, actualByAccountId);
+    const budget = sum(list, budgetByAccountId);
+    const anyBudget = list.some((a) => budgetByAccountId.has(a.id));
+    const progress = budgetProgress(actual, anyBudget ? budget : undefined);
+
+    // The screen's own grouping, so the picture reads like the page it
+    // was taken from: 미분류 last, and no bands at all where the book
+    // files nothing under 상위 그룹.
+    const hasCategories = list.some((a) => a.category);
+    const categories = [
+      ...new Map(list.map((a) => [a.category ?? null, a.category ?? null] as const)).values(),
+    ].sort((a, b) => (a === null ? 1 : b === null ? -1 : 0));
+
+    return {
+      label,
+      actual: base(actual),
+      budget: anyBudget ? base(budget) : null,
+      bar: budgetBarPercent(progress),
+      percent: progress.percent,
+      over: progress.over,
+      bands: categories.map((category) => ({
+        category: hasCategories ? (category ?? t("accounts.uncategorized")) : null,
+        rows: list
+          .filter((a) => (a.category ?? null) === category)
+          .map((account) => {
+            const rowBudget = budgetByAccountId.get(account.id);
+            const rowActual = actualByAccountId.get(account.id) ?? 0;
+            const rowProgress = budgetProgress(rowActual, rowBudget);
+            return {
+              name: account.name,
+              actual: base(rowActual),
+              budget: rowBudget === undefined ? null : base(rowBudget),
+              bar: budgetBarPercent(rowProgress),
+              percent: rowProgress.percent,
+              over: rowProgress.over,
+            };
+          }),
+      })),
+    };
+  };
+
+  const imageSections = [
+    imageSection(t("budget.incomeSide"), incomeAccounts),
+    imageSection(t("budget.expenseSide"), expenseAccounts),
+  ].filter((s): s is BudgetImageSection => s !== null);
+
+  const exportButton = (
+    <BudgetImage
+      period={ref.periodKey}
+      summary={[
+        { label: t("budget.saving"), value: base(actualSaving) },
+        ...(hasAnyBudget ? [{ label: t("budget.savingPlanned"), value: base(plannedSaving) }] : []),
+      ]}
+      sections={imageSections}
+      labels={{
+        save: t("budget.saveImage"),
+        saving: t("common.saving"),
+        title: t("nav.budget"),
+        uncategorized: t("accounts.uncategorized"),
+        over: t("budget.over"),
+      }}
+    />
+  );
+
   const shared = {
     budgetByAccountId,
     actualByAccountId,
@@ -208,7 +284,12 @@ export default async function BudgetPage({
           <Hint>{t("budget.savingHint")}</Hint>
 
           <BudgetSection group="income" accounts={incomeAccounts} {...shared} />
-          <BudgetSection group="expense" accounts={expenseAccounts} {...shared} />
+          <BudgetSection
+            group="expense"
+            accounts={expenseAccounts}
+            action={exportButton}
+            {...shared}
+          />
         </>
       )}
     </div>

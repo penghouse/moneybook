@@ -1,4 +1,5 @@
 import { test, expect, type Locator } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, budgets, transactionLines, transactions } from "../db/schema";
@@ -521,6 +522,76 @@ test.describe("budget", () => {
     await setRowBudget(row("식비"), "900000");
     await expect(row("식비")).toContainText("예산 설정 ₩900,000");
     await expect(row("식비").getByTestId("budget-derived")).toHaveCount(0);
+  });
+
+  test("the month exports as one image instead of a page of screenshots", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const food = await byName("식비");
+    const card = await byName("신용카드");
+
+    const [tx] = await db
+      .insert(transactions)
+      .values({ sectionId: section.id, date: "2026-08-10", title: "장보기" })
+      .returning();
+    await db.insert(transactionLines).values([
+      {
+        transactionId: tx.id,
+        side: "left",
+        accountId: food.id,
+        currency: "KRW",
+        amount: 620_000,
+        rate: 1,
+        baseAmount: 620_000,
+        lineOrder: 0,
+      },
+      {
+        transactionId: tx.id,
+        side: "right",
+        accountId: card.id,
+        currency: "KRW",
+        amount: 620_000,
+        rate: 1,
+        baseAmount: 620_000,
+        lineOrder: 1,
+      },
+    ]);
+    await db.insert(budgets).values({
+      sectionId: section.id,
+      accountId: food.id,
+      period: "month",
+      periodKey: "2026-08",
+      amount: 500_000,
+    });
+
+    await page.goto("/budget?period=2026-08");
+    // Beside 지출 예산, where the settling is done.
+    const expenseHeading = page.locator("section").filter({ hasText: "지출 예산" }).first();
+    await expect(expenseHeading.getByTestId("budget-image")).toBeVisible();
+
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByTestId("budget-image").click(),
+    ]);
+    const file = await download.path();
+    const bytes = await readFile(file);
+
+    // A PNG, and one wide enough to read on a phone. Dimensions live at
+    // bytes 16–23 of the IHDR chunk.
+    expect(bytes.subarray(1, 4).toString()).toBe("PNG");
+    const width = bytes.readUInt32BE(16);
+    const height = bytes.readUInt32BE(20);
+    expect(width).toBe(2160);
+    // The height follows the content: a short month must not come out as
+    // a phone-shaped frame half full of blank paper.
+    expect(height).toBeGreaterThan(600);
+    expect(height).toBeLessThan(2400);
+
+    // The button says it is working and comes back.
+    await expect(page.getByTestId("budget-image")).toBeEnabled();
   });
 
   test("month navigation keeps the selected month in the URL", async ({ page }) => {
