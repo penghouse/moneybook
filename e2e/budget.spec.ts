@@ -1,7 +1,7 @@
 import { test, expect, type Locator } from "@playwright/test";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/client";
-import { accounts, transactionLines, transactions } from "../db/schema";
+import { accounts, budgets, transactionLines, transactions } from "../db/schema";
 import { today } from "../lib/date";
 import { getOrCreateSection } from "../lib/current-section";
 import { seedSession, SESSION_COOKIE_NAME } from "./auth-helper";
@@ -471,6 +471,56 @@ test.describe("budget", () => {
     await expect(page).toHaveURL(/period=2026-07/);
     // And it stops once the month is on screen.
     await expect(page.locator('[data-testid="link-pending"][data-pending]')).toHaveCount(0);
+  });
+
+  test("a year whose twelve months are all budgeted reads as budgeted", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const food = await byName("식비");
+    const transport = await byName("교통비");
+
+    const setMonth = async (accountId: string, month: number, amount: number) => {
+      await db.insert(budgets).values({
+        sectionId: section.id,
+        accountId,
+        period: "month",
+        periodKey: `2026-${String(month).padStart(2, "0")}`,
+        amount,
+      });
+    };
+    // 식비: every month of 2026. 교통비: eleven of them, which is a plan
+    // with a hole in it rather than a year's budget.
+    for (let m = 1; m <= 12; m++) await setMonth(food.id, m, 100_000);
+    for (let m = 1; m <= 11; m++) await setMonth(transport.id, m, 50_000);
+
+    await page.goto("/budget?period=2026");
+    const row = (name: string) => page.getByTestId("budget-row").filter({ hasText: name });
+
+    // Asking for a year's cap over a figure the book has already worked
+    // out is an empty box over an answer.
+    await expect(row("식비").locator('input[name="amount"]')).toBeHidden();
+    await expect(row("식비")).toContainText("예산 설정 ₩1,200,000");
+    await expect(row("식비").getByTestId("budget-derived")).toBeVisible();
+    // And the figure is not printed twice — the 월예산 합계 line under a
+    // derived row would be the same number again.
+    await expect(row("식비")).not.toContainText("월 예산 합계");
+
+    // A gap is still a gap.
+    await expect(row("교통비").locator('input[name="amount"]')).toBeVisible();
+    await expect(row("교통비")).toContainText("월 예산 합계");
+
+    // The whole page agrees: the derived figure counts in the section
+    // total, not only in the row.
+    await expect(page.getByTestId("budget-total-expense")).toContainText("₩1,200,000");
+
+    // 수정 still writes a real year budget over it.
+    await row("식비").getByRole("button", { name: "수정" }).click();
+    await setRowBudget(row("식비"), "900000");
+    await expect(row("식비")).toContainText("예산 설정 ₩900,000");
+    await expect(row("식비").getByTestId("budget-derived")).toHaveCount(0);
   });
 
   test("month navigation keeps the selected month in the URL", async ({ page }) => {

@@ -272,6 +272,7 @@ const en: Record<keyof typeof ko, string> = {
   "budget.noBudget": "No budget set",
   "budget.grandTotal": "All items",
   "budget.setYearBudget": "Set yearly budget",
+  "budget.fromMonths": "from the months",
   "budget.monthlySum": "Monthly budgets",
   "budget.monthlySumOver": "Over yearly budget by",
   "budget.incomeSide": "Income budget",
