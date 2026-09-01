@@ -18,7 +18,11 @@ function PendingDot({ pending }: { pending: boolean }) {
       aria-hidden="true"
       data-testid="jump-pending"
       data-pending={pending ? "true" : undefined}
-      className={`border-rule border-t-accent inline-block size-3 shrink-0 rounded-full border-2 transition-opacity ${
+      // Out of the flow, not merely transparent: in the middle of the
+      // bar every pixel is the label's, and eighteen of them for a
+      // spinner that is almost never spinning was what pushed
+      // 「2026-09-01 ~ 09-30」 into truncating at 393px.
+      className={`border-rule border-t-accent pointer-events-none absolute top-1 -right-1 size-3 rounded-full border-2 transition-opacity ${
         pending ? "animate-spin opacity-100" : "opacity-0"
       }`}
     />
@@ -95,7 +99,7 @@ export function PeriodJump({
         onClick={() => setPicking(true)}
         aria-label={label}
         data-testid="period-jump"
-        className="tnum hover:text-accent mx-auto inline-flex min-h-12 items-center gap-1.5 px-3 font-semibold underline decoration-dotted underline-offset-4"
+        className="tnum hover:text-accent relative mx-auto inline-flex min-h-12 items-center px-3 font-semibold underline decoration-dotted underline-offset-4"
       >
         {value}
         <PendingDot pending={pending} />
@@ -203,9 +207,12 @@ export function RangeJump({
         }}
         aria-label={label}
         data-testid="range-jump"
-        className="tnum hover:text-accent mx-auto inline-flex min-h-12 items-center gap-1.5 px-3 text-sm font-semibold underline decoration-dotted underline-offset-4"
+        className="tnum hover:text-accent relative mx-auto inline-flex min-h-12 min-w-0 items-center px-2 text-sm font-semibold underline decoration-dotted underline-offset-4"
       >
-        {value}
+        {/* The label gives way, not the arrows: 「2026-09-01 ~ 2026-09-30」
+            is the longest thing in the bar, and letting it push made the
+            two arrows either side of it wrap to 「← 이 / 전」. */}
+        <span className="min-w-0 truncate">{value}</span>
         <PendingDot pending={pending} />
       </button>
 

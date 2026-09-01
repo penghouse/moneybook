@@ -150,3 +150,16 @@ export function rangeUnit(from: string, to: string): "month" | "year" | "custom"
   if (from === asMonth.from && to === asMonth.to) return "month";
   return "custom";
 }
+
+/**
+ * Two dates as one label, without saying the same year twice.
+ *
+ * 「2026-09-01 ~ 2026-09-30」 is the longest thing in the period bar and
+ * the repeated year is the half that carries nothing — at 393px it was
+ * what pushed the label into truncating, losing the end date entirely.
+ * A range that really does cross a year keeps both, because there the
+ * year is the whole point.
+ */
+export function rangeLabel(from: string, to: string): string {
+  return from.slice(0, 4) === to.slice(0, 4) ? `${from} ~ ${to.slice(5)}` : `${from} ~ ${to}`;
+}

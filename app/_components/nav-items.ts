@@ -13,6 +13,7 @@ export const NAV_ITEMS: { href: string; labelKey: TranslationKey }[] = [
   { href: "/roadmap", labelKey: "nav.roadmap" },
   { href: "/income", labelKey: "nav.income" },
   { href: "/income/chart", labelKey: "nav.incomeChart" },
+  { href: "/compare", labelKey: "nav.compare" },
   { href: "/budget", labelKey: "nav.budget" },
   { href: "/formulas", labelKey: "nav.formulas" },
   { href: "/accounts", labelKey: "nav.accounts" },

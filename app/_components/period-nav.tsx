@@ -113,7 +113,11 @@ export function PeriodNav({
   return (
     <Card>
       <div className="flex items-center px-1 py-1">
-        <Link href={prevHref} aria-label={prevLabel} className={buttonClass("nav")}>
+        <Link
+          href={prevHref}
+          aria-label={prevLabel}
+          className={`${buttonClass("nav")} shrink-0 whitespace-nowrap`}
+        >
           ← {shortPrev ?? prevLabel}
           <LinkPending />
         </Link>
@@ -124,7 +128,11 @@ export function PeriodNav({
         ) : (
           <span className="tnum mx-auto font-semibold">{label}</span>
         )}
-        <Link href={nextHref} aria-label={nextLabel} className={buttonClass("nav")}>
+        <Link
+          href={nextHref}
+          aria-label={nextLabel}
+          className={`${buttonClass("nav")} shrink-0 whitespace-nowrap`}
+        >
           {shortNext ?? nextLabel} →
           <LinkPending />
         </Link>
