@@ -245,7 +245,10 @@ export default async function BudgetPage({
 
   return (
     <div className="space-y-4">
-      <PageHeader title={t("nav.budget")} />
+      {/* Beside the screen name, where /assets and /income already keep
+          「그래프 보기」: the picture is of the whole month, so it belongs
+          to the page rather than to either side of it. */}
+      <PageHeader title={t("nav.budget")}>{exportButton}</PageHeader>
 
       <PeriodNav
         prevHref={`/budget?period=${isYear ? addYears(ref.periodKey, -1) : addMonths(ref.periodKey, -1)}`}
@@ -302,12 +305,7 @@ export default async function BudgetPage({
           <Hint>{t("budget.savingHint")}</Hint>
 
           <BudgetSection group="income" accounts={incomeAccounts} {...shared} />
-          <BudgetSection
-            group="expense"
-            accounts={expenseAccounts}
-            action={exportButton}
-            {...shared}
-          />
+          <BudgetSection group="expense" accounts={expenseAccounts} {...shared} />
         </>
       )}
     </div>

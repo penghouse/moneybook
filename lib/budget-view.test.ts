@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { budgetBarPercent, budgetProgress } from "./budget-view";
+import { budgetBarPercent, budgetProgress, summaryBelongs } from "./budget-view";
 
 describe("budgetProgress", () => {
   it("reports what is left and how much of the budget is used", () => {
@@ -43,5 +43,21 @@ describe("budgetBarPercent", () => {
 
   it("is empty where nothing was budgeted", () => {
     expect(budgetBarPercent(budgetProgress(30_000, undefined))).toBe(0);
+  });
+});
+
+describe("summaryBelongs", () => {
+  it("belongs when nothing was left out", () => {
+    expect(summaryBelongs(2, 2)).toBe(true);
+    expect(summaryBelongs(1, 1)).toBe(true);
+  });
+
+  it("does not belong once a side is dropped", () => {
+    // 저축 is 수입 − 지출; a picture of one side cannot add up to it.
+    expect(summaryBelongs(1, 2)).toBe(false);
+  });
+
+  it("does not belong to a picture of nothing", () => {
+    expect(summaryBelongs(0, 0)).toBe(false);
   });
 });

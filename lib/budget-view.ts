@@ -33,3 +33,15 @@ export function budgetBarPercent(progress: BudgetProgress): number {
   // budget that has been spent against is fully over rather than 0% used.
   return progress.over ? 100 : Math.max(0, Math.min(100, progress.percent ?? 0));
 }
+
+/**
+ * Whether 저축 belongs on a picture of these sides.
+ *
+ * 저축 is 수입 − 지출. Leave a side out and the figure is still true of
+ * the month but no longer true of the *picture*: two numbers at the top
+ * that nothing below them adds up to, which is worse than not saying
+ * them at all.
+ */
+export function summaryBelongs(picked: number, available: number): boolean {
+  return available > 0 && picked === available;
+}
