@@ -65,3 +65,18 @@ export async function getPeriodTotals(
 
   return sorted.map((period) => ({ period, ...totals.get(period)! }));
 }
+
+/**
+ * The month the book begins in, or null for a book with nothing in it.
+ *
+ * It is what separates 「그 달은 0원이었다」 from 「그 달은 장부 밖이다」,
+ * and every screen that reads the ledger behind and the budget ahead
+ * needs that line drawn before it can say either.
+ */
+export async function getFirstLedgerMonth(db: Db, sectionId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ first: sql<string | null>`min(${transactions.date})` })
+    .from(transactions)
+    .where(eq(transactions.sectionId, sectionId));
+  return row?.first?.slice(0, 7) ?? null;
+}

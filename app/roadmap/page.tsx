@@ -1,13 +1,13 @@
 import Link from "next/link";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { accounts, formulas, roadmaps, roadmapYears, transactions } from "@/db/schema";
+import { accounts, formulas, roadmaps, roadmapYears } from "@/db/schema";
 import { parseGroupOrder } from "@/lib/account-groups";
 import { currentSection } from "@/lib/current-request";
 import { monthsBetween, today, yearMonthOf, yearOf } from "@/lib/date";
 import { formatMoney, toMajorUnits } from "@/lib/money";
 import { formatShortMoney } from "@/lib/short-money";
-import { getMonthlyBalanceSheet } from "@/lib/ledger";
+import { getFirstLedgerMonth, getMonthlyBalanceSheet } from "@/lib/ledger";
 import { buildReportSeries } from "@/lib/report-series";
 import { getMonthlySavings, sumSavings, type MonthlySaving } from "@/lib/savings";
 import { buildRoadmap, MAX_ROADMAP_YEARS, roadmapYearList, type RoadmapRow } from "@/lib/roadmap";
@@ -253,14 +253,10 @@ export default async function RoadmapPage({
 
   const years = roadmapYearList(selected.startYear, selected.endYear);
 
-  // The book's own beginning, asked for once and used twice: it is what
-  // separates "the year was zero" from "the year is outside the book",
-  // and both the actuals and the savings need that line drawn.
-  const [{ first: firstEntry }] = await db
-    .select({ first: sql<string | null>`min(${transactions.date})` })
-    .from(transactions)
-    .where(eq(transactions.sectionId, section.id));
-  const firstLedgerMonth = firstEntry?.slice(0, 7) ?? null;
+  // The book's own beginning: it is what separates "the year was zero"
+  // from "the year is outside the book", and both the actuals and the
+  // savings need that line drawn.
+  const firstLedgerMonth = await getFirstLedgerMonth(db, section.id);
   const currentMonth = yearMonthOf(today(section.timezone));
 
   const [overrides, actualByYear, savings] = await Promise.all([

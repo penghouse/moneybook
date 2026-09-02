@@ -439,7 +439,7 @@ test.describe("budget", () => {
     await expect(page).toHaveURL(/period=2025-12/);
 
     // On the year view the same label takes a year instead.
-    await page.getByRole("link", { name: "연간" }).click();
+    await page.getByTestId("period-units").getByRole("link", { name: "연간" }).click();
     await expect(page.getByTestId("period-jump")).toHaveText("2025");
     await page.getByTestId("period-jump").click();
     const yearPicker = page.getByTestId("period-jump-input");
@@ -738,7 +738,7 @@ test.describe("budget", () => {
     await setRowBudget(febRow, "300000");
     await expect(page.getByText(/예산 설정.*₩300,000/)).toBeVisible();
 
-    await page.getByRole("link", { name: "연간" }).click();
+    await page.getByTestId("period-units").getByRole("link", { name: "연간" }).click();
     await expect(page).toHaveURL(new RegExp(`period=${year}$`));
 
     const yearRow = page.getByTestId("budget-row").filter({ hasText: "식비" });
@@ -749,7 +749,7 @@ test.describe("budget", () => {
     await expect(page.getByText(/연 예산 초과.*₩100,000/).first()).toBeVisible();
 
     // The month screen is untouched by any of it.
-    await page.getByRole("link", { name: "월간" }).click();
+    await page.getByTestId("period-units").getByRole("link", { name: "월간" }).click();
     await expect(page).toHaveURL(/period=\d{4}-\d{2}/);
   });
 });

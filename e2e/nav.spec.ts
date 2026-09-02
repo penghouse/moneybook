@@ -201,7 +201,7 @@ test("the period arrows read short and still say which unit they step", async ({
   // And still named in full for anyone who cannot see either of those.
   await expect(back).toHaveAttribute("aria-label", "이전 달");
 
-  await page.getByRole("link", { name: "연간" }).click();
+  await page.getByTestId("period-units").getByRole("link", { name: "연간" }).click();
   await expect(page.getByRole("link", { name: "이전 해" })).toHaveText(/^← 이전$/);
 });
 
