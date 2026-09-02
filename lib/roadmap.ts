@@ -45,16 +45,6 @@ export interface RoadmapRow {
    * speak for and the reader had not overridden.
    */
   planContribution: number;
-  /**
-   * How much of `contribution` has actually gone in already.
-   *
-   * The same figure for a year that is over. For the year in progress it
-   * is only the months that have been lived, because the actual closing
-   * figure beside it is today's — dividing today's balance by a whole
-   * year's saving would credit the year with money that has not been put
-   * in yet, and report a return far below the real one.
-   */
-  settledContribution: number;
   /** Whether the reader typed it, the book worked it out, or it fell back. */
   contributionSource: ContributionSource;
   returnRate: number;
@@ -68,9 +58,18 @@ export interface RoadmapRow {
   actual: number | null;
   /**
    * What rate the year would have had to earn to land on `actual`, given
-   * what went in. Null whenever there is no actual, or when nothing was
-   * standing there to earn a return — a rate on a zero base is a division
-   * by zero dressed up as a number.
+   * the money *put in* — `planContribution`, not the ledger's 저축.
+   *
+   * 저축 is 수입 − 지출, and investment returns arrive as 수익: 이자,
+   * 배당, 평가이익. So the ledger's saving figure already has the year's
+   * returns folded into it, and standing the closing balance on it
+   * counts them twice — once in the numerator where they belong and once
+   * in the base, which drags the rate towards zero however well the year
+   * went. What someone typed as the year's 납입액 is free of that.
+   *
+   * Null whenever there is no actual, or when nothing was standing there
+   * to earn a return — a rate on a zero base is a division by zero
+   * dressed up as a number.
    */
   actualReturnRate: number | null;
   note: string | null;
@@ -123,14 +122,6 @@ export function buildRoadmap(params: {
    * exactly this reason.
    */
   contributionByYear?: ReadonlyMap<string, number>;
-  /**
-   * Year -> how much of that year's saving has actually happened.
-   *
-   * Only differs from `contributionByYear` for the year in progress, and
-   * only matters for working the real return rate back out. Absent means
-   * "all of it", which is true of every year that is over.
-   */
-  settledContributionByYear?: ReadonlyMap<string, number>;
 }): RoadmapRow[] {
   const years = roadmapYearList(params.startYear, params.endYear);
   const overrideByYear = new Map(params.overrides.map((o) => [o.year, o]));
@@ -172,18 +163,18 @@ export function buildRoadmap(params: {
     // The rate the year *did* earn, read back out of the identity the
     // whole table is built on:
     //
-    //     (이전 기말 + 저축) × (1 + 수익률) = 기말
+    //     (이전 기말 + 납입액) × (1 + 수익률) = 기말
     //
-    // against what has actually been put in rather than what is planned
-    // to be — see settledContribution.
-    const settledContribution = params.settledContributionByYear?.get(year) ?? contribution;
-    const settledBase = liveStart + settledContribution;
+    // The 납입액 here is the planned one. The ledger's 저축 cannot play
+    // the part: 이자·배당·평가이익 are 수익, so 수입 − 지출 already
+    // carries the year's returns, and a base carrying them measures the
+    // year against itself — see actualReturnRate.
+    const returnBase = liveStart + planContribution;
 
     rows.push({
       year,
       contribution,
       planContribution,
-      settledContribution,
       contributionSource,
       returnRate,
       overridden: override !== undefined,
@@ -192,7 +183,7 @@ export function buildRoadmap(params: {
       liveStart,
       liveEnd,
       actual,
-      actualReturnRate: actual === null || settledBase === 0 ? null : actual / settledBase - 1,
+      actualReturnRate: actual === null || returnBase === 0 ? null : actual / returnBase - 1,
       note: override?.note ?? null,
     });
 

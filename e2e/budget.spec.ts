@@ -439,7 +439,7 @@ test.describe("budget", () => {
     await expect(page).toHaveURL(/period=2025-12/);
 
     // On the year view the same label takes a year instead.
-    await page.getByRole("link", { name: "연간" }).click();
+    await page.getByTestId("period-units").getByRole("link", { name: "연간" }).click();
     await expect(page.getByTestId("period-jump")).toHaveText("2025");
     await page.getByTestId("period-jump").click();
     const yearPicker = page.getByTestId("period-jump-input");
@@ -643,6 +643,61 @@ test.describe("budget", () => {
     await expect(page.getByTestId("budget-image-confirm")).toBeDisabled();
   });
 
+  test("the picture says by how much a budget was blown, and in whose favour", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const food = await byName("식비");
+    const card = await byName("신용카드");
+    await db.insert(budgets).values({
+      sectionId: section.id,
+      accountId: food.id,
+      period: "month",
+      periodKey: "2026-08",
+      amount: 620_000,
+    });
+    const [tx] = await db
+      .insert(transactions)
+      .values({ sectionId: section.id, date: "2026-08-10", title: "장" })
+      .returning();
+    await db.insert(transactionLines).values([
+      {
+        transactionId: tx.id,
+        side: "left",
+        accountId: food.id,
+        currency: "KRW",
+        amount: 744_000,
+        rate: 1,
+        baseAmount: 744_000,
+        lineOrder: 0,
+      },
+      {
+        transactionId: tx.id,
+        side: "right",
+        accountId: card.id,
+        currency: "KRW",
+        amount: 744_000,
+        rate: 1,
+        baseAmount: 744_000,
+        lineOrder: 1,
+      },
+    ]);
+
+    await page.goto("/budget?period=2026-08");
+    // The screen has said the overshoot all along; the picture said only
+    // that there was one. Settling a month asks by how much.
+    await expect(page.getByText("초과 ₩124,000").first()).toBeVisible();
+
+    await page.getByTestId("budget-image").click();
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByTestId("budget-image-confirm").click(),
+    ]);
+    expect((await readFile((await download.path())!)).length).toBeGreaterThan(0);
+  });
+
   test("a long month goes into columns rather than becoming a strip", async ({ page }) => {
     const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
     const card = (await db.query.accounts.findFirst({
@@ -738,7 +793,7 @@ test.describe("budget", () => {
     await setRowBudget(febRow, "300000");
     await expect(page.getByText(/예산 설정.*₩300,000/)).toBeVisible();
 
-    await page.getByRole("link", { name: "연간" }).click();
+    await page.getByTestId("period-units").getByRole("link", { name: "연간" }).click();
     await expect(page).toHaveURL(new RegExp(`period=${year}$`));
 
     const yearRow = page.getByTestId("budget-row").filter({ hasText: "식비" });
@@ -749,7 +804,7 @@ test.describe("budget", () => {
     await expect(page.getByText(/연 예산 초과.*₩100,000/).first()).toBeVisible();
 
     // The month screen is untouched by any of it.
-    await page.getByRole("link", { name: "월간" }).click();
+    await page.getByTestId("period-units").getByRole("link", { name: "월간" }).click();
     await expect(page).toHaveURL(/period=\d{4}-\d{2}/);
   });
 });

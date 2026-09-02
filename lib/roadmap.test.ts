@@ -21,7 +21,7 @@ describe("buildRoadmap", () => {
     expect(rows[1].planEnd).toBe(Math.round((61_600_000 + 6_000_000) * 1.1));
   });
 
-  it("works out what a year actually earned, against what went in", () => {
+  it("works out what a year actually earned, against what was put in", () => {
     const rows = buildRoadmap({
       ...base,
       startYear: "2026",
@@ -35,42 +35,42 @@ describe("buildRoadmap", () => {
     expect(rows[0].actualReturnRate).toBeCloseTo(0.25, 10);
   });
 
-  it("works the rate out against what has gone in, not what is planned to", () => {
-    // The year in progress: the closing figure is today's, so only the
-    // saving that has actually been made can stand under it. Counting
-    // the whole year's plan would credit the year with money nobody has
-    // put in yet and report a return well below the real one.
+  it("does not let the ledger's 저축 into the base it measures against", () => {
+    // 이자·배당·평가이익 are 수익, so a year that earned well shows a
+    // *larger* 저축 — and standing the closing balance on that counts
+    // the return once in the numerator and again in the base, pulling
+    // every good year back towards zero. Two runs, same money in and
+    // same money out; only the ledger's figure differs.
+    const rate = (derived: number) =>
+      buildRoadmap({
+        ...base,
+        startYear: "2026",
+        endYear: "2026",
+        startingAmount: 61_600_000,
+        defaultContribution: 6_000_000,
+        contributionByYear: new Map([["2026", derived]]),
+        actualByYear: new Map([["2026", 84_500_000]]),
+      })[0].actualReturnRate;
+
+    expect(rate(6_000_000)).toBeCloseTo(0.25, 10);
+    // 16,900,000 of the closing figure came in as 수익, so the book's
+    // 저축 is that much bigger. The rate must not move.
+    expect(rate(22_900_000)).toBeCloseTo(0.25, 10);
+  });
+
+  it("measures against the year's own 납입액 when one was typed for it", () => {
+    // An override is someone saying "this year is different", and 계획
+    // already runs on it — the rate has to be asked the same question.
     const rows = buildRoadmap({
       ...base,
       startYear: "2026",
       endYear: "2026",
       startingAmount: 61_600_000,
       defaultContribution: 6_000_000,
-      contributionByYear: new Map([["2026", 6_000_000]]),
-      settledContributionByYear: new Map([["2026", 0]]),
-      actualByYear: new Map([["2026", 67_760_000]]),
+      overrides: [{ year: "2026", contribution: 8_400_000, returnRate: null, note: null }],
+      actualByYear: new Map([["2026", 87_500_000]]),
     });
 
-    // 67,760,000 on 61,600,000 with nothing added is 10%, not the 0.26%
-    // that dividing by a year's unmade saving would have shown.
-    expect(rows[0].settledContribution).toBe(0);
-    expect(rows[0].actualReturnRate).toBeCloseTo(0.1, 10);
-    // The saving on show is still the whole year's — that is the figure
-    // the year is planned around.
-    expect(rows[0].contribution).toBe(6_000_000);
-  });
-
-  it("treats a finished year's saving as all settled", () => {
-    const rows = buildRoadmap({
-      ...base,
-      startYear: "2026",
-      endYear: "2026",
-      startingAmount: 61_600_000,
-      contributionByYear: new Map([["2026", 6_000_000]]),
-      actualByYear: new Map([["2026", 84_500_000]]),
-    });
-
-    expect(rows[0].settledContribution).toBe(6_000_000);
     expect(rows[0].actualReturnRate).toBeCloseTo(0.25, 10);
   });
 

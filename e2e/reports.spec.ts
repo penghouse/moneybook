@@ -182,7 +182,7 @@ test.describe("reports", () => {
     // The income statement's unit is derived from its range, so 연간
     // widens the range and the arrows follow it without being told.
     await page.goto("/income?from=2026-08-01&to=2026-08-31");
-    await page.getByRole("link", { name: "연간" }).click();
+    await page.getByTestId("period-units").getByRole("link", { name: "연간" }).click();
     await expect(page).toHaveURL(/from=2026-01-01&to=2026-12-31/);
     await page.getByRole("link", { name: /이전 해/ }).click();
     await expect(page).toHaveURL(/from=2025-01-01&to=2025-12-31/);
@@ -191,7 +191,7 @@ test.describe("reports", () => {
     // carries the step in the URL. Switching to years snaps to the
     // year's end — a past year, so it is not capped at today.
     await page.goto("/assets?asOf=2025-08-06");
-    await page.getByRole("link", { name: "연간" }).click();
+    await page.getByTestId("period-units").getByRole("link", { name: "연간" }).click();
     await expect(page).toHaveURL(/asOf=2025-12-31&step=year/);
     await page.getByRole("link", { name: /이전 해/ }).click();
     await expect(page).toHaveURL(/asOf=2024-12-31&step=year/);
@@ -649,7 +649,7 @@ test.describe("reports", () => {
     await expect(tip).toContainText("2026-07");
 
     // Years redraw the same range as one bar per year.
-    await page.getByRole("link", { name: "연간" }).click();
+    await page.getByTestId("period-units").getByRole("link", { name: "연간" }).click();
     await expect(page).toHaveURL(/unit=year/);
     await expect(page.getByTestId("chart-bar-hit")).toHaveCount(1);
     await expect(page.getByRole("heading", { name: "연도별 추이" })).toBeVisible();

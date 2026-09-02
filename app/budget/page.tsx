@@ -6,7 +6,7 @@ import { foldCookieName, parseFolds } from "@/lib/category-folds";
 import { currentSection } from "@/lib/current-request";
 import { addMonths, addYears, monthRange, today, yearMonthOf, yearOf, yearRange } from "@/lib/date";
 import { activeDuring } from "@/lib/accounts";
-import { budgetBarPercent, budgetProgress } from "@/lib/budget-view";
+import { budgetBarPercent, budgetOverBy, budgetProgress } from "@/lib/budget-view";
 import { monthsCoverYear } from "@/lib/budget-coverage";
 import { parseBudgetPeriod } from "@/lib/budgets";
 import { getAccountFlows } from "@/lib/ledger";
@@ -141,6 +141,10 @@ export default async function BudgetPage({
    * another. This is the same figures, in one image.
    */
   const base = (minor: number) => formatMoney(minor, section.baseCurrency, locale);
+  const overAmount = (progress: ReturnType<typeof budgetProgress>) => {
+    const over = budgetOverBy(progress);
+    return over === null ? null : base(over);
+  };
   const imageSection = (
     key: string,
     label: string,
@@ -168,6 +172,7 @@ export default async function BudgetPage({
       bar: budgetBarPercent(progress),
       percent: progress.percent,
       over: progress.over,
+      overBy: overAmount(progress),
       bands: categories
         .map((category) => ({
           category: hasCategories ? (category ?? t("accounts.uncategorized")) : null,
@@ -191,6 +196,7 @@ export default async function BudgetPage({
                 bar: budgetBarPercent(rowProgress),
                 percent: rowProgress.percent,
                 over: rowProgress.over,
+                overBy: overAmount(rowProgress),
               };
             }),
         }))
