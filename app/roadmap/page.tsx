@@ -298,17 +298,9 @@ export default async function RoadmapPage({
     else savingsByYear.set(year, [row]);
   }
   const contributionByYear = new Map<string, number>();
-  const settledContributionByYear = new Map<string, number>();
   for (const [year, months] of savingsByYear) {
     const total = sumSavings(months);
     if (total !== null) contributionByYear.set(year, total);
-    // Only the months already lived. The year in progress carries a
-    // closing figure that is today's, so the rate read back out of it
-    // has to stand on the saving actually made by today.
-    settledContributionByYear.set(
-      year,
-      months.filter((m) => m.source === "actual").reduce((sum, m) => sum + m.saving, 0),
-    );
   }
 
   /**
@@ -375,7 +367,6 @@ export default async function RoadmapPage({
     overrides,
     actualByYear,
     contributionByYear,
-    settledContributionByYear,
   });
 
   const cell = "px-3 py-2 whitespace-nowrap";
