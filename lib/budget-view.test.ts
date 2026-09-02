@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { budgetBarPercent, budgetProgress, summaryBelongs } from "./budget-view";
+import {
+  budgetBarPercent,
+  budgetFigures,
+  budgetOverBy,
+  budgetProgress,
+  summaryBelongs,
+} from "./budget-view";
 
 describe("budgetProgress", () => {
   it("reports what is left and how much of the budget is used", () => {
@@ -43,6 +49,51 @@ describe("budgetBarPercent", () => {
 
   it("is empty where nothing was budgeted", () => {
     expect(budgetBarPercent(budgetProgress(30_000, undefined))).toBe(0);
+  });
+});
+
+describe("budgetOverBy", () => {
+  it("says how far past the budget it went, as an overshoot", () => {
+    // 「초과 ₩24,000」 — positive, because that is how it reads. The same
+    // fact with the sign the other way round is what `left` is for.
+    expect(budgetOverBy(budgetProgress(124_000, 100_000))).toBe(24_000);
+  });
+
+  it("says nothing about a budget that held", () => {
+    expect(budgetOverBy(budgetProgress(90_000, 100_000))).toBeNull();
+    expect(budgetOverBy(budgetProgress(100_000, 100_000))).toBeNull();
+  });
+
+  it("says nothing where there was no budget to go past", () => {
+    expect(budgetOverBy(budgetProgress(90_000, undefined))).toBeNull();
+  });
+
+  it("counts a single won against a budget of nothing", () => {
+    // 「여기엔 쓰지 않는다」 is a plan, and a won spent against it is over
+    // by exactly a won.
+    expect(budgetOverBy(budgetProgress(1, 0))).toBe(1);
+  });
+});
+
+describe("budgetFigures", () => {
+  const line = (over: string | null) => ({
+    actual: "₩744,000",
+    budget: "₩620,000",
+    overBy: over,
+  });
+
+  it("says by how much, not merely that it went over", () => {
+    expect(budgetFigures(line("₩124,000"), "초과")).toBe("₩744,000 / ₩620,000 · 초과 ₩124,000");
+  });
+
+  it("says the two figures and stops where the budget held", () => {
+    expect(budgetFigures(line(null), "초과")).toBe("₩744,000 / ₩620,000");
+  });
+
+  it("has only the one figure where nothing was budgeted", () => {
+    expect(budgetFigures({ actual: "₩744,000", budget: null, overBy: null }, "초과")).toBe(
+      "₩744,000",
+    );
   });
 });
 

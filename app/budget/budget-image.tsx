@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { summaryBelongs } from "@/lib/budget-view";
+import { budgetFigures, summaryBelongs } from "@/lib/budget-view";
 import { columnCountFor, packColumns, type Sliver } from "@/lib/image-columns";
 import { buttonClass } from "../_components/ui";
 
@@ -15,6 +15,8 @@ export interface BudgetImageRow {
   bar: number;
   percent: number | null;
   over: boolean;
+  /** Formatted overshoot, or null where the budget held. */
+  overBy: string | null;
 }
 
 export interface BudgetImageBand {
@@ -32,6 +34,7 @@ export interface BudgetImageSection {
   bar: number;
   percent: number | null;
   over: boolean;
+  overBy: string | null;
   bands: BudgetImageBand[];
 }
 
@@ -88,6 +91,14 @@ const BAND = "#f2f4f6";
 const RULE = "#edf0f3";
 const ACCENT = "#4338ca";
 const NEGATIVE = "#c2372b";
+/**
+ * Beating the income plan is not the same news as blowing the spending
+ * one, and the screen this picture is taken from already says so — 초과
+ * is a green chip on 수입 and a red one on 지출. The picture said red to
+ * both, which was survivable while it only printed the word and is not
+ * now that it prints the figure.
+ */
+const POSITIVE = "#0f7a3d";
 
 const FAMILY =
   '-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", Pretendard, system-ui, "Malgun Gothic", sans-serif';
@@ -117,7 +128,7 @@ function roundRect(
 type Piece =
   | { kind: "section"; section: BudgetImageSection }
   | { kind: "band"; label: string }
-  | { kind: "row"; row: BudgetImageRow; band: string | null };
+  | { kind: "row"; row: BudgetImageRow; band: string | null; overIsGood: boolean };
 
 const PIECE_H: Record<Piece["kind"], number> = {
   section: SECTION_GAP + 22 + 60,
@@ -128,11 +139,12 @@ const PIECE_H: Record<Piece["kind"], number> = {
 function piecesOf(sections: readonly BudgetImageSection[]): Piece[] {
   const pieces: Piece[] = [];
   for (const section of sections) {
+    const overIsGood = section.key === "income";
     pieces.push({ kind: "section", section });
     for (const band of section.bands) {
       if (band.category !== null) pieces.push({ kind: "band", label: band.category });
       for (const row of band.rows) {
-        pieces.push({ kind: "row", row, band: band.category });
+        pieces.push({ kind: "row", row, band: band.category, overIsGood });
       }
     }
   }
@@ -272,23 +284,26 @@ export function BudgetImage({
 
           if (piece.kind === "section") {
             const { section } = piece;
+            const good = section.key === "income";
+            const overTone = good ? POSITIVE : NEGATIVE;
+            const tone = section.over ? overTone : INK;
             cy += SECTION_GAP;
             ctx.textAlign = "left";
             ctx.fillStyle = INK;
             ctx.font = font(38, 700);
             ctx.fillText(section.label, left, cy);
+            // Measured, not guessed: with the overshoot spelled out these
+            // figures grew long enough to run back into 「지출 예산」, and
+            // two strings on top of each other read as neither.
+            const room = right - left - ctx.measureText(section.label).width - 30;
             ctx.textAlign = "right";
             ctx.font = font(34, 700);
-            ctx.fillStyle = section.over ? NEGATIVE : INK;
-            ctx.fillText(
-              section.budget === null ? section.actual : `${section.actual} / ${section.budget}`,
-              right,
-              cy,
-            );
+            ctx.fillStyle = tone;
+            ctx.fillText(budgetFigures(section, labels.over), right, cy, room);
             cy += 22;
             ctx.fillStyle = RULE;
             roundRect(ctx, left, cy, right - left, 12, 6);
-            ctx.fillStyle = section.over ? NEGATIVE : ACCENT;
+            ctx.fillStyle = section.over ? overTone : ACCENT;
             roundRect(ctx, left, cy, ((right - left) * section.bar) / 100, 12, 6);
             cy += 60;
             continue;
@@ -306,28 +321,23 @@ export function BudgetImage({
           }
 
           const { row } = piece;
+          const rowTone = row.over ? (piece.overIsGood ? POSITIVE : NEGATIVE) : null;
           const rowLeft = left + (piece.band !== null ? 18 : 0);
           ctx.textAlign = "left";
           ctx.fillStyle = INK;
           ctx.font = font(32);
-          ctx.fillText(row.name, rowLeft, cy, 340);
+          ctx.fillText(row.name, rowLeft, cy, 300);
 
           ctx.textAlign = "right";
           ctx.font = font(30, row.over ? 700 : 400);
-          ctx.fillStyle = row.over ? NEGATIVE : INK_MUTED;
-          const figures = row.budget === null ? row.actual : `${row.actual} / ${row.budget}`;
-          ctx.fillText(
-            row.over ? `${figures} · ${labels.over}` : figures,
-            right,
-            cy,
-            right - rowLeft - 360,
-          );
+          ctx.fillStyle = rowTone ?? INK_MUTED;
+          ctx.fillText(budgetFigures(row, labels.over), right, cy, right - rowLeft - 320);
           cy += 18;
 
           ctx.fillStyle = RULE;
           roundRect(ctx, rowLeft, cy, right - rowLeft, 8, 4);
           if (row.budget !== null) {
-            ctx.fillStyle = row.over ? NEGATIVE : ACCENT;
+            ctx.fillStyle = rowTone ?? ACCENT;
             roundRect(ctx, rowLeft, cy, ((right - rowLeft) * row.bar) / 100, 8, 4);
           }
           cy += ROW_H - 18;

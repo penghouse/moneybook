@@ -27,6 +27,18 @@ export function budgetProgress(actual: number, budget: number | undefined): Budg
   };
 }
 
+/**
+ * How far past the budget it went, or null where it did not go past.
+ *
+ * A positive number, because it is read as an overshoot rather than as
+ * a balance: 「초과 ₩124,000」. `left` says the same thing with the sign
+ * the other way round, and a picture that printed −₩124,000 next to the
+ * word 초과 would be saying it twice and disagreeing with itself.
+ */
+export function budgetOverBy(progress: BudgetProgress): number | null {
+  return progress.over && progress.left !== null ? -progress.left : null;
+}
+
 /** How wide the bar is drawn: clamped, and full once it is over. */
 export function budgetBarPercent(progress: BudgetProgress): number {
   // Clamped at both ends: a refund can make spend negative, and a zero
@@ -44,4 +56,25 @@ export function budgetBarPercent(progress: BudgetProgress): number {
  */
 export function summaryBelongs(picked: number, available: number): boolean {
   return available > 0 && picked === available;
+}
+
+/**
+ * The figures at the right of a settled line: 「실적 / 예산」, and by how
+ * much it went past.
+ *
+ * 「초과」 on its own said only *that* the month went past its plan, which
+ * is already what the red and the full bar say. What settling a month
+ * actually asks is by how much — and that figure was nowhere in the
+ * picture, it had to be worked out from the two numbers beside it.
+ *
+ * Strings in and a string out: the caller has already formatted its
+ * money in the reader's own locale and currency, and a second opinion
+ * about how a won is written is the last thing this needs.
+ */
+export function budgetFigures(
+  line: { actual: string; budget: string | null; overBy: string | null },
+  overLabel: string,
+): string {
+  const figures = line.budget === null ? line.actual : `${line.actual} / ${line.budget}`;
+  return line.overBy === null ? figures : `${figures} · ${overLabel} ${line.overBy}`;
 }
