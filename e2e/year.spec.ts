@@ -201,17 +201,21 @@ test.describe("year overview", () => {
     await page.setViewportSize({ width: 393, height: 850 });
     await page.goto(`/year?year=${YEAR}`);
 
+    // Polled rather than measured once: a width read the instant the
+    // rows appear can land before the table has laid out or a font has
+    // swapped, and the answer then is about the timing rather than about
+    // the layout.
     const scroller = page.getByTestId("year-row").first().locator("xpath=ancestor::div[1]");
-    const overflow = await scroller.evaluate((el) => ({
-      scroll: el.scrollWidth,
-      client: el.clientWidth,
-    }));
-    expect(overflow.scroll).toBeGreaterThan(overflow.client);
+    await expect
+      .poll(() => scroller.evaluate((el) => el.scrollWidth - el.clientWidth))
+      .toBeGreaterThan(0);
     // And the page itself does not scroll sideways with it.
-    const body = await page.evaluate(() => ({
-      scroll: document.documentElement.scrollWidth,
-      client: document.documentElement.clientWidth,
-    }));
-    expect(body.scroll).toBeLessThanOrEqual(body.client);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        ),
+      )
+      .toBeLessThanOrEqual(0);
   });
 });

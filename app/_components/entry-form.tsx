@@ -105,6 +105,19 @@ function emptyLine(side: "left" | "right"): Line {
   };
 }
 
+/**
+ * The first line on each side, which is what a one-line entry is.
+ *
+ * A side can come back empty — a split can be trimmed down to two lines
+ * that sit on the same side — so a missing one is replaced rather than
+ * left out. A form with no right-hand row has nowhere to type the other
+ * half of the entry.
+ */
+function firstOnEachSide(lines: readonly Line[]): Line[] {
+  const first = (side: "left" | "right") => lines.find((line) => line.side === side);
+  return [first("left") ?? emptyLine("left"), first("right") ?? emptyLine("right")];
+}
+
 export interface EntryFormInitial {
   /**
    * Present when the form edits that transaction in place. Absent when
@@ -296,12 +309,22 @@ export function EntryForm({
    * describes *this* transaction goes: the amount, the 적요, and both
    * kinds of memo. A memo left behind attaches itself to the next entry
    * silently, which is worse than retyping it.
+   *
+   * A split collapses back to one line a side. 분할 is asked for one
+   * entry at a time — a card bill broken over three categories — and the
+   * entry after it is almost never the same shape. Leaving the extra
+   * rows standing meant every following entry started by deleting them,
+   * and a row quietly left at zero is a leg of a transaction nobody
+   * meant to post. A foreign-currency line still opens the detailed
+   * view on its own, which is right: that one is about the money, not
+   * about how many rows there are.
    */
   useEffect(() => {
     if (!initial && submitCount > lastSubmitCount.current) {
       setTitle("");
       setMemo("");
-      setLines((prev) => prev.map((l) => ({ ...l, amountStr: "", memo: "" })));
+      setLines((prev) => firstOnEachSide(prev).map((l) => ({ ...l, amountStr: "", memo: "" })));
+      setSplitForced(false);
       amountInputRef.current?.focus();
     }
     lastSubmitCount.current = submitCount;
