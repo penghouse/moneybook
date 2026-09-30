@@ -17,10 +17,12 @@ export interface TitleTotal {
  * Two screens ask this, and they are the same question over different
  * dates:
  *
- * - **거래처별 잔액** — who the money is still with. A level, so the
- *   dates are the account's own start to today, never the period the
- *   screen happens to show: answering it for August alone would report
- *   someone as settled up because they did not pay this month.
+ * - **거래처별 잔액** — who the money is still with. A level, so it runs
+ *   from the account's own start, never from the period the screen
+ *   happens to show: answering it for August alone would report someone
+ *   as settled up because they did not pay this month. The *end* is the
+ *   period's, so paging back says who was behind then rather than who is
+ *   behind now.
  * - **적요별 비중** — what the period's spending on this account went
  *   on. A flow, so the dates *are* the period being read.
  *

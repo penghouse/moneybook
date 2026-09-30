@@ -192,7 +192,8 @@ const ko = {
   "entry.backToEdit": "수정으로 돌아가기",
   "entry.duplicateNotice": "복제한 내용입니다. 확인 후 저장하면 새 거래로 추가됩니다.",
   "entry.counterparties": "거래처별 잔액",
-  "entry.counterpartiesHint": "조회 기간과 무관하게 계정 시작일부터 오늘까지의 잔액입니다.",
+  "entry.counterpartiesHint":
+    "계정 시작일부터 {date}까지 쌓인 잔액입니다. 끝은 조회 기간을 따르지만 시작은 따르지 않습니다 — 그 기간에 안 받았을 뿐인 거래처가 정산된 것으로 보이면 안 되니까요.",
   "entry.noCounterparties": "남은 잔액이 있는 거래처가 없습니다.",
   "entry.filters": "검색·필터",
   "entry.quick": "자주 쓰는 항목",

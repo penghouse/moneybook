@@ -197,7 +197,7 @@ const en: Record<keyof typeof ko, string> = {
   "entry.duplicateNotice": "A copy. Check it over — saving adds it as a new transaction.",
   "entry.counterparties": "By counterparty",
   "entry.counterpartiesHint":
-    "Balances from the account's start date to today, whatever period is filtered above.",
+    "Balances from the account's start date up to {date}. The end follows the filter above; the start does not — someone who simply did not pay within it is not settled up.",
   "entry.noCounterparties": "No counterparty has an outstanding balance.",
   "entry.filters": "Search & filter",
   "entry.quick": "Frequent entries",
