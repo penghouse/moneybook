@@ -258,18 +258,72 @@ describe("monthAchievement", () => {
 describe("yearAchievements", () => {
   it("runs up through the year, ending on what the year is on course for", () => {
     const [, expense] = build().sections;
-    const rates = yearAchievements(expense);
+    const progress = yearAchievements(expense);
 
     // 700 of a 7,200 year by the end of January.
-    expect(rates[0]).toBeCloseTo(700 / 7_200, 10);
-    expect(rates[1]).toBeCloseTo(1_200 / 7_200, 10);
+    expect(progress[0].rate).toBeCloseTo(700 / 7_200, 10);
+    expect(progress[1].rate).toBeCloseTo(1_200 / 7_200, 10);
     // The blended year lands where the plan does: January's overspend
     // and February's saving cancel out.
-    expect(rates[11]).toBeCloseTo(1, 10);
+    expect(progress[11].rate).toBeCloseTo(1, 10);
+  });
+
+  it("paces by the plan's own shape, not by months elapsed", () => {
+    // Nothing budgeted until July, so being on plan means still at zero
+    // at the end of June rather than half way through the year.
+    const late = Object.fromEntries(MONTHS.slice(6).map((m) => [m, { 식비: 600_000 }]));
+    const [expense] = build({
+      accounts: [acc("식비", "expense")],
+      actualByMonth: byMonth({}),
+      budgetByMonth: byMonth(late),
+      groupOrder: ["expense"],
+    }).sections;
+
+    const progress = yearAchievements(expense);
+    expect(progress[5].pace).toBe(0);
+    expect(progress[6].pace).toBeCloseTo(1 / 6, 10);
+    expect(progress[11].pace).toBeCloseTo(1, 10);
+  });
+
+  it("leaves what had no plan out of both sides", () => {
+    // 식비 spent exactly its plan; 교통비 was never budgeted. Counting
+    // 교통비 in the numerator alone read as 133% with nothing over.
+    const onPlan = Object.fromEntries(MONTHS.map((m) => [m, { 식비: 600_000, 교통비: 200_000 }]));
+    const [expense] = build({
+      accounts: [acc("식비", "expense"), acc("교통비", "expense")],
+      currentMonth: "2027-01",
+      actualByMonth: byMonth(onPlan),
+      budgetByMonth: byMonth(Object.fromEntries(MONTHS.map((m) => [m, { 식비: 600_000 }]))),
+      groupOrder: ["expense"],
+    }).sections;
+
+    // The 합계 column still says what actually went out.
+    expect(expense.total).toBe(9_600_000);
+    expect(expense.plan).toBe(7_200_000);
+    expect(yearAchievements(expense)[11].rate).toBeCloseTo(1, 10);
+    // And the month-by-month reading agrees.
+    expect(monthAchievement(expense.cells[0])).toBeCloseTo(1, 10);
+  });
+
+  it("leaves a month that had no plan out too", () => {
+    // Budgeted for six months, spent to plan all twelve. The six
+    // unbudgeted months are real spending with nothing to be held to.
+    const [expense] = build({
+      accounts: [acc("식비", "expense")],
+      currentMonth: "2027-01",
+      actualByMonth: byMonth(Object.fromEntries(MONTHS.map((m) => [m, { 식비: 600_000 }]))),
+      budgetByMonth: byMonth(
+        Object.fromEntries(MONTHS.slice(0, 6).map((m) => [m, { 식비: 600_000 }])),
+      ),
+      groupOrder: ["expense"],
+    }).sections;
+
+    expect(expense.total).toBe(7_200_000);
+    expect(yearAchievements(expense)[11].rate).toBeCloseTo(1, 10);
   });
 
   it("says nothing against a year nobody planned", () => {
     const [, expense] = build({ budgetByMonth: byMonth({}) }).sections;
-    expect(yearAchievements(expense).every((r) => r === null)).toBe(true);
+    expect(yearAchievements(expense).every((p) => p.rate === null)).toBe(true);
   });
 });

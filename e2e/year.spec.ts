@@ -2,7 +2,8 @@ import { test, expect } from "@playwright/test";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, budgets, transactionLines, transactions } from "../db/schema";
-import { getOrCreateSection } from "../lib/current-section";
+import { DEFAULT_TIMEZONE, getOrCreateSection } from "../lib/current-section";
+import { today } from "../lib/date";
 import { seedSession, SESSION_COOKIE_NAME } from "./auth-helper";
 
 /**
@@ -10,10 +11,15 @@ import { seedSession, SESSION_COOKIE_NAME } from "./auth-helper";
  * figure it shows depends on which month it is being read in. A fixed
  * year would test one arrangement in January and a different one in
  * December; these tests build the year around today instead.
+ *
+ * Today in the *section's* zone, which is the only clock the screen
+ * reads. Asking `new Date()` instead put the test nine hours behind the
+ * app, so on the last evening of a month it seeded a year around
+ * September while the screen had already moved to October.
  */
-const NOW = new Date();
-const YEAR = String(NOW.getFullYear());
-const THIS_MONTH = NOW.getMonth() + 1;
+const TODAY = today(DEFAULT_TIMEZONE);
+const YEAR = TODAY.slice(0, 4);
+const THIS_MONTH = Number(TODAY.slice(5, 7));
 const month = (n: number) => `${YEAR}-${String(n).padStart(2, "0")}`;
 
 /** One two-sided entry, which is all these tests ever need to post. */

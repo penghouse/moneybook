@@ -365,9 +365,9 @@ function RateRows({
         {line.cells.map((cell, i) => (
           <Rate
             key={cell.month}
-            rate={yearly[i]}
+            rate={yearly[i].rate}
             overIsGood={overIsGood}
-            pace={(i + 1) / line.cells.length}
+            pace={yearly[i].pace ?? 1}
           />
         ))}
         {/* The plan the whole row is measured against, at the end of the

@@ -13,6 +13,17 @@ export interface YearCell {
   amount: number;
   /** What the month was budgeted at, or null where nothing was set. */
   plan: number | null;
+  /**
+   * The part of `amount` that had a plan to be measured against.
+   *
+   * The same as `amount` on a row that was budgeted, zero on one that
+   * was not, and on a total the sum of the parts that were. 달성률 needs
+   * this rather than `amount`: counting spending that had no budget
+   * against a denominator that could not include it reported a section
+   * at 133% with nothing in it over its plan — the unbudgeted account
+   * was in the numerator alone.
+   */
+  planned: number;
   source: YearCellSource;
   /**
    * Whether the month is behind us and will not move again.
@@ -81,7 +92,21 @@ export interface YearAccount {
  */
 export function monthAchievement(cell: YearCell): number | null {
   if (!cell.settled || cell.plan === null || cell.plan === 0) return null;
-  return cell.amount / cell.plan;
+  return cell.planned / cell.plan;
+}
+
+export interface YearProgress {
+  /** How much of the year's plan has gone by the end of this month. */
+  rate: number | null;
+  /**
+   * Where being exactly on plan would put it by now — the share of the
+   * year's plan these months carry.
+   *
+   * Not simply the months elapsed: a year budgeted 50만 a month except
+   * 200만 in December is a quarter spent by the end of January only if
+   * every month is the same size, and the months are not.
+   */
+  pace: number | null;
 }
 
 /**
@@ -91,12 +116,23 @@ export function monthAchievement(cell: YearCell): number | null {
  * This is the one that stays useful all year. It reads 실적 behind and
  * 예산 ahead, so December's figure is what the year is on course to come
  * to — and the months in between say whether it got there early.
+ *
+ * Both sides are the planned part only. A year holds accounts and months
+ * nobody budgeted, and their spending is real but has nothing to be
+ * measured against; letting it into the numerator alone made the rate a
+ * statement about how much of the book has a budget rather than about
+ * the plan. It is still in the cells and in the 합계 column, where it is
+ * not pretending to be a comparison.
  */
-export function yearAchievements(line: YearLine): (number | null)[] {
+export function yearAchievements(line: YearLine): YearProgress[] {
   let running = 0;
+  let runningPlan = 0;
   return line.cells.map((cell) => {
-    running += cell.amount;
-    return line.plan === 0 ? null : running / line.plan;
+    running += cell.planned;
+    runningPlan += cell.plan ?? 0;
+    return line.plan === 0
+      ? { rate: null, pace: null }
+      : { rate: running / line.plan, pace: runningPlan / line.plan };
   });
 }
 
@@ -108,6 +144,7 @@ function rollUp(months: readonly string[], lines: readonly YearLine[]): YearLine
       month,
       amount: parts.reduce((sum, cell) => sum + cell.amount, 0),
       plan: plans.length === 0 ? null : plans.reduce((sum, cell) => sum + (cell.plan ?? 0), 0),
+      planned: parts.reduce((sum, cell) => sum + cell.planned, 0),
       // A month's parts can disagree about provenance — in the month in
       // progress one account may be over its plan and read from the
       // ledger while the rest still read from theirs — so a total is
@@ -170,6 +207,7 @@ export function buildYearOverview(params: {
           month,
           amount: outsideBook ? 0 : (actual ?? 0),
           plan,
+          planned: plan === null || outsideBook ? 0 : (actual ?? 0),
           source: "actual",
           settled: true,
           blank: outsideBook,
@@ -189,6 +227,7 @@ export function buildYearOverview(params: {
         month,
         amount: over ? spent : (plan ?? 0),
         plan,
+        planned: plan === null ? 0 : over ? spent : plan,
         source: over ? "actual" : "budget",
         settled: false,
         blank: !over && plan === null,
@@ -244,6 +283,7 @@ export function buildYearOverview(params: {
       month,
       amount: (inflow?.amount ?? 0) - (outflow?.amount ?? 0),
       plan: plans.length === 0 ? null : (inflow?.plan ?? 0) - (outflow?.plan ?? 0),
+      planned: (inflow?.planned ?? 0) - (outflow?.planned ?? 0),
       source: inflow?.source === "actual" || outflow?.source === "actual" ? "actual" : "budget",
       settled: inflow?.settled ?? outflow?.settled ?? false,
       blank: (inflow?.blank ?? true) && (outflow?.blank ?? true),
