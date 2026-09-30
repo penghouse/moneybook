@@ -15,6 +15,15 @@ export interface YearCell {
   plan: number | null;
   source: YearCellSource;
   /**
+   * Whether the month is behind us and will not move again.
+   *
+   * Told apart from `source`, which says where the figure came from. The
+   * month in progress can be read from the ledger — see
+   * `buildYearOverview` on overspending — and would then look settled to
+   * anything that judged by provenance alone.
+   */
+  settled: boolean;
+  /**
    * Nothing spoke for this cell — it is before the book begins, or it is
    * ahead of us with no budget. Told apart from a genuine zero, because
    * a zero is a claim and this is a gap.
@@ -71,7 +80,7 @@ export interface YearAccount {
  * itself rather than saying anything about the year.
  */
 export function monthAchievement(cell: YearCell): number | null {
-  if (cell.source !== "actual" || cell.plan === null || cell.plan === 0) return null;
+  if (!cell.settled || cell.plan === null || cell.plan === 0) return null;
   return cell.amount / cell.plan;
 }
 
@@ -99,9 +108,14 @@ function rollUp(months: readonly string[], lines: readonly YearLine[]): YearLine
       month,
       amount: parts.reduce((sum, cell) => sum + cell.amount, 0),
       plan: plans.length === 0 ? null : plans.reduce((sum, cell) => sum + (cell.plan ?? 0), 0),
-      // Every part of a total agrees about which side of 지금 it is on,
-      // so the first one can speak for all of them.
-      source: parts[0]?.source ?? "budget",
+      // A month's parts can disagree about provenance — in the month in
+      // progress one account may be over its plan and read from the
+      // ledger while the rest still read from theirs — so a total is
+      // only wholly the plan when every part of it is.
+      source: parts.some((cell) => cell.source === "actual") ? "actual" : "budget",
+      // Which side of 지금 the month falls on, though, they cannot
+      // disagree about.
+      settled: parts[0]?.settled ?? false,
       blank: parts.every((cell) => cell.blank),
     } satisfies YearCell;
   });
@@ -157,15 +171,27 @@ export function buildYearOverview(params: {
           amount: outsideBook ? 0 : (actual ?? 0),
           plan,
           source: "actual",
+          settled: true,
           blank: outsideBook,
         } satisfies YearCell;
       }
+
+      // The month in progress reads from its budget — until the ledger
+      // has already passed it. A plan the book can show is spent is not
+      // a forecast any more, and printing 60만 where 74만 has gone
+      // out understates the year by exactly the part worth knowing
+      // about. Nothing ahead of us can be over, so this only ever moves
+      // the month we are in.
+      const spent =
+        month === params.currentMonth ? (params.actualByMonth.get(month)?.get(account.id) ?? 0) : 0;
+      const over = spent > (plan ?? 0);
       return {
         month,
-        amount: plan ?? 0,
+        amount: over ? spent : (plan ?? 0),
         plan,
-        source: "budget",
-        blank: plan === null,
+        source: over ? "actual" : "budget",
+        settled: false,
+        blank: !over && plan === null,
       } satisfies YearCell;
     });
 
@@ -218,7 +244,8 @@ export function buildYearOverview(params: {
       month,
       amount: (inflow?.amount ?? 0) - (outflow?.amount ?? 0),
       plan: plans.length === 0 ? null : (inflow?.plan ?? 0) - (outflow?.plan ?? 0),
-      source: inflow?.source ?? outflow?.source ?? "budget",
+      source: inflow?.source === "actual" || outflow?.source === "actual" ? "actual" : "budget",
+      settled: inflow?.settled ?? outflow?.settled ?? false,
       blank: (inflow?.blank ?? true) && (outflow?.blank ?? true),
     } satisfies YearCell;
   });

@@ -81,6 +81,67 @@ describe("buildYearOverview", () => {
     expect(expense.cells[2]).toMatchObject({ amount: 600_000, source: "budget" });
   });
 
+  it("shows the month in progress at what it has already come to, once that passes the plan", () => {
+    // 740,000 spent against a 600,000 plan with the month still running.
+    // The plan is not a forecast any more — the book can show it spent.
+    const [, expense] = build({
+      actualByMonth: byMonth({
+        "2026-01": { 식비: 700_000 },
+        "2026-03": { 식비: 740_000 },
+      }),
+    }).sections;
+
+    expect(expense.cells[2]).toMatchObject({
+      amount: 740_000,
+      plan: 600_000,
+      source: "actual",
+      settled: false,
+    });
+  });
+
+  it("still reads a half-finished month from its plan while it is under it", () => {
+    const [, expense] = build({
+      actualByMonth: byMonth({ "2026-03": { 식비: 200_000 } }),
+    }).sections;
+
+    expect(expense.cells[2]).toMatchObject({ amount: 600_000, source: "budget" });
+  });
+
+  it("shows an unbudgeted item the month has already spent on", () => {
+    // Nothing to exceed, but a figure the book holds and the screen was
+    // leaving blank.
+    // 수입 drops out entirely here — nothing budgeted and nothing
+    // earned — so 비용 is the only section left.
+    const [expense] = build({
+      budgetByMonth: byMonth({}),
+      actualByMonth: byMonth({ "2026-03": { 식비: 40_000 } }),
+    }).sections;
+
+    expect(expense.cells[2]).toMatchObject({ amount: 40_000, plan: null, blank: false });
+  });
+
+  it("leaves the months ahead alone — nothing can be over before it happens", () => {
+    const [, expense] = build({
+      actualByMonth: byMonth({ "2026-03": { 식비: 900_000 }, "2026-04": { 식비: 900_000 } }),
+    }).sections;
+
+    expect(expense.cells[3]).toMatchObject({ amount: 600_000, source: "budget" });
+  });
+
+  it("counts a total as the plan only while every part of it is", () => {
+    const { sections } = build({
+      accounts: [acc("식비", "expense"), acc("교통비", "expense")],
+      budgetByMonth: byMonth(
+        Object.fromEntries(MONTHS.map((m) => [m, { 식비: 600_000, 교통비: 100_000 }])),
+      ),
+      actualByMonth: byMonth({ "2026-03": { 식비: 740_000 } }),
+      groupOrder: ["expense"],
+    });
+
+    // 740,000 read from the ledger plus 100,000 still read from its plan.
+    expect(sections[0].cells[2]).toMatchObject({ amount: 840_000, source: "actual" });
+  });
+
   it("tells a month outside the book from a month that spent nothing", () => {
     const [, expense] = build({ firstLedgerMonth: "2026-02" }).sections;
 
@@ -167,13 +228,25 @@ describe("monthAchievement", () => {
     expect(monthAchievement(expense.cells[1])).toBeCloseTo(500 / 600, 10);
   });
 
-  it("says nothing about a month still running on its budget", () => {
+  it("says nothing about a month that is not over yet", () => {
     // The figure and the plan are the same number there, so the answer
     // would be 100% every time — the screen agreeing with itself.
     const [, expense] = build().sections;
 
     expect(monthAchievement(expense.cells[2])).toBeNull();
     expect(monthAchievement(expense.cells[11])).toBeNull();
+  });
+
+  it("says nothing about the month in progress even once it is over its plan", () => {
+    // The cell now reads from the ledger, but the month has not finished
+    // spending. 「140%」 against a whole month's plan on the 20th would
+    // read as a verdict on a month that is still going.
+    const [, expense] = build({
+      actualByMonth: byMonth({ "2026-03": { 식비: 840_000 } }),
+    }).sections;
+
+    expect(expense.cells[2].source).toBe("actual");
+    expect(monthAchievement(expense.cells[2])).toBeNull();
   });
 
   it("says nothing where there was no plan to fall short of", () => {

@@ -101,7 +101,7 @@ const en: Record<keyof typeof ko, string> = {
   "year.yearRate": "vs year plan",
   "year.empty": "Nothing came in or went out this year.",
   "year.hint":
-    "Months behind us are read from the ledger, this month and the ones ahead from their budgets — the faint figures are the plan. Amounts are shortened; the year's saving comes to {total}. The month-by-month rate is only shown for finished months: a month still running on its budget would read 100% every time. The running-year rate is coloured against how much of the year has gone — a twelfth of it by the end of January — rather than against 100%.",
+    "Months behind us are read from the ledger, this month and the ones ahead from their budgets — the faint figures are the plan. An item this month has already spent past its budget is shown at what it has come to: money the ledger says is gone is not a forecast. Amounts are shortened; the year's saving comes to {total}. The month-by-month rate is only shown for finished months: a month still running on its budget would read 100% every time. The running-year rate is coloured against how much of the year has gone — a twelfth of it by the end of January — rather than against 100%.",
   "accounts.activeTo": "In use until",
   "accounts.activeHint":
     "Leave blank to keep the account in use. An end date takes it out of the entry form and the budget, and folds it away on the balance sheet once its balance is zero. Past transactions and balances are untouched.",
