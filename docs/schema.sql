@@ -244,6 +244,8 @@ ALTER TABLE `roadmaps` ADD `actual_source` text DEFAULT 'none' NOT NULL;
 
 UPDATE `roadmaps` SET `actual_source` = 'formula' WHERE `actual_formula_id` IS NOT NULL;
 
+ALTER TABLE `budgets` ADD `note` text;
+
 -- Drizzle's bookkeeping. The app never reads it; `drizzle-kit migrate`
 -- does, to know what has already run. Recording the migrations this file
 -- is equivalent to is what stops the next `npm run db:migrate` from
@@ -263,4 +265,5 @@ INSERT INTO `__drizzle_migrations` (`hash`, `created_at`) VALUES
 	('432d2627f2a56171a64b61882fb7ddf9123dfe01c8025dc31bf4351ceb46300d', 1786250222679),
 	('ae1ee42ebfb7fd5da657e298e98145c70a23156e62bab7543d48512d0191fddf', 1786284806351),
 	('eb3ec6da0c002299c0c5a8a38560b242d29f58625708682d04f87bcc2e4362a3', 1787034469652),
-	('3dead2f383918ab4fd1338d994f27509f5d589467becfea29e4bda111afbd3dd', 1787207533286);
+	('3dead2f383918ab4fd1338d994f27509f5d589467becfea29e4bda111afbd3dd', 1787207533286),
+	('0bbf5f749f7fa9cf3f1f15eabea66d7ad9211955e4fd7f8f475c35ced29dd6b0', 1790867664689);

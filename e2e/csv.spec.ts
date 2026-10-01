@@ -204,17 +204,22 @@ test.describe("csv", () => {
       period: "month",
       periodKey: "2026-07",
       amount: 300_000,
+      note: "외식 줄이기로 5만 내림",
     });
 
     await page.goto("/settings");
     const response = await page.request.get("/api/csv/budgets");
     const text = (await response.text()).replace(/^﻿/, "");
-    expect(text.split("\r\n")[0]).toBe("account,period,amount");
-    expect(text).toContain("식비,2026-07,300000");
+    expect(text.split("\r\n")[0]).toBe("account,period,amount,note");
+    // The note travels with it — a backup that dropped it would restore
+    // a book missing the only part nobody can work out again.
+    expect(text).toContain("식비,2026-07,300000,외식 줄이기로 5만 내림");
 
-    // Re-import the same file with a changed amount, plus a year budget
-    // in the same column — the shape of the key is what tells them apart,
-    // so both must land in the right row.
+    // Re-imported in the shape the file had before budgets carried a
+    // note, which a reader's existing backup still is. The amount
+    // changes and a year budget arrives in the same column — the shape
+    // of the key is what tells them apart, so both must land in the
+    // right row.
     const form = await upload(
       page,
       "budgets",
@@ -233,6 +238,9 @@ test.describe("csv", () => {
       ),
     });
     expect(updated?.amount).toBe(450_000);
+    // A file with no note column says nothing about the note, and
+    // "nothing" is what it writes.
+    expect(updated?.note).toBeNull();
 
     const yearly = await db.query.budgets.findFirst({
       where: and(

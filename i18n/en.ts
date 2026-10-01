@@ -285,6 +285,8 @@ const en: Record<keyof typeof ko, string> = {
   "budget.spent": "Spent",
   "budget.remaining": "Remaining",
   "budget.over": "Over",
+  "budget.note": "Note",
+  "budget.notePlaceholder": "Note — e.g. cut 50k, eating out less",
   "budget.noBudget": "No budget set",
   "budget.grandTotal": "All items",
   "budget.setYearBudget": "Set yearly budget",

@@ -643,6 +643,43 @@ test.describe("budget", () => {
     await expect(page.getByTestId("budget-image-confirm")).toBeDisabled();
   });
 
+  test("a budget carries a note, which the folded row keeps saying", async ({ page }) => {
+    await page.goto("/budget?period=2026-08");
+    const row = page.getByTestId("budget-row").filter({ hasText: "식비" });
+
+    // No box until there is a budget to write about: twenty empty
+    // fields on the rows with least to say is the noise this screen
+    // already got rid of once.
+    await expect(row.getByLabel("메모")).toHaveCount(0);
+    await row.getByLabel("예산 설정").fill("620000");
+    await row.getByRole("button", { name: "저장" }).click();
+
+    // Then beside the amount, saved by the same press: the note is
+    // about the figure above it, and a second 저장 for one decision is
+    // one press too many on a page of twenty rows.
+    await row.getByRole("button", { name: "수정" }).click();
+    await row.getByLabel("메모").fill("외식 줄이기로 5만 내림");
+    await row.getByRole("button", { name: "저장" }).click();
+
+    // The row folds, and still says what was written on it — a note
+    // visible only from inside the box it is typed in is visible in the
+    // one place it is not needed.
+    await expect(row.getByTestId("budget-note")).toHaveText("외식 줄이기로 5만 내림");
+    await page.reload();
+    await expect(row.getByTestId("budget-note")).toHaveText("외식 줄이기로 5만 내림");
+
+    // It belongs to the month it was written in.
+    await page.goto("/budget?period=2026-09");
+    await expect(page.getByTestId("budget-note")).toHaveCount(0);
+
+    // And emptying the box clears it, which is why it has no delete.
+    await page.goto("/budget?period=2026-08");
+    await row.getByRole("button", { name: "수정" }).click();
+    await row.getByLabel("메모").fill("");
+    await row.getByRole("button", { name: "저장" }).click();
+    await expect(row.getByTestId("budget-note")).toHaveCount(0);
+  });
+
   test("what was written on the month's entries shows under the item it was spent on", async ({
     page,
   }) => {

@@ -61,6 +61,9 @@ export default async function BudgetPage({
     getAccountMemos(db, { sectionId: section.id, from, to }),
   ]);
   const budgetByAccountId = new Map(periodBudgets.map((b) => [b.accountId, b.amount]));
+  const noteByAccountId = new Map(
+    periodBudgets.flatMap((b) => (b.note ? [[b.accountId, b.note] as const] : [])),
+  );
   const actualByAccountId = new Map(flows.map((f) => [f.accountId, f.baseAmount]));
 
   // On the year screen, what each account's twelve months add up to.
@@ -237,6 +240,7 @@ export default async function BudgetPage({
 
   const shared = {
     budgetByAccountId,
+    noteByAccountId,
     actualByAccountId,
     memosByAccountId,
     monthlyByAccountId,

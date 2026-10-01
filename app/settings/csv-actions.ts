@@ -464,6 +464,7 @@ export async function importBudgetsAction(
           period: row.period,
           periodKey: row.periodKey,
           amount: toMinorUnits(row.amountMajor, section.baseCurrency),
+          note: row.note,
         },
       ]),
     ).values(),
@@ -479,7 +480,7 @@ export async function importBudgetsAction(
           // `excluded` is the row that lost the conflict, so each row in
           // the batch updates with its own amount. A literal here would
           // give every conflicting row the same one.
-          set: { amount: sql`excluded.amount` },
+          set: { amount: sql`excluded.amount`, note: sql`excluded.note` },
         });
     }
   });

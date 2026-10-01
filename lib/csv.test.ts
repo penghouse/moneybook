@@ -180,14 +180,24 @@ describe("accounts csv round trip", () => {
 
 describe("budgets csv round trip", () => {
   const rows: BudgetCsvRow[] = [
-    { account: "식비", period: "2026-07", amount: "300000" },
-    { account: "교통비", period: "2026-08", amount: "50000" },
+    { account: "식비", period: "2026-07", amount: "300000", note: "외식 줄이기로 5만 내림" },
+    { account: "교통비", period: "2026-08", amount: "50000", note: "" },
     // A year budget travels in the same column — its shape is what says so.
-    { account: "식비", period: "2026", amount: "3600000" },
+    { account: "식비", period: "2026", amount: "3600000", note: '쉼표, 그리고 "따옴표"' },
   ];
 
   it("round-trips through build/parse", () => {
     expect(parseBudgetsCsv(buildBudgetsCsv(rows))).toEqual(rows);
+  });
+
+  it("still reads a file written before budgets carried a note", () => {
+    // A backup the reader already has must not stop working because a
+    // column was added to the app.
+    const v1 = "account,period,amount\n식비,2026-07,300000\n식비,2026,3600000\n";
+    expect(parseBudgetsCsv(v1)).toEqual([
+      { account: "식비", period: "2026-07", amount: "300000", note: "" },
+      { account: "식비", period: "2026", amount: "3600000", note: "" },
+    ]);
   });
 });
 

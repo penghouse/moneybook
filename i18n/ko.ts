@@ -281,6 +281,8 @@ const ko = {
   "budget.spent": "지출",
   "budget.remaining": "잔여",
   "budget.over": "초과",
+  "budget.note": "메모",
+  "budget.notePlaceholder": "메모 — 예: 외식 줄이기로 5만 내림",
   "budget.noBudget": "예산 미설정",
   "budget.grandTotal": "전체",
   "budget.setYearBudget": "연 예산 설정",
