@@ -308,6 +308,8 @@ const ko = {
   "compare.previous": "이전",
   "compare.current": "현재",
   "compare.change": "차액",
+  "compare.formulaHint":
+    "두 기간의 숫자로 각각 따로 계산한 값입니다. 식이 깨졌거나 이 기간에 없는 항목을 가리키는 계산식은 빠집니다 — 반쪽짜리 비교는 안 하느니만 못하니까요.",
   "compare.empty": "두 기간 모두 움직임이 없습니다.",
   "compare.flowHint": "두 기간 동안 오간 금액을 견줍니다.",
   "compare.balanceHint":

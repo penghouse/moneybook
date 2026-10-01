@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/client";
-import { accounts, transactionLines, transactions } from "../db/schema";
+import { accounts, formulas, transactionLines, transactions } from "../db/schema";
 import { getOrCreateSection } from "../lib/current-section";
 import { seedSession, SESSION_COOKIE_NAME } from "./auth-helper";
 
@@ -93,6 +93,40 @@ test.describe("compare", () => {
     await expect(page.getByTestId("compare-row").filter({ hasText: "식비" })).toContainText(
       "+₩20,000",
     );
+  });
+
+  test("a 계산식 is worked out against each period and held up side by side", async ({ page }) => {
+    const section = await seed(currentUserId);
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const food = await byName("식비");
+    const transport = await byName("교통비");
+
+    await db.insert(formulas).values({
+      sectionId: section.id,
+      scope: "income",
+      name: "먹고 타는 데",
+      terms: JSON.stringify([
+        { kind: "account", accountId: food.id, sign: 1 },
+        { kind: "account", accountId: transport.id, sign: 1 },
+      ]),
+      expression: "x",
+      sortOrder: 0,
+    });
+
+    await page.goto("/compare?from=2026-09-01&to=2026-09-30&scope=flow&against=previous");
+    const row = page.getByTestId("compare-formula").filter({ hasText: "먹고 타는 데" });
+    // August: 50,000 on 교통비 and nothing on 식비. September: 120,000 on
+    // 식비 and nothing on 교통비.
+    await expect(row).toContainText("₩50,000");
+    await expect(row).toContainText("₩120,000");
+    await expect(row).toContainText("+₩70,000");
+
+    // 자산·부채 has its own 계산식, so this one is not on that side.
+    await page.getByRole("link", { name: "자산 & 부채" }).click();
+    await expect(page.getByTestId("compare-formula")).toHaveCount(0);
   });
 
   test("compares balances at each period's end, not what moved in it", async ({ page }) => {

@@ -312,6 +312,8 @@ const en: Record<keyof typeof ko, string> = {
   "compare.previous": "Before",
   "compare.current": "Now",
   "compare.change": "Change",
+  "compare.formulaHint":
+    "Worked out separately against each period's own figures. A formula that is broken, or that names something a period has no figure for, is left out — half a comparison is worse than none.",
   "compare.empty": "Neither period had any movement.",
   "compare.flowHint": "What moved over each of the two spans.",
   "compare.balanceHint":
