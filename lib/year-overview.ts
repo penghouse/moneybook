@@ -13,7 +13,27 @@ export interface YearCell {
   amount: number;
   /** What the month was budgeted at, or null where nothing was set. */
   plan: number | null;
+  /**
+   * The part of `amount` that had a plan to be measured against.
+   *
+   * The same as `amount` on a row that was budgeted, zero on one that
+   * was not, and on a total the sum of the parts that were. 달성률 needs
+   * this rather than `amount`: counting spending that had no budget
+   * against a denominator that could not include it reported a section
+   * at 133% with nothing in it over its plan — the unbudgeted account
+   * was in the numerator alone.
+   */
+  planned: number;
   source: YearCellSource;
+  /**
+   * Whether the month is behind us and will not move again.
+   *
+   * Told apart from `source`, which says where the figure came from. The
+   * month in progress can be read from the ledger — see
+   * `buildYearOverview` on overspending — and would then look settled to
+   * anything that judged by provenance alone.
+   */
+  settled: boolean;
   /**
    * Nothing spoke for this cell — it is before the book begins, or it is
    * ahead of us with no budget. Told apart from a genuine zero, because
@@ -71,8 +91,22 @@ export interface YearAccount {
  * itself rather than saying anything about the year.
  */
 export function monthAchievement(cell: YearCell): number | null {
-  if (cell.source !== "actual" || cell.plan === null || cell.plan === 0) return null;
-  return cell.amount / cell.plan;
+  if (!cell.settled || cell.plan === null || cell.plan === 0) return null;
+  return cell.planned / cell.plan;
+}
+
+export interface YearProgress {
+  /** How much of the year's plan has gone by the end of this month. */
+  rate: number | null;
+  /**
+   * Where being exactly on plan would put it by now — the share of the
+   * year's plan these months carry.
+   *
+   * Not simply the months elapsed: a year budgeted 50만 a month except
+   * 200만 in December is a quarter spent by the end of January only if
+   * every month is the same size, and the months are not.
+   */
+  pace: number | null;
 }
 
 /**
@@ -82,12 +116,57 @@ export function monthAchievement(cell: YearCell): number | null {
  * This is the one that stays useful all year. It reads 실적 behind and
  * 예산 ahead, so December's figure is what the year is on course to come
  * to — and the months in between say whether it got there early.
+ *
+ * Both sides are the planned part only. A year holds accounts and months
+ * nobody budgeted, and their spending is real but has nothing to be
+ * measured against; letting it into the numerator alone made the rate a
+ * statement about how much of the book has a budget rather than about
+ * the plan. It is still in the cells and in the 합계 column, where it is
+ * not pretending to be a comparison.
  */
-export function yearAchievements(line: YearLine): (number | null)[] {
+export function yearAchievements(line: YearLine): YearProgress[] {
+  let running = 0;
+  let runningPlan = 0;
+  return line.cells.map((cell) => {
+    running += cell.planned;
+    runningPlan += cell.plan ?? 0;
+    return line.plan === 0
+      ? { rate: null, pace: null }
+      : { rate: running / line.plan, pace: runningPlan / line.plan };
+  });
+}
+
+/**
+ * How far off the month's plan it landed, in money.
+ *
+ * 저축 is 수입 − 지출, and a residual does not take a ratio well. Three
+ * things went wrong when it did:
+ *
+ * - a negative plan inverts the verdict. Planning to lose 50만 and only
+ *   losing 10만 came out at 20% and was painted red, while losing 90만
+ *   came out at 180% and was painted green.
+ * - with only one side budgeted the figure stops being about saving at
+ *   all. 지출만 예산 reads the income plan as zero; 수입만 예산 reports
+ *   100% with a month's spending nowhere in it.
+ * - a plan of exactly 0 — break even, which is a real plan — has no
+ *   ratio at all.
+ *
+ * A difference survives all three, and 「+12만」 is what the reader
+ * wanted to know anyway. Positive means more was saved than planned,
+ * whichever side of zero the two figures sit on.
+ */
+export function monthVariance(cell: YearCell): number | null {
+  if (!cell.settled || cell.plan === null) return null;
+  return cell.planned - cell.plan;
+}
+
+/** The same difference, run up from January. */
+export function yearVariances(line: YearLine): (number | null)[] {
+  if (line.cells.every((cell) => cell.plan === null)) return line.cells.map(() => null);
   let running = 0;
   return line.cells.map((cell) => {
-    running += cell.amount;
-    return line.plan === 0 ? null : running / line.plan;
+    running += cell.planned - (cell.plan ?? 0);
+    return running;
   });
 }
 
@@ -99,9 +178,15 @@ function rollUp(months: readonly string[], lines: readonly YearLine[]): YearLine
       month,
       amount: parts.reduce((sum, cell) => sum + cell.amount, 0),
       plan: plans.length === 0 ? null : plans.reduce((sum, cell) => sum + (cell.plan ?? 0), 0),
-      // Every part of a total agrees about which side of 지금 it is on,
-      // so the first one can speak for all of them.
-      source: parts[0]?.source ?? "budget",
+      planned: parts.reduce((sum, cell) => sum + cell.planned, 0),
+      // A month's parts can disagree about provenance — in the month in
+      // progress one account may be over its plan and read from the
+      // ledger while the rest still read from theirs — so a total is
+      // only wholly the plan when every part of it is.
+      source: parts.some((cell) => cell.source === "actual") ? "actual" : "budget",
+      // Which side of 지금 the month falls on, though, they cannot
+      // disagree about.
+      settled: parts[0]?.settled ?? false,
       blank: parts.every((cell) => cell.blank),
     } satisfies YearCell;
   });
@@ -156,16 +241,30 @@ export function buildYearOverview(params: {
           month,
           amount: outsideBook ? 0 : (actual ?? 0),
           plan,
+          planned: plan === null || outsideBook ? 0 : (actual ?? 0),
           source: "actual",
+          settled: true,
           blank: outsideBook,
         } satisfies YearCell;
       }
+
+      // The month in progress reads from its budget — until the ledger
+      // has already passed it. A plan the book can show is spent is not
+      // a forecast any more, and printing 60만 where 74만 has gone
+      // out understates the year by exactly the part worth knowing
+      // about. Nothing ahead of us can be over, so this only ever moves
+      // the month we are in.
+      const spent =
+        month === params.currentMonth ? (params.actualByMonth.get(month)?.get(account.id) ?? 0) : 0;
+      const over = spent > (plan ?? 0);
       return {
         month,
-        amount: plan ?? 0,
+        amount: over ? spent : (plan ?? 0),
         plan,
-        source: "budget",
-        blank: plan === null,
+        planned: plan === null ? 0 : over ? spent : plan,
+        source: over ? "actual" : "budget",
+        settled: false,
+        blank: !over && plan === null,
       } satisfies YearCell;
     });
 
@@ -218,7 +317,9 @@ export function buildYearOverview(params: {
       month,
       amount: (inflow?.amount ?? 0) - (outflow?.amount ?? 0),
       plan: plans.length === 0 ? null : (inflow?.plan ?? 0) - (outflow?.plan ?? 0),
-      source: inflow?.source ?? outflow?.source ?? "budget",
+      planned: (inflow?.planned ?? 0) - (outflow?.planned ?? 0),
+      source: inflow?.source === "actual" || outflow?.source === "actual" ? "actual" : "budget",
+      settled: inflow?.settled ?? outflow?.settled ?? false,
       blank: (inflow?.blank ?? true) && (outflow?.blank ?? true),
     } satisfies YearCell;
   });

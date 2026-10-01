@@ -9,7 +9,7 @@ import { activeDuring } from "@/lib/accounts";
 import { budgetBarPercent, budgetOverBy, budgetProgress } from "@/lib/budget-view";
 import { monthsCoverYear } from "@/lib/budget-coverage";
 import { parseBudgetPeriod } from "@/lib/budgets";
-import { getAccountFlows } from "@/lib/ledger";
+import { getAccountFlows, getAccountMemos } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
 import { PeriodNav } from "../_components/period-nav";
 import { Card, EmptyState, Hint, Money, PageHeader } from "../_components/ui";
@@ -32,7 +32,7 @@ export default async function BudgetPage({
   const isYear = ref.period === "year";
   const { from, to } = isYear ? yearRange(ref.periodKey) : monthRange(ref.periodKey);
 
-  const [catalog, periodBudgets, flows] = await Promise.all([
+  const [catalog, periodBudgets, flows, memosByAccountId] = await Promise.all([
     db.query.accounts.findMany({
       where: and(
         eq(accounts.sectionId, section.id),
@@ -55,6 +55,10 @@ export default async function BudgetPage({
       ),
     }),
     getAccountFlows(db, { sectionId: section.id, from, to }),
+    // 「이 지출이 뭐였지」 is asked while reading this screen, and until
+    // now the answer was one screen away — on the transaction list the
+    // row already links to.
+    getAccountMemos(db, { sectionId: section.id, from, to }),
   ]);
   const budgetByAccountId = new Map(periodBudgets.map((b) => [b.accountId, b.amount]));
   const actualByAccountId = new Map(flows.map((f) => [f.accountId, f.baseAmount]));
@@ -234,6 +238,7 @@ export default async function BudgetPage({
   const shared = {
     budgetByAccountId,
     actualByAccountId,
+    memosByAccountId,
     monthlyByAccountId,
     isYear,
     derivedYearIds,

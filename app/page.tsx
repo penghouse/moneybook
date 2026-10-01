@@ -244,17 +244,23 @@ export default async function Home({
         : undefined,
       from: isFlow && from ? from : undefined,
     }),
-    // 거래처관리 계정을 보고 있을 때만. Not bounded by the from/to filter
-    // above it on purpose — see getTitleTotals: who still owes what is a
+    // 거래처관리 계정을 보고 있을 때만. The *start* is the account's own,
+    // never the filter's — see getTitleTotals: who still owes what is a
     // level, and reading it for August alone would report someone as
     // settled up because they happened not to pay this month.
+    //
+    // The end is the filter's. Paging back to March and being told
+    // today's balances answers a question nobody asked on that screen,
+    // and there is no other way to ask 「그때는 누가 얼마나 밀려 있었나」.
+    // With no period filtered it runs to today, which is the same level
+    // it always was.
     filtered?.tracksCounterparties
       ? getTitleTotals(db, {
           sectionId: section.id,
           accountId: filtered.id,
           group: filtered.group,
           from: filtered.activeFrom,
-          to: today(section.timezone),
+          to: to ?? today(section.timezone),
           untitledLabel: t("accounts.uncategorized"),
         })
       : [],
@@ -560,7 +566,11 @@ export default async function Home({
               ))
             )}
           </Card>
-          <Hint>{t("entry.counterpartiesHint")}</Hint>
+          <Hint>
+            {interpolate(t("entry.counterpartiesHint"), {
+              date: to ?? today(section.timezone),
+            })}
+          </Hint>
         </section>
       )}
 

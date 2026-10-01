@@ -255,6 +255,35 @@ test.describe("entry", () => {
     await expect(summary.getByText("₩45,000", { exact: true })).toBeVisible();
   });
 
+  test("a saved split collapses back to one line a side", async ({ page }) => {
+    await page.goto("/");
+    const form = createForm(page);
+    await form.getByRole("button", { name: "분할" }).click();
+
+    const leftColumn = form.getByTestId("entry-column-left");
+    const rightColumn = form.getByTestId("entry-column-right");
+    await pickAccount(leftColumn, 0, "식비");
+    await leftColumn.locator('input[name="amount"]').nth(0).fill("30000");
+    await leftColumn.getByRole("button", { name: /줄 추가/ }).click();
+    await pickAccount(leftColumn, 1, "생활용품");
+    await leftColumn.locator('input[name="amount"]').nth(1).fill("15000");
+    await pickAccount(rightColumn, 0, "신용카드");
+    await rightColumn.locator('input[name="amount"]').nth(0).fill("45000");
+    await form.getByRole("button", { name: "저장" }).click();
+
+    await expect(page.locator("main li").first()).toContainText("식비");
+
+    // 분할 is asked for one entry at a time. Leaving the third row
+    // standing made every following entry start by deleting it, and a
+    // row quietly left at zero is a leg nobody meant to post.
+    await expect(form.getByTestId("entry-leg")).toHaveCount(0);
+    await expect(form.getByRole("button", { name: "분할" })).toBeVisible();
+    // The first account on each side still carries over, as it does
+    // after any save — that is what makes a run of entries quick.
+    await expect(form.locator('input[placeholder="계정 검색"]').first()).toHaveValue("식비");
+    await expect(form.locator('input[type="number"]').first()).toHaveValue("");
+  });
+
   test("a cross-currency line auto-fills the rate from a cached exchange rate and computes the base total", async ({
     page,
   }) => {

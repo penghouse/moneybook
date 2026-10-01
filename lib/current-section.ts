@@ -6,7 +6,15 @@ import { today } from "./date";
 import { seedDefaultAccounts } from "./default-accounts";
 
 const DEFAULT_BASE_CURRENCY = "KRW";
-const DEFAULT_TIMEZONE = "Asia/Seoul";
+/**
+ * Exported so a test can ask what day the app thinks it is.
+ *
+ * A test that reads the clock with `new Date()` and an app that reads it
+ * in the section's zone disagree for nine hours at the end of every
+ * month, and the test then builds its year around a month the screen is
+ * no longer in.
+ */
+export const DEFAULT_TIMEZONE = "Asia/Seoul";
 
 /**
  * v1 gives each user exactly one section, created lazily on first visit

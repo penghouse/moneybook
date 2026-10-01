@@ -411,9 +411,19 @@ test.describe("reports", () => {
     await expect(row("한석상여")).toHaveCount(0);
 
     // August alone contains none of these transactions, and the
-    // breakdown must not be narrowed by it — that would report everyone
-    // as settled up.
+    // breakdown's *start* must not be narrowed by it — that would report
+    // everyone as settled up.
     await expect(page.getByText("거래가 없습니다.")).toBeVisible();
+
+    // The end, though, is the filter's. Paging back to April says who
+    // was behind *then*: the 800,000 had not been part-repaid yet, and
+    // 한석핸드폰 had not been lent at all.
+    await page.goto(`/?accountId=${receivable.id}&from=2026-04-01&to=2026-04-30`);
+    await expect(row("가람미용기기")).toContainText("₩800,000");
+    await expect(row("한석핸드폰")).toHaveCount(0);
+    // And the start still is not: 맥북에어 was lent in March and is
+    // outstanding in April, so narrowing to April must not settle it up.
+    await expect(row("맥북에어")).toContainText("₩500,000");
   });
 
   test("income page shows this month's income/expense/net, and links to its charts", async ({

@@ -643,6 +643,66 @@ test.describe("budget", () => {
     await expect(page.getByTestId("budget-image-confirm")).toBeDisabled();
   });
 
+  test("what was written on the month's entries shows under the item it was spent on", async ({
+    page,
+  }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const gifts = await byName("교통비");
+    const food = await byName("식비");
+    const card = await byName("신용카드");
+
+    const spend = async (date: string, account: string, amount: number, memo: string) => {
+      const [tx] = await db
+        .insert(transactions)
+        .values({ sectionId: section.id, date, title: "지출", memo })
+        .returning();
+      await db.insert(transactionLines).values([
+        {
+          transactionId: tx.id,
+          side: "left",
+          accountId: account,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+          lineOrder: 0,
+        },
+        {
+          transactionId: tx.id,
+          side: "right",
+          accountId: card.id,
+          currency: "KRW",
+          amount,
+          rate: 1,
+          baseAmount: amount,
+          lineOrder: 1,
+        },
+      ]);
+    };
+
+    await spend("2026-08-03", gifts.id, 100_000, "KTX 왕복");
+    await spend("2026-08-11", gifts.id, 200_000, "택시비");
+    await spend("2026-08-20", food.id, 30_000, "장보기");
+    // Written in another month, so it belongs to another month's reading.
+    await spend("2026-07-05", gifts.id, 50_000, "지난달 주유");
+
+    await page.goto("/budget?period=2026-08");
+    const row = (name: string) => page.getByTestId("budget-row").filter({ hasText: name });
+
+    // 「이 지출이 뭐였지」 is asked here, so it is answered here rather
+    // than a screen away on the transaction list.
+    await expect(row("교통비").getByTestId("budget-memos")).toContainText("KTX 왕복");
+    await expect(row("교통비").getByTestId("budget-memos")).toContainText("택시비");
+    // Each memo under the item it was spent on, and only the month's.
+    await expect(row("식비").getByTestId("budget-memos")).toContainText("장보기");
+    await expect(row("식비").getByTestId("budget-memos")).not.toContainText("KTX");
+    await expect(row("교통비").getByTestId("budget-memos")).not.toContainText("지난달");
+  });
+
   test("the picture says by how much a budget was blown, and in whose favour", async ({ page }) => {
     const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
     const byName = async (name: string) =>

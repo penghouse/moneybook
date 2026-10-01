@@ -27,6 +27,7 @@ export {
   getMonthlyBalanceSheet,
   type MonthlyBalanceSheet,
 } from "./monthly";
+export { getAccountMemos, type AccountMemo } from "./memos";
 export { getFirstLedgerMonth, getPeriodTotals, type PeriodTotal } from "./periods";
 export { getQuickEntries } from "./quick";
 export { getRunningBalances, type RunningBalance } from "./running";

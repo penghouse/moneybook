@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Account, AccountGroup } from "@/db/schema";
+import type { AccountMemo } from "@/lib/ledger";
 import type { TranslationKey } from "@/i18n";
 import { budgetProgress } from "@/lib/budget-view";
 import { formatMoney, toMajorUnits } from "@/lib/money";
@@ -24,6 +25,7 @@ export function BudgetSection({
   accounts,
   budgetByAccountId,
   actualByAccountId,
+  memosByAccountId,
   monthlyByAccountId,
   isYear,
   derivedYearIds,
@@ -39,6 +41,8 @@ export function BudgetSection({
   accounts: readonly Account[];
   budgetByAccountId: ReadonlyMap<string, number>;
   actualByAccountId: ReadonlyMap<string, number>;
+  /** What was written on the period's transactions, newest first. */
+  memosByAccountId: ReadonlyMap<string, readonly AccountMemo[]>;
   /** Year view only: what the twelve monthly budgets add up to. */
   monthlyByAccountId: ReadonlyMap<string, number>;
   isYear: boolean;
@@ -227,6 +231,36 @@ export function BudgetSection({
                     </span>
                   </span>
                 </Link>
+
+                {/* What was written on the month's entries, under the
+                    figure they add up to. The row already links to the
+                    transactions, but the question 「이 지출이 뭐였지」 is
+                    asked *here* — and a screen you have to leave to
+                    answer it is a screen that made you leave.
+
+                    Wrapped rather than truncated: five 경조사비 memos on
+                    one clipped line is a list you can see the existence
+                    of and not the contents of, which is worse than no
+                    list. Long months are what 접기 and the exported
+                    picture are for. */}
+                {(memosByAccountId.get(account.id) ?? []).length > 0 && (
+                  <ul
+                    data-testid="budget-memos"
+                    className="text-ink-faint mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs"
+                  >
+                    {/* One chip each, not one line separated by dots: a
+                        memo is free text and 「주차 택시비 KTX 왕복 출장」
+                        gives no way to tell three of them from one. */}
+                    {(memosByAccountId.get(account.id) ?? []).map((memo, i) => (
+                      <li
+                        key={`${memo.date}-${i}`}
+                        className="bg-sunken min-w-0 rounded px-1.5 py-0.5 break-keep"
+                      >
+                        {memo.memo}
+                      </li>
+                    ))}
+                  </ul>
+                )}
 
                 {budget !== undefined && (
                   <div className="bg-rule-soft my-2 h-1.5 overflow-hidden rounded-full">

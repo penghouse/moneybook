@@ -2,7 +2,8 @@ import { test, expect } from "@playwright/test";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, budgets, transactionLines, transactions } from "../db/schema";
-import { getOrCreateSection } from "../lib/current-section";
+import { DEFAULT_TIMEZONE, getOrCreateSection } from "../lib/current-section";
+import { today } from "../lib/date";
 import { seedSession, SESSION_COOKIE_NAME } from "./auth-helper";
 
 /**
@@ -10,11 +11,49 @@ import { seedSession, SESSION_COOKIE_NAME } from "./auth-helper";
  * figure it shows depends on which month it is being read in. A fixed
  * year would test one arrangement in January and a different one in
  * December; these tests build the year around today instead.
+ *
+ * Today in the *section's* zone, which is the only clock the screen
+ * reads. Asking `new Date()` instead put the test nine hours behind the
+ * app, so on the last evening of a month it seeded a year around
+ * September while the screen had already moved to October.
  */
-const NOW = new Date();
-const YEAR = String(NOW.getFullYear());
-const THIS_MONTH = NOW.getMonth() + 1;
+const TODAY = today(DEFAULT_TIMEZONE);
+const YEAR = TODAY.slice(0, 4);
+const THIS_MONTH = Number(TODAY.slice(5, 7));
 const month = (n: number) => `${YEAR}-${String(n).padStart(2, "0")}`;
+
+/** One two-sided entry, which is all these tests ever need to post. */
+async function postEntry(
+  sectionId: string,
+  date: string,
+  left: string,
+  right: string,
+  amount: number,
+) {
+  const [tx] = await db.insert(transactions).values({ sectionId, date, title: "거래" }).returning();
+  await db.insert(transactionLines).values([
+    {
+      transactionId: tx.id,
+      side: "left",
+      accountId: left,
+      currency: "KRW",
+      amount,
+      rate: 1,
+      baseAmount: amount,
+      lineOrder: 0,
+    },
+    {
+      transactionId: tx.id,
+      side: "right",
+      accountId: right,
+      currency: "KRW",
+      amount,
+      rate: 1,
+      baseAmount: amount,
+      lineOrder: 1,
+    },
+  ]);
+}
 
 test.describe("year overview", () => {
   let currentUserId = "";
@@ -38,34 +77,8 @@ test.describe("year overview", () => {
     const card = await byName("신용카드");
     const bank = await byName("은행");
 
-    const post = async (date: string, left: string, right: string, amount: number) => {
-      const [tx] = await db
-        .insert(transactions)
-        .values({ sectionId: section.id, date, title: "거래" })
-        .returning();
-      await db.insert(transactionLines).values([
-        {
-          transactionId: tx.id,
-          side: "left",
-          accountId: left,
-          currency: "KRW",
-          amount,
-          rate: 1,
-          baseAmount: amount,
-          lineOrder: 0,
-        },
-        {
-          transactionId: tx.id,
-          side: "right",
-          accountId: right,
-          currency: "KRW",
-          amount,
-          rate: 1,
-          baseAmount: amount,
-          lineOrder: 1,
-        },
-      ]);
-    };
+    const post = (date: string, left: string, right: string, amount: number) =>
+      postEntry(section.id, date, left, right, amount);
 
     // Every month of the year is budgeted, both sides.
     await db.insert(budgets).values(
@@ -138,6 +151,29 @@ test.describe("year overview", () => {
     await expect(cells.nth(THIS_MONTH - 1)).toContainText("60만");
   });
 
+  test("reads the month it is in once the ledger has passed its plan", async ({ page }) => {
+    const section = await seed(currentUserId);
+    const food = (await db.query.accounts.findFirst({
+      where: and(eq(accounts.sectionId, section.id), eq(accounts.name, "식비")),
+    }))!;
+    const card = (await db.query.accounts.findFirst({
+      where: and(eq(accounts.sectionId, section.id), eq(accounts.name, "신용카드")),
+    }))!;
+    // 111,000 is already posted; this takes the month past its 600,000.
+    await postEntry(section.id, `${month(THIS_MONTH)}-03`, food.id, card.id, 700_000);
+
+    await page.goto(`/year?year=${YEAR}`);
+    const cells = page.getByTestId("year-row").filter({ hasText: "식비" }).getByTestId("year-cell");
+    // A plan the book can show is spent is not a forecast any more.
+    await expect(cells.nth(THIS_MONTH - 1)).toHaveAttribute("data-source", "actual");
+    await expect(cells.nth(THIS_MONTH - 1)).toContainText("81.1만");
+    // It is still not a finished month, so there is no verdict on it.
+    const rates = groupSection(page, "비용")
+      .getByTestId("year-month-rate")
+      .getByTestId("year-rate");
+    await expect(rates).toHaveCount(THIS_MONTH - 1);
+  });
+
   test("월 계획 대비 is only asked of months that are over", async ({ page }) => {
     test.skip(THIS_MONTH === 1, "no settled month to compare against in January");
     await seed(currentUserId);
@@ -187,6 +223,25 @@ test.describe("year overview", () => {
     await expect(running.nth(1)).toContainText("450만");
   });
 
+  test("저축 reads in won against its plan, not in percent", async ({ page }) => {
+    test.skip(THIS_MONTH === 1, "no settled month to compare against in January");
+    await seed(currentUserId);
+    await page.goto(`/year?year=${YEAR}`);
+
+    const saving = page.locator("section").filter({ hasText: "저축가능액" });
+    // January spent 900,000 against a 600,000 plan, so 300,000 less was
+    // saved than planned. A ratio would have said 89.3% — true, but it
+    // inverts the moment the plan itself is a loss.
+    const monthly = saving.getByTestId("year-month-rate").getByTestId("year-variance");
+    await expect(monthly.first()).toContainText("-30만");
+    // February onwards went to plan, so the year stays 300,000 behind.
+    const yearly = saving.getByTestId("year-year-rate").getByTestId("year-variance");
+    await expect(yearly.first()).toContainText("-30만");
+    await expect(yearly.nth(11)).toContainText("-30만");
+    // And no percentage anywhere on the card.
+    await expect(saving.getByTestId("year-rate")).toHaveCount(0);
+  });
+
   test("steps a year at a time, and shows an untouched year as empty", async ({ page }) => {
     await seed(currentUserId);
     await page.goto(`/year?year=${YEAR}`);
@@ -201,17 +256,21 @@ test.describe("year overview", () => {
     await page.setViewportSize({ width: 393, height: 850 });
     await page.goto(`/year?year=${YEAR}`);
 
+    // Polled rather than measured once: a width read the instant the
+    // rows appear can land before the table has laid out or a font has
+    // swapped, and the answer then is about the timing rather than about
+    // the layout.
     const scroller = page.getByTestId("year-row").first().locator("xpath=ancestor::div[1]");
-    const overflow = await scroller.evaluate((el) => ({
-      scroll: el.scrollWidth,
-      client: el.clientWidth,
-    }));
-    expect(overflow.scroll).toBeGreaterThan(overflow.client);
+    await expect
+      .poll(() => scroller.evaluate((el) => el.scrollWidth - el.clientWidth))
+      .toBeGreaterThan(0);
     // And the page itself does not scroll sideways with it.
-    const body = await page.evaluate(() => ({
-      scroll: document.documentElement.scrollWidth,
-      client: document.documentElement.clientWidth,
-    }));
-    expect(body.scroll).toBeLessThanOrEqual(body.client);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        ),
+      )
+      .toBeLessThanOrEqual(0);
   });
 });
