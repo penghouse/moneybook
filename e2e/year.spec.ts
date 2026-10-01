@@ -223,6 +223,25 @@ test.describe("year overview", () => {
     await expect(running.nth(1)).toContainText("450만");
   });
 
+  test("저축 reads in won against its plan, not in percent", async ({ page }) => {
+    test.skip(THIS_MONTH === 1, "no settled month to compare against in January");
+    await seed(currentUserId);
+    await page.goto(`/year?year=${YEAR}`);
+
+    const saving = page.locator("section").filter({ hasText: "저축가능액" });
+    // January spent 900,000 against a 600,000 plan, so 300,000 less was
+    // saved than planned. A ratio would have said 89.3% — true, but it
+    // inverts the moment the plan itself is a loss.
+    const monthly = saving.getByTestId("year-month-rate").getByTestId("year-variance");
+    await expect(monthly.first()).toContainText("-30만");
+    // February onwards went to plan, so the year stays 300,000 behind.
+    const yearly = saving.getByTestId("year-year-rate").getByTestId("year-variance");
+    await expect(yearly.first()).toContainText("-30만");
+    await expect(yearly.nth(11)).toContainText("-30만");
+    // And no percentage anywhere on the card.
+    await expect(saving.getByTestId("year-rate")).toHaveCount(0);
+  });
+
   test("steps a year at a time, and shows an untouched year as empty", async ({ page }) => {
     await seed(currentUserId);
     await page.goto(`/year?year=${YEAR}`);

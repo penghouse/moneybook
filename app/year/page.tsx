@@ -12,7 +12,9 @@ import { formatCompactMoney, formatMoney } from "@/lib/money";
 import {
   buildYearOverview,
   monthAchievement,
+  monthVariance,
   yearAchievements,
+  yearVariances,
   type YearCell,
   type YearLine,
 } from "@/lib/year-overview";
@@ -93,6 +95,7 @@ export default async function YearPage({
   const money = (minor: number) => formatMoney(minor, section.baseCurrency, locale);
   const compact = (minor: number) => formatCompactMoney(minor, section.baseCurrency, locale);
   const rateLabels = { month: t("year.monthRate"), year: t("year.yearRate") };
+  const varianceLabels = { month: t("year.monthVariance"), year: t("year.yearVariance") };
 
   // An element rather than a component: the two tables want the same
   // thirteen headings, and React is happy to render one element twice.
@@ -249,10 +252,14 @@ export default async function YearPage({
                       ))}
                       <td className={NUM} />
                     </tr>
-                    <RateRows
+                    {/* Money, not a percentage. See monthVariance: a
+                        residual's ratio inverts on a negative plan, has
+                        nothing to divide by on a break-even one, and
+                        stops being about saving at all when only one
+                        side was budgeted. */}
+                    <VarianceRows
                       line={overview.saving}
-                      overIsGood
-                      labels={rateLabels}
+                      labels={varianceLabels}
                       compact={compact}
                     />
                   </tbody>
@@ -372,6 +379,68 @@ function RateRows({
         ))}
         {/* The plan the whole row is measured against, at the end of the
             row that measures against it. */}
+        <td className={`${NUM} text-ink-muted text-xs`}>{compact(line.plan)}</td>
+      </tr>
+    </>
+  );
+}
+
+/**
+ * One figure in a 차이 row: how far off the plan, in money.
+ *
+ * Signed on purpose — a bare 「12만」 does not say which way. Exactly on
+ * plan is neither good nor bad news, so it is left in the muted ink the
+ * labels use rather than painted green.
+ */
+function Variance({ value, compact }: { value: number | null; compact: (m: number) => string }) {
+  if (value === null) return <td className={NUM} />;
+  if (value === 0) {
+    return (
+      <td className={`${NUM} text-ink-muted`} data-testid="year-variance">
+        {compact(0)}
+      </td>
+    );
+  }
+  return (
+    <td
+      className={`${NUM} font-semibold ${value > 0 ? "text-positive" : "text-negative"}`}
+      data-testid="year-variance"
+    >
+      {value > 0 ? "+" : ""}
+      {compact(value)}
+    </td>
+  );
+}
+
+/** The 저축 card's two lines, which read in won rather than in percent. */
+function VarianceRows({
+  line,
+  labels,
+  compact,
+}: {
+  line: YearLine;
+  labels: { month: string; year: string };
+  compact: (minor: number) => string;
+}) {
+  const yearly = yearVariances(line);
+  return (
+    <>
+      <tr className="border-rule-soft border-t" data-testid="year-month-rate">
+        <th scope="row" className={`${NAME} text-ink-muted text-xs font-medium`}>
+          {labels.month}
+        </th>
+        {line.cells.map((cell) => (
+          <Variance key={cell.month} value={monthVariance(cell)} compact={compact} />
+        ))}
+        <td className={NUM} />
+      </tr>
+      <tr data-testid="year-year-rate">
+        <th scope="row" className={`${NAME} text-ink-muted text-xs font-medium`}>
+          {labels.year}
+        </th>
+        {line.cells.map((cell, i) => (
+          <Variance key={cell.month} value={yearly[i]} compact={compact} />
+        ))}
         <td className={`${NUM} text-ink-muted text-xs`}>{compact(line.plan)}</td>
       </tr>
     </>

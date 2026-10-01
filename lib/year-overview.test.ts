@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildYearOverview,
   monthAchievement,
+  monthVariance,
   yearAchievements,
+  yearVariances,
   type YearAccount,
 } from "./year-overview";
 
@@ -325,5 +327,114 @@ describe("yearAchievements", () => {
   it("says nothing against a year nobody planned", () => {
     const [, expense] = build({ budgetByMonth: byMonth({}) }).sections;
     expect(yearAchievements(expense).every((p) => p.rate === null)).toBe(true);
+  });
+});
+
+describe("monthVariance", () => {
+  /** A finished year of one month's figures, repeated. */
+  const saving = (actual: Record<string, number>, budget: Record<string, number>) =>
+    buildYearOverview({
+      accounts: [acc("급여", "income"), acc("식비", "expense")],
+      months: MONTHS,
+      currentMonth: "2027-01",
+      firstLedgerMonth: "2026-01",
+      actualByMonth: byMonth(Object.fromEntries(MONTHS.map((m) => [m, actual]))),
+      budgetByMonth: byMonth(Object.fromEntries(MONTHS.map((m) => [m, budget]))),
+      groupOrder: ["income", "expense"],
+    }).saving;
+
+  it("says how far off the plan the month landed", () => {
+    const line = saving({ 급여: 3_400_000, 식비: 700_000 }, { 급여: 3_400_000, 식비: 600_000 });
+    // 100,000 over on the spending side is 100,000 less saved.
+    expect(monthVariance(line.cells[0])).toBe(-100_000);
+  });
+
+  it("keeps its verdict when the plan itself is a loss", () => {
+    // Planned to lose 500,000 and lost 100,000. A ratio called this 20%
+    // and painted it red; it is 400,000 better than planned.
+    const line = saving({ 급여: 500_000, 식비: 600_000 }, { 급여: 500_000, 식비: 1_000_000 });
+    expect(line.cells[0]).toMatchObject({ amount: -100_000, plan: -500_000 });
+    expect(monthVariance(line.cells[0])).toBe(400_000);
+
+    // And the other way: 400,000 worse, which a ratio called 180%.
+    const worse = saving({ 급여: 500_000, 식비: 1_400_000 }, { 급여: 500_000, 식비: 1_000_000 });
+    expect(monthVariance(worse.cells[0])).toBe(-400_000);
+  });
+
+  it("has an answer for a break-even plan, which a ratio does not", () => {
+    const line = saving({ 급여: 700_000, 식비: 600_000 }, { 급여: 600_000, 식비: 600_000 });
+    expect(line.cells[0].plan).toBe(0);
+    expect(monthAchievement(line.cells[0])).toBeNull();
+    expect(monthVariance(line.cells[0])).toBe(100_000);
+  });
+
+  it("counts only the side that was budgeted, and says so in won", () => {
+    // 수입만 예산: the income was exactly on plan and the spending had
+    // no plan to miss, so nothing is off. A ratio reported 100% — the
+    // same answer, but reading as though the month's spending had been
+    // weighed and passed.
+    const incomeOnly = saving({ 급여: 3_400_000, 식비: 700_000 }, { 급여: 3_400_000 });
+    expect(monthVariance(incomeOnly.cells[0])).toBe(0);
+
+    // 지출만 예산: 100,000 over, and that is the whole of the deviation.
+    const expenseOnly = saving({ 급여: 3_400_000, 식비: 700_000 }, { 식비: 600_000 });
+    expect(monthVariance(expenseOnly.cells[0])).toBe(-100_000);
+  });
+
+  it("says nothing about a month that is not over", () => {
+    const line = buildYearOverview({
+      accounts: [acc("급여", "income"), acc("식비", "expense")],
+      months: MONTHS,
+      currentMonth: "2026-03",
+      firstLedgerMonth: "2026-01",
+      actualByMonth: byMonth({}),
+      budgetByMonth: byMonth(
+        Object.fromEntries(MONTHS.map((m) => [m, { 급여: 3_000_000, 식비: 600_000 }])),
+      ),
+      groupOrder: ["income", "expense"],
+    }).saving;
+
+    expect(monthVariance(line.cells[2])).toBeNull();
+  });
+});
+
+describe("yearVariances", () => {
+  it("runs the difference up from January", () => {
+    const line = buildYearOverview({
+      accounts: [acc("급여", "income"), acc("식비", "expense")],
+      months: MONTHS,
+      currentMonth: "2027-01",
+      firstLedgerMonth: "2026-01",
+      actualByMonth: byMonth({
+        "2026-01": { 급여: 3_400_000, 식비: 700_000 },
+        "2026-02": { 급여: 3_400_000, 식비: 550_000 },
+      }),
+      budgetByMonth: byMonth(
+        Object.fromEntries(MONTHS.map((m) => [m, { 급여: 3_400_000, 식비: 600_000 }])),
+      ),
+      groupOrder: ["income", "expense"],
+    }).saving;
+
+    const running = yearVariances(line);
+    expect(running[0]).toBe(-100_000);
+    // February saved 50,000 more than planned, so the year is 50,000 behind.
+    expect(running[1]).toBe(-50_000);
+    // The other ten months earned and spent nothing against a plan to
+    // save 2,800,000 each.
+    expect(running[2]).toBe(-50_000 - 2_800_000);
+  });
+
+  it("says nothing against a year nobody planned", () => {
+    const line = buildYearOverview({
+      accounts: [acc("식비", "expense")],
+      months: MONTHS,
+      currentMonth: "2027-01",
+      firstLedgerMonth: "2026-01",
+      actualByMonth: byMonth({ "2026-01": { 식비: 700_000 } }),
+      budgetByMonth: byMonth({}),
+      groupOrder: ["expense"],
+    }).saving;
+
+    expect(yearVariances(line).every((v) => v === null)).toBe(true);
   });
 });

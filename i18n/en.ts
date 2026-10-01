@@ -99,9 +99,11 @@ const en: Record<keyof typeof ko, string> = {
   "year.cumulative": "Running",
   "year.monthRate": "vs month plan",
   "year.yearRate": "vs year plan",
+  "year.monthVariance": "off month plan",
+  "year.yearVariance": "off year plan",
   "year.empty": "Nothing came in or went out this year.",
   "year.hint":
-    "Months behind us are read from the ledger, this month and the ones ahead from their budgets — the faint figures are the plan. An item this month has already spent past its budget is shown at what it has come to: money the ledger says is gone is not a forecast. Amounts are shortened; the year's saving comes to {total}. The month-by-month rate is only shown for finished months: a month still running on its budget would read 100% every time. The running-year rate is coloured against how much of the year's budget these months carry, rather than against 100%. Both rates count only months and items that were budgeted — there is nothing to hold the rest to — though their money is still in the cells and the total.",
+    "Months behind us are read from the ledger, this month and the ones ahead from their budgets — the faint figures are the plan. An item this month has already spent past its budget is shown at what it has come to: money the ledger says is gone is not a forecast. Amounts are shortened; the year's saving comes to {total}. The month-by-month rate is only shown for finished months: a month still running on its budget would read 100% every time. The running-year rate is coloured against how much of the year's budget these months carry, rather than against 100%. Both rates count only months and items that were budgeted — there is nothing to hold the rest to — though their money is still in the cells and the total. Saving is shown as a difference rather than a ratio: it is what is left of income after spending, so a negative plan inverts the verdict and a break-even plan has nothing to divide by.",
   "accounts.activeTo": "In use until",
   "accounts.activeHint":
     "Leave blank to keep the account in use. An end date takes it out of the entry form and the budget, and folds it away on the balance sheet once its balance is zero. Past transactions and balances are untouched.",

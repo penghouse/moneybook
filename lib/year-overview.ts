@@ -136,6 +136,40 @@ export function yearAchievements(line: YearLine): YearProgress[] {
   });
 }
 
+/**
+ * How far off the month's plan it landed, in money.
+ *
+ * 저축 is 수입 − 지출, and a residual does not take a ratio well. Three
+ * things went wrong when it did:
+ *
+ * - a negative plan inverts the verdict. Planning to lose 50만 and only
+ *   losing 10만 came out at 20% and was painted red, while losing 90만
+ *   came out at 180% and was painted green.
+ * - with only one side budgeted the figure stops being about saving at
+ *   all. 지출만 예산 reads the income plan as zero; 수입만 예산 reports
+ *   100% with a month's spending nowhere in it.
+ * - a plan of exactly 0 — break even, which is a real plan — has no
+ *   ratio at all.
+ *
+ * A difference survives all three, and 「+12만」 is what the reader
+ * wanted to know anyway. Positive means more was saved than planned,
+ * whichever side of zero the two figures sit on.
+ */
+export function monthVariance(cell: YearCell): number | null {
+  if (!cell.settled || cell.plan === null) return null;
+  return cell.planned - cell.plan;
+}
+
+/** The same difference, run up from January. */
+export function yearVariances(line: YearLine): (number | null)[] {
+  if (line.cells.every((cell) => cell.plan === null)) return line.cells.map(() => null);
+  let running = 0;
+  return line.cells.map((cell) => {
+    running += cell.planned - (cell.plan ?? 0);
+    return running;
+  });
+}
+
 function rollUp(months: readonly string[], lines: readonly YearLine[]): YearLine {
   const cells = months.map((month, i) => {
     const parts = lines.map((line) => line.cells[i]);
