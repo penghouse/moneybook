@@ -34,6 +34,23 @@ const en: Record<keyof typeof ko, string> = {
   "common.save": "Save",
   "common.cancel": "Cancel",
   "common.close": "Close",
+  "analysis.open": "Analyse",
+  "analysis.title": "Analysis",
+  "analysis.reading": "Reading…",
+  "analysis.sentCount": "What was sent ({n} lines)",
+  "analysis.followUp": "Ask something else",
+  "analysis.send": "Send",
+  "analysis.retry": "Try again",
+  "analysis.failed": "No answer came back. Try again in a moment.",
+  "analysis.notConfigured":
+    "Analysis is not set up yet — add an API key to the deployment's environment variables.",
+  "analysis.disclaimer":
+    "A model wrote this from the figures above. It is not the book talking, so check the numbers on screen.",
+  "analysis.budgetQuestion":
+    "Where did this month leave the plan, and what would be worth adjusting next month?",
+  "analysis.yearQuestion": "What stands out in this year so far, and where is it heading?",
+  "analysis.compareQuestion":
+    "What changed most between the two periods, and what might explain it?",
   "common.edit": "Edit",
   "common.delete": "Delete",
   "common.add": "Add",

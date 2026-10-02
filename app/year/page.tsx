@@ -18,6 +18,9 @@ import {
   type YearCell,
   type YearLine,
 } from "@/lib/year-overview";
+import { analysisEnabled, analysisLabels } from "../_components/analysis-labels";
+import { AnalysisSheet } from "../_components/analysis-sheet";
+import { renderBrief, type BriefLine } from "@/lib/analysis-brief";
 import { PeriodNav } from "../_components/period-nav";
 import {
   YearImage,
@@ -225,9 +228,57 @@ export default async function YearPage({
     });
   }
 
+  /**
+   * The year as the brief, one line per account and one per total.
+   *
+   * Twelve columns do not go into a sentence, so each line carries what
+   * the year came to against what it was planned at — the two figures the
+   * 달성률 rows are worked out from. The shape of the months is in the
+   * screen; the question is about the shape of the year.
+   */
+  const briefLines: BriefLine[] = [];
+  for (const group of overview.sections) {
+    briefLines.push({
+      label: t(GROUP_LABEL_KEY[group.group]),
+      plan: compact(group.plan),
+      actual: compact(group.total),
+    });
+    for (const band of group.bands) {
+      for (const row of band.rows) {
+        briefLines.push({
+          label: row.name,
+          depth: 1,
+          plan: row.plan === 0 ? null : compact(row.plan),
+          actual: compact(row.total),
+          note: band.category,
+        });
+      }
+    }
+  }
+  if (briefLines.length > 0) {
+    briefLines.push({
+      label: t("year.saving"),
+      plan: compact(overview.saving.plan),
+      actual: compact(overview.saving.total),
+    });
+  }
+
   return (
     <div className="space-y-4">
       <PageHeader title={t("nav.year")}>
+        {analysisEnabled() && briefLines.length > 0 && (
+          <AnalysisSheet
+            brief={renderBrief({
+              heading: `${t("nav.year")} · ${year} · ${section.baseCurrency}`,
+              lines: briefLines,
+              footnotes: [
+                `지난 달까지는 장부의 실적, ${yearMonthOf(now)}부터는 예산으로 읽은 값입니다.`,
+              ],
+            })}
+            defaultQuestion={t("analysis.yearQuestion")}
+            labels={analysisLabels(t)}
+          />
+        )}
         {imageSections.length > 0 && (
           <YearImage
             year={year}

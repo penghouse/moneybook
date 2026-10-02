@@ -19,6 +19,9 @@ import { currentSection } from "@/lib/current-request";
 import { monthRange, rangeLabel, shiftWindow, today, yearMonthOf } from "@/lib/date";
 import { getAccountBalances, getAccountFlows } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
+import { analysisEnabled, analysisLabels } from "../_components/analysis-labels";
+import { AnalysisSheet } from "../_components/analysis-sheet";
+import { renderBrief, type BriefLine } from "@/lib/analysis-brief";
 import { formulaTotalLabels } from "../_components/formula-section";
 import { PeriodNav } from "../_components/period-nav";
 import { Card, EmptyState, Hint, PageHeader, SectionLabel } from "../_components/ui";
@@ -150,6 +153,35 @@ export default async function ComparePage({
   });
 
   const base = (minor: number) => formatMoney(minor, section.baseCurrency, locale);
+
+  /**
+   * Both periods, account by account, in the 「이전 / 현재」 order the
+   * screen reads in. The brief says which window each column is, so the
+   * answer can name the periods rather than calling them 1 and 2.
+   */
+  const briefLines: BriefLine[] = [
+    ...groups.flatMap((group) => [
+      {
+        label: t(GROUP_LABEL_KEY[group.group]),
+        plan: base(group.previous),
+        actual: base(group.current),
+      },
+      ...group.bands.flatMap((band) =>
+        band.rows.map((row) => ({
+          label: row.name,
+          depth: 1 as const,
+          plan: base(row.previous),
+          actual: base(row.current),
+          note: band.category,
+        })),
+      ),
+    ]),
+    ...comparedFormulas.map((row) => ({
+      label: `${row.name} (계산식)`,
+      plan: base(row.previous),
+      actual: base(row.current),
+    })),
+  ];
   const href = (next: { from?: string; to?: string; scope?: string; against?: string }) => {
     const query = new URLSearchParams({
       from: next.from ?? start,
@@ -202,7 +234,24 @@ export default async function ComparePage({
 
   return (
     <div className="space-y-4">
-      <PageHeader title={t("nav.compare")} />
+      <PageHeader title={t("nav.compare")}>
+        {analysisEnabled() && briefLines.length > 0 && (
+          <AnalysisSheet
+            brief={renderBrief({
+              heading: `${t("nav.compare")} · ${section.baseCurrency}`,
+              pair: [`이전(${previous.from}~${previous.to})`, `현재(${start}~${to})`],
+              lines: briefLines,
+              footnotes: [
+                scope === "flow"
+                  ? "비용·수익은 기간 동안 오간 금액입니다."
+                  : "자산·부채는 각 기간 종료일의 잔액입니다.",
+              ],
+            })}
+            defaultQuestion={t("analysis.compareQuestion")}
+            labels={analysisLabels(t)}
+          />
+        )}
+      </PageHeader>
 
       <PeriodNav
         prevHref={stepHref(-1)}

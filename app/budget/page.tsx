@@ -14,6 +14,9 @@ import { formatMoney } from "@/lib/money";
 import { PeriodNav } from "../_components/period-nav";
 import { Card, EmptyState, Hint, Money, PageHeader } from "../_components/ui";
 import { BudgetImage, type BudgetImageSection } from "./budget-image";
+import { analysisEnabled, analysisLabels } from "../_components/analysis-labels";
+import { AnalysisSheet } from "../_components/analysis-sheet";
+import { renderBrief, type BriefLine } from "@/lib/analysis-brief";
 import { BudgetSection } from "./budget-section";
 
 export default async function BudgetPage({
@@ -213,6 +216,44 @@ export default async function BudgetPage({
     };
   };
 
+  /**
+   * The month as the brief that gets sent — the same figures the cards
+   * above show, plus whatever was written on them.
+   *
+   * The notes are the half a bare total cannot supply: 「KTX 왕복 출장」
+   * is why 교통비 doubled, and without it the answer can only say that
+   * it doubled.
+   */
+  const briefLines: BriefLine[] = [];
+  for (const [group, label] of [
+    ["income", t("budget.incomeSide")],
+    ["expense", t("budget.expenseSide")],
+  ] as const) {
+    const list = group === "income" ? incomeAccounts : expenseAccounts;
+    if (list.length === 0) continue;
+    briefLines.push({
+      label,
+      plan: base(sum(list, budgetByAccountId)),
+      actual: base(sum(list, actualByAccountId)),
+    });
+    for (const account of list) {
+      const planned = budgetByAccountId.get(account.id);
+      const spent = actualByAccountId.get(account.id) ?? 0;
+      if (planned === undefined && spent === 0) continue;
+      const memos = (memosByAccountId.get(account.id) ?? []).map((m) => m.memo);
+      const note = [noteByAccountId.get(account.id), memos.length > 0 ? memos.join(", ") : null]
+        .filter(Boolean)
+        .join(" · ");
+      briefLines.push({
+        label: account.name,
+        depth: 1,
+        plan: planned === undefined ? null : base(planned),
+        actual: base(spent),
+        note: note || null,
+      });
+    }
+  }
+
   const imageSections = [
     imageSection("income", t("budget.incomeSide"), incomeAccounts),
     imageSection("expense", t("budget.expenseSide"), expenseAccounts),
@@ -263,7 +304,19 @@ export default async function BudgetPage({
       {/* Beside the screen name, where /assets and /income already keep
           「그래프 보기」: the picture is of the whole month, so it belongs
           to the page rather than to either side of it. */}
-      <PageHeader title={t("nav.budget")}>{exportButton}</PageHeader>
+      <PageHeader title={t("nav.budget")}>
+        {analysisEnabled() && briefLines.length > 0 && (
+          <AnalysisSheet
+            brief={renderBrief({
+              heading: `${t("nav.budget")} · ${ref.periodKey} · ${section.baseCurrency}`,
+              lines: briefLines,
+            })}
+            defaultQuestion={t("analysis.budgetQuestion")}
+            labels={analysisLabels(t)}
+          />
+        )}
+        {exportButton}
+      </PageHeader>
 
       <PeriodNav
         prevHref={`/budget?period=${isYear ? addYears(ref.periodKey, -1) : addMonths(ref.periodKey, -1)}`}
