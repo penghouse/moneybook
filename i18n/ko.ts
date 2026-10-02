@@ -165,6 +165,7 @@ const ko = {
   "csv.done": "가져왔습니다.",
   "csv.noFile": "파일을 선택해주세요.",
   "csv.exportBudgets": "예산 CSV 내보내기",
+  "csv.exportAnalysis": "분석용 내보내기 (.md)",
   "csv.exportRates": "환율 CSV 내보내기",
   "csv.importBudgets": "예산 CSV 가져오기",
   "csv.importRates": "환율 CSV 가져오기",

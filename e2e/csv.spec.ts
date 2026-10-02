@@ -2,7 +2,8 @@ import { test, expect, type Page } from "@playwright/test";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, budgets, transactionLines, transactions } from "../db/schema";
-import { getOrCreateSection } from "../lib/current-section";
+import { DEFAULT_TIMEZONE, getOrCreateSection } from "../lib/current-section";
+import { addMonths, today } from "../lib/date";
 import { seedSession, SESSION_COOKIE_NAME } from "./auth-helper";
 
 // The import forms are structurally identical, so each carries a
@@ -188,6 +189,84 @@ test.describe("csv", () => {
 
     await expect(form.getByText(/첫 줄이 헤더와 다릅니다/)).toBeVisible();
     await expect(form.getByRole("button", { name: "가져오기 확정" })).toHaveCount(0);
+  });
+
+  test("the analysis export says which months are real and which are planned", async ({ page }) => {
+    const section = await getOrCreateSection(db, { userId: currentUserId, locale: "ko" });
+    const byName = async (name: string) =>
+      (await db.query.accounts.findFirst({
+        where: and(eq(accounts.sectionId, section.id), eq(accounts.name, name)),
+      }))!;
+    const food = await byName("식비");
+    const card = await byName("신용카드");
+
+    const now = today(DEFAULT_TIMEZONE);
+    const thisMonth = now.slice(0, 7);
+    const lastMonth = addMonths(thisMonth, -1);
+    const nextMonth = addMonths(thisMonth, 1);
+
+    await db.insert(budgets).values([
+      {
+        sectionId: section.id,
+        accountId: food.id,
+        period: "month",
+        periodKey: lastMonth,
+        amount: 600_000,
+        note: "외식 줄이기로 5만 내림",
+      },
+      {
+        sectionId: section.id,
+        accountId: food.id,
+        period: "month",
+        periodKey: nextMonth,
+        amount: 600_000,
+      },
+    ]);
+    const [tx] = await db
+      .insert(transactions)
+      .values({
+        sectionId: section.id,
+        date: `${lastMonth}-10`,
+        title: "장보기",
+        memo: "주말 손님",
+      })
+      .returning();
+    await db.insert(transactionLines).values([
+      {
+        transactionId: tx.id,
+        side: "left",
+        accountId: food.id,
+        currency: "KRW",
+        amount: 740_000,
+        rate: 1,
+        baseAmount: 740_000,
+      },
+      {
+        transactionId: tx.id,
+        side: "right",
+        accountId: card.id,
+        currency: "KRW",
+        amount: 740_000,
+        rate: 1,
+        baseAmount: 740_000,
+      },
+    ]);
+
+    await page.goto("/settings");
+    const file = await (await page.request.get("/api/export/analysis")).text();
+
+    // The one thing this file must not let a reader get wrong.
+    expect(file).toContain(`${thisMonth}은 진행 중입니다`);
+    expect(file).toContain("는 예산입니다");
+    expect(file).toContain("는 실적입니다");
+
+    // The plans, and what was written on them.
+    expect(file).toContain(`${lastMonth} 식비 ₩600,000 — 외식 줄이기로 5만 내림`);
+    // The year's shape, and the recent entries with their memos.
+    expect(file).toContain("## 연간 개요");
+    expect(file).toContain("식비 ← 신용카드 ₩740,000 · 장보기 — 주말 손님");
+    // Read, not replayed: it is markdown, not one of the CSV backups.
+    expect(file.startsWith("# moneybook")).toBe(true);
   });
 
   test("budgets round-trip through export and import", async ({ page }) => {

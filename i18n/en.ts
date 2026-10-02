@@ -171,6 +171,7 @@ const en: Record<keyof typeof ko, string> = {
   "csv.done": "Imported.",
   "csv.noFile": "Please choose a file.",
   "csv.exportBudgets": "Export budgets CSV",
+  "csv.exportAnalysis": "Export for analysis (.md)",
   "csv.exportRates": "Export exchange rates CSV",
   "csv.importBudgets": "Import budgets CSV",
   "csv.importRates": "Import exchange rates CSV",
