@@ -34,6 +34,27 @@ const en: Record<keyof typeof ko, string> = {
   "common.save": "Save",
   "common.cancel": "Cancel",
   "common.close": "Close",
+  "analysis.open": "Analyse",
+  "analysis.title": "Analysis",
+  "analysis.reading": "Reading…",
+  "analysis.sentCount": "What was sent ({n} lines)",
+  "analysis.followUp": "Ask something else",
+  "analysis.send": "Send",
+  "analysis.retry": "Try again",
+  "analysis.failed": "No answer came back. Try again in a moment.",
+  "analysis.notConfigured":
+    "Analysis is not set up yet — add an API key to the deployment's environment variables.",
+  "analysis.disclaimer":
+    "A model wrote this from the figures above. It is not the book talking, so check the numbers on screen.",
+  "analysis.read": "Read ·",
+  "analysis.plan": "Proposed budget changes",
+  "analysis.apply": "Apply",
+  "analysis.applied": "Applied. Refresh to see it on the page.",
+  "analysis.budgetQuestion":
+    "Where did this month leave the plan, and what would be worth adjusting next month?",
+  "analysis.yearQuestion": "What stands out in this year so far, and where is it heading?",
+  "analysis.compareQuestion":
+    "What changed most between the two periods, and what might explain it?",
   "common.edit": "Edit",
   "common.delete": "Delete",
   "common.add": "Add",
@@ -101,6 +122,8 @@ const en: Record<keyof typeof ko, string> = {
   "year.yearRate": "vs year plan",
   "year.monthVariance": "off month plan",
   "year.yearVariance": "off year plan",
+  "year.imageNote":
+    "Months behind are from the ledger, this month and after from their budgets (the faint figures). Amounts are shortened.",
   "year.empty": "Nothing came in or went out this year.",
   "year.hint":
     "Months behind us are read from the ledger, this month and the ones ahead from their budgets — the faint figures are the plan. An item this month has already spent past its budget is shown at what it has come to: money the ledger says is gone is not a forecast. Amounts are shortened; the year's saving comes to {total}. The month-by-month rate is only shown for finished months: a month still running on its budget would read 100% every time. The running-year rate is coloured against how much of the year's budget these months carry, rather than against 100%. Both rates count only months and items that were budgeted — there is nothing to hold the rest to — though their money is still in the cells and the total. Saving is shown as a difference rather than a ratio: it is what is left of income after spending, so a negative plan inverts the verdict and a break-even plan has nothing to divide by.",
@@ -148,6 +171,7 @@ const en: Record<keyof typeof ko, string> = {
   "csv.done": "Imported.",
   "csv.noFile": "Please choose a file.",
   "csv.exportBudgets": "Export budgets CSV",
+  "csv.exportAnalysis": "Export for analysis (.md)",
   "csv.exportRates": "Export exchange rates CSV",
   "csv.importBudgets": "Import budgets CSV",
   "csv.importRates": "Import exchange rates CSV",
@@ -285,6 +309,8 @@ const en: Record<keyof typeof ko, string> = {
   "budget.spent": "Spent",
   "budget.remaining": "Remaining",
   "budget.over": "Over",
+  "budget.note": "Note",
+  "budget.notePlaceholder": "Note — e.g. cut 50k, eating out less",
   "budget.noBudget": "No budget set",
   "budget.grandTotal": "All items",
   "budget.setYearBudget": "Set yearly budget",
@@ -310,6 +336,8 @@ const en: Record<keyof typeof ko, string> = {
   "compare.previous": "Before",
   "compare.current": "Now",
   "compare.change": "Change",
+  "compare.formulaHint":
+    "Worked out separately against each period's own figures. A formula that is broken, or that names something a period has no figure for, is left out — half a comparison is worse than none.",
   "compare.empty": "Neither period had any movement.",
   "compare.flowHint": "What moved over each of the two spans.",
   "compare.balanceHint":

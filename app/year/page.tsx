@@ -18,7 +18,16 @@ import {
   type YearCell,
   type YearLine,
 } from "@/lib/year-overview";
+import { analysisEnabled, analysisLabels } from "../_components/analysis-labels";
+import { AnalysisSheet } from "../_components/analysis-sheet";
+import { renderBrief, type BriefLine } from "@/lib/analysis-brief";
 import { PeriodNav } from "../_components/period-nav";
+import {
+  YearImage,
+  type YearImageCell,
+  type YearImageRow,
+  type YearImageSection,
+} from "./year-image";
 import { Card, EmptyState, Hint, PageHeader, SectionLabel } from "../_components/ui";
 
 const CELL = "px-2.5 py-1.5 whitespace-nowrap";
@@ -112,9 +121,182 @@ export default async function YearPage({
     </>
   );
 
+  /**
+   * The same figures again, as strings for the canvas.
+   *
+   * Built here rather than in the picture: the screen has already
+   * decided what every number is and which way it is inked, and a second
+   * opinion in the drawing code is a second thing to keep in step.
+   */
+  const cell = (text: string, tone: YearImageCell["tone"] = "ink"): YearImageCell => ({
+    text,
+    tone,
+  });
+  const amountCells = (line: YearLine) =>
+    line.cells.map((c) =>
+      c.blank || c.amount === 0
+        ? null
+        : cell(compact(c.amount), c.source === "budget" ? "faint" : "ink"),
+    );
+  const rateCells = (line: YearLine, overIsGood: boolean) => {
+    const yearly = yearAchievements(line);
+    const tone = (rate: number | null, pace: number) =>
+      rate === null
+        ? null
+        : cell(percent(rate), (overIsGood ? rate >= pace : rate <= pace) ? "good" : "bad");
+    return {
+      month: line.cells.map((c) => tone(monthAchievement(c), 1)),
+      year: line.cells.map((c, i) => tone(yearly[i].rate, yearly[i].pace ?? 1)),
+    };
+  };
+
+  const imageSections: YearImageSection[] = overview.sections.map((group) => {
+    const rows: YearImageRow[] = [];
+    for (const band of group.bands) {
+      if (group.bands.length > 1) {
+        rows.push({
+          label: band.category ?? t("accounts.uncategorized"),
+          level: "band",
+          cells: amountCells(band),
+          total: cell(compact(band.total), "muted"),
+        });
+      }
+      for (const row of band.rows) {
+        rows.push({
+          label: row.name,
+          level: "account",
+          cells: amountCells(row),
+          total: cell(compact(row.total)),
+        });
+      }
+    }
+    const rates = rateCells(group, group.group === "income");
+    rows.push({
+      label: t("year.sum"),
+      level: "total",
+      cells: amountCells(group),
+      total: cell(compact(group.total)),
+    });
+    rows.push({ label: t("year.monthRate"), level: "note", cells: rates.month, total: null });
+    rows.push({
+      label: t("year.yearRate"),
+      level: "note",
+      cells: rates.year,
+      total: cell(compact(group.plan), "muted"),
+    });
+    return { key: group.group, label: t(GROUP_LABEL_KEY[group.group]), rows };
+  });
+
+  if (overview.sections.length > 0) {
+    const variance = (value: number | null): YearImageCell | null =>
+      value === null
+        ? null
+        : cell(
+            `${value > 0 ? "+" : ""}${compact(value)}`,
+            value === 0 ? "muted" : value > 0 ? "good" : "bad",
+          );
+    const running = yearVariances(overview.saving);
+    imageSections.push({
+      key: "saving",
+      label: t("year.saving"),
+      rows: [
+        {
+          label: t("year.saving"),
+          level: "total",
+          cells: amountCells(overview.saving),
+          total: cell(compact(overview.saving.total)),
+        },
+        {
+          label: t("year.cumulative"),
+          level: "note",
+          cells: overview.cumulativeSaving.map((amount) => cell(compact(amount), "muted")),
+          total: null,
+        },
+        {
+          label: t("year.monthVariance"),
+          level: "note",
+          cells: overview.saving.cells.map((c) => variance(monthVariance(c))),
+          total: null,
+        },
+        {
+          label: t("year.yearVariance"),
+          level: "note",
+          cells: running.map(variance),
+          total: cell(compact(overview.saving.plan), "muted"),
+        },
+      ],
+    });
+  }
+
+  /**
+   * The year as the brief, one line per account and one per total.
+   *
+   * Twelve columns do not go into a sentence, so each line carries what
+   * the year came to against what it was planned at — the two figures the
+   * 달성률 rows are worked out from. The shape of the months is in the
+   * screen; the question is about the shape of the year.
+   */
+  const briefLines: BriefLine[] = [];
+  for (const group of overview.sections) {
+    briefLines.push({
+      label: t(GROUP_LABEL_KEY[group.group]),
+      plan: compact(group.plan),
+      actual: compact(group.total),
+    });
+    for (const band of group.bands) {
+      for (const row of band.rows) {
+        briefLines.push({
+          label: row.name,
+          depth: 1,
+          plan: row.plan === 0 ? null : compact(row.plan),
+          actual: compact(row.total),
+          note: band.category,
+        });
+      }
+    }
+  }
+  if (briefLines.length > 0) {
+    briefLines.push({
+      label: t("year.saving"),
+      plan: compact(overview.saving.plan),
+      actual: compact(overview.saving.total),
+    });
+  }
+
   return (
     <div className="space-y-4">
-      <PageHeader title={t("nav.year")} />
+      <PageHeader title={t("nav.year")}>
+        {analysisEnabled() && briefLines.length > 0 && (
+          <AnalysisSheet
+            brief={renderBrief({
+              heading: `${t("nav.year")} · ${year} · ${section.baseCurrency}`,
+              lines: briefLines,
+              footnotes: [
+                `지난 달까지는 장부의 실적, ${yearMonthOf(now)}부터는 예산으로 읽은 값입니다.`,
+              ],
+            })}
+            defaultQuestion={t("analysis.yearQuestion")}
+            labels={analysisLabels(t)}
+          />
+        )}
+        {imageSections.length > 0 && (
+          <YearImage
+            year={year}
+            sections={imageSections}
+            labels={{
+              save: t("budget.saveImage"),
+              saving: t("common.saving"),
+              confirm: t("budget.makeImage"),
+              close: t("common.close"),
+              title: t("nav.year"),
+              line: t("year.line"),
+              total: t("year.total"),
+              monthNumber: t("year.monthNumber"),
+              note: t("year.imageNote"),
+            }}
+          />
+        )}
+      </PageHeader>
 
       <PeriodNav
         prevHref={`/year?year=${addYears(year, -1)}`}

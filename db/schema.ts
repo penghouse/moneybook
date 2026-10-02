@@ -262,6 +262,20 @@ export const budgets = sqliteTable(
     periodKey: text("period_key").notNull(),
     // Minor-unit amount in the section's base currency.
     amount: integer("amount").notNull(),
+    /**
+     * What the reader wants to remember about this budget.
+     *
+     * A column on the budget rather than a table of its own: a note
+     * about 「2026-08의 식비 예산」 is an attribute of a row that already
+     * exists and already has the unique key for it, and a second table
+     * would carry a second copy of that key for the two to disagree
+     * over.
+     *
+     * It therefore needs a budget to hang on. 「메모는 있는데 예산은 안
+     * 정했다」 cannot be written, because amount is NOT NULL and a zero
+     * there is a real plan — 「여기엔 쓰지 않는다」 — not an absence.
+     */
+    note: text("note"),
   },
   (t) => [
     unique("budgets_account_period_unique").on(t.accountId, t.period, t.periodKey),

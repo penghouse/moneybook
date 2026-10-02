@@ -14,6 +14,7 @@ export async function setBudgetAction(formData: FormData) {
   const accountId = formData.get("accountId");
   const periodParam = formData.get("period");
   const amountStr = formData.get("amount");
+  const noteRaw = formData.get("note");
 
   if (typeof accountId !== "string") throw new Error("Missing accountId");
   const ref = typeof periodParam === "string" ? parseBudgetPeriod(periodParam) : null;
@@ -29,13 +30,17 @@ export async function setBudgetAction(formData: FormData) {
   }
 
   const amount = toMinorUnits(amountMajor, section.baseCurrency);
+  // Emptied back to null rather than to '': a blank string is a note
+  // that says nothing, and the screen would then have to tell it apart
+  // from a note nobody wrote.
+  const note = typeof noteRaw === "string" && noteRaw.trim() ? noteRaw.trim() : null;
 
   await db
     .insert(budgets)
-    .values({ sectionId: section.id, accountId, ...ref, amount })
+    .values({ sectionId: section.id, accountId, ...ref, amount, note })
     .onConflictDoUpdate({
       target: [budgets.accountId, budgets.period, budgets.periodKey],
-      set: { amount },
+      set: { amount, note },
     });
 
   // Revalidated, not redirected. The redirect went to the page the

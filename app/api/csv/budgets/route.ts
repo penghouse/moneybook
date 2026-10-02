@@ -37,6 +37,7 @@ export async function GET() {
       // so the discriminator column would only repeat what this says.
       b.periodKey,
       String(toMajorUnits(b.amount, section.baseCurrency)),
+      b.note ?? "",
     ],
   });
 }

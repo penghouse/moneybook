@@ -81,6 +81,9 @@ export default async function SettingsPage({
       kind: "budgets",
     },
     { href: "/api/csv/rates", label: t("csv.exportRates"), kind: "rates" },
+    // Not a backup like the four above it — one file meant to be read,
+    // with the year's shape and the plans in it. See lib/analysis-export.
+    { href: "/api/export/analysis", label: t("csv.exportAnalysis"), kind: "analysis" },
   ];
 
   const imports = [

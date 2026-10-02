@@ -16,6 +16,14 @@ export default defineConfig({
     command: "npm run dev",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
+    env: {
+      // The 분석 button only renders where the deployment can answer, so
+      // the tests need *a* key for it to exist. Never a real one: every
+      // test routes /api/analyze to a stub, and a request that reached
+      // the model would be a test that costs money and changes its mind
+      // between runs.
+      ANTHROPIC_API_KEY: "not-a-real-key-tests-stub-the-route",
+    },
   },
   projects: [
     {

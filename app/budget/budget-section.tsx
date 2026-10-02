@@ -24,6 +24,7 @@ export function BudgetSection({
   group,
   accounts,
   budgetByAccountId,
+  noteByAccountId,
   actualByAccountId,
   memosByAccountId,
   monthlyByAccountId,
@@ -40,6 +41,8 @@ export function BudgetSection({
   group: Extract<AccountGroup, "income" | "expense">;
   accounts: readonly Account[];
   budgetByAccountId: ReadonlyMap<string, number>;
+  /** What the reader wrote about each budget, for the period on screen. */
+  noteByAccountId: ReadonlyMap<string, string>;
   actualByAccountId: ReadonlyMap<string, number>;
   /** What was written on the period's transactions, newest first. */
   memosByAccountId: ReadonlyMap<string, readonly AccountMemo[]>;
@@ -233,7 +236,9 @@ export function BudgetSection({
                 </Link>
 
                 {/* What was written on the month's entries, under the
-                    figure they add up to. The row already links to the
+                    figure they add up to. The month only: a year's worth
+                    of scattered memos under one row says nothing about
+                    the year, and the 연간 view is read for its caps. The row already links to the
                     transactions, but the question 「이 지출이 뭐였지」 is
                     asked *here* — and a screen you have to leave to
                     answer it is a screen that made you leave.
@@ -243,7 +248,7 @@ export function BudgetSection({
                     of and not the contents of, which is worse than no
                     list. Long months are what 접기 and the exported
                     picture are for. */}
-                {(memosByAccountId.get(account.id) ?? []).length > 0 && (
+                {!isYear && (memosByAccountId.get(account.id) ?? []).length > 0 && (
                   <ul
                     data-testid="budget-memos"
                     className="text-ink-faint mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs"
@@ -297,6 +302,7 @@ export function BudgetSection({
                   accountId={account.id}
                   period={periodKey}
                   amountMajor={budget !== undefined ? toMajorUnits(budget, currency) : undefined}
+                  note={noteByAccountId.get(account.id) ?? null}
                   labels={{
                     field: t(isYear ? "budget.setYearBudget" : "budget.setBudget"),
                     edit: t("common.edit"),
@@ -304,6 +310,8 @@ export function BudgetSection({
                     save: t("common.save"),
                     saving: t("common.saving"),
                     noBudget: t("budget.noBudget"),
+                    note: t("budget.note"),
+                    notePlaceholder: t("budget.notePlaceholder"),
                   }}
                 >
                   {budget !== undefined && (
@@ -325,6 +333,15 @@ export function BudgetSection({
                           : `${leftLabel} ${base(left ?? 0)}`}
                       </span>
                     </div>
+                  )}
+                  {/* A folded row still says what was written on it —
+                      otherwise the note would only be visible from
+                      inside the box it is typed in, which is the one
+                      place it is not needed. */}
+                  {noteByAccountId.get(account.id) && (
+                    <p data-testid="budget-note" className="text-ink-muted mt-1 text-xs break-keep">
+                      {noteByAccountId.get(account.id)}
+                    </p>
                   )}
                 </BudgetField>
               </div>

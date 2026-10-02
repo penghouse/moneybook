@@ -263,7 +263,7 @@ export function checkTransactionGroup(
 // ---- Budgets ----
 
 export type BudgetRowCheck =
-  | ({ ok: true; accountId: string; amountMajor: number } & BudgetPeriodRef)
+  | ({ ok: true; accountId: string; amountMajor: number; note: string | null } & BudgetPeriodRef)
   | { ok: false; label: string; issue: ImportIssue };
 
 export function checkBudgetRow(
@@ -283,7 +283,8 @@ export function checkBudgetRow(
   if (!Number.isFinite(amountMajor) || amountMajor < 0) {
     return { ok: false, label, issue: { code: "invalidAmount", value: row.amount } };
   }
-  return { ok: true, accountId: account.id, ...ref, amountMajor };
+  const note = row.note?.trim() || null;
+  return { ok: true, accountId: account.id, ...ref, amountMajor, note };
 }
 
 // ---- Exchange rates ----

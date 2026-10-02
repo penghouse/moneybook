@@ -204,7 +204,16 @@ export function parseAccountsCsv(text: string): AccountCsvRow[] {
 // the two DB columns. The key's shape already says which it is, so a
 // hand-edited file cannot claim `year` next to `2026-08` — the pair
 // would be a contradiction the DB's CHECK rejects after the fact.
-export const BUDGET_CSV_COLUMNS = ["account", "period", "amount"] as const;
+export const BUDGET_CSV_COLUMNS = ["account", "period", "amount", "note"] as const;
+
+/**
+ * The same file before budgets carried a note.
+ *
+ * A backup taken last month must still restore: a column added to the
+ * app is not a reason for a file the reader already has to stop working.
+ * The note comes back empty, which is what it was.
+ */
+const BUDGET_CSV_COLUMNS_V1 = ["account", "period", "amount"] as const;
 
 export type BudgetCsvRow = Record<(typeof BUDGET_CSV_COLUMNS)[number], string>;
 
@@ -213,6 +222,10 @@ export function buildBudgetsCsv(rows: readonly BudgetCsvRow[]): string {
 }
 
 export function parseBudgetsCsv(text: string): BudgetCsvRow[] {
+  const header = parseCsv(text)[0];
+  if (header && header.length === BUDGET_CSV_COLUMNS_V1.length) {
+    return parseTable(text, BUDGET_CSV_COLUMNS_V1).map((row) => ({ ...row, note: "" }));
+  }
   return parseTable(text, BUDGET_CSV_COLUMNS);
 }
 

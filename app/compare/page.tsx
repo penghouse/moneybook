@@ -1,6 +1,6 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { accounts, type AccountGroup } from "@/db/schema";
+import { accounts, formulas, type AccountGroup, type FormulaScope } from "@/db/schema";
 import type { TranslationKey } from "@/i18n";
 import { GROUP_LABEL_KEY } from "@/i18n/groups";
 import { parseGroupOrder } from "@/lib/account-groups";
@@ -13,10 +13,16 @@ import {
   type CompareScope,
 } from "@/lib/compare-period";
 import { compareAccounts } from "@/lib/compare-rows";
+import { buildFormulaItems, formulaValues } from "@/lib/formula-items";
+import { evaluateFormula, parseTerms } from "@/lib/formulas";
 import { currentSection } from "@/lib/current-request";
 import { monthRange, rangeLabel, shiftWindow, today, yearMonthOf } from "@/lib/date";
 import { getAccountBalances, getAccountFlows } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
+import { analysisEnabled, analysisLabels } from "../_components/analysis-labels";
+import { AnalysisSheet } from "../_components/analysis-sheet";
+import { renderBrief, type BriefLine } from "@/lib/analysis-brief";
+import { formulaTotalLabels } from "../_components/formula-section";
 import { PeriodNav } from "../_components/period-nav";
 import { Card, EmptyState, Hint, PageHeader, SectionLabel } from "../_components/ui";
 
@@ -42,6 +48,18 @@ const SCOPE_GROUPS: Record<CompareScope, AccountGroup[]> = {
   balance: ["asset", "liability"],
 };
 
+/**
+ * The 계산식 each scope's figures belong to.
+ *
+ * The two namings are the same split under different words — this screen
+ * says 흐름/잔액 because that is what it compares, the 계산식 editor says
+ * 기간손익/자산현황 because that is the report each was written against.
+ */
+const SCOPE_FORMULAS: Record<CompareScope, FormulaScope> = {
+  flow: "income",
+  balance: "assets",
+};
+
 export default async function ComparePage({
   searchParams,
 }: {
@@ -64,7 +82,7 @@ export default async function ComparePage({
     SCOPE_GROUPS[scope].includes(group),
   );
 
-  const [catalog, previousAmounts, currentAmounts] = await Promise.all([
+  const [catalog, previousAmounts, currentAmounts, formulaRows] = await Promise.all([
     db.query.accounts.findMany({
       where: eq(accounts.sectionId, section.id),
       orderBy: asc(accounts.sortOrder),
@@ -79,6 +97,10 @@ export default async function ComparePage({
     scope === "flow"
       ? getAccountFlows(db, { sectionId: section.id, from: start, to })
       : getAccountBalances(db, { sectionId: section.id, asOf: to }),
+    db.query.formulas.findMany({
+      where: and(eq(formulas.sectionId, section.id), eq(formulas.scope, SCOPE_FORMULAS[scope])),
+      orderBy: asc(formulas.sortOrder),
+    }),
   ]);
 
   const groups = compareAccounts({
@@ -88,7 +110,78 @@ export default async function ComparePage({
     groupOrder,
   });
 
+  /**
+   * The 계산식 worked out twice, once against each period's figures.
+   *
+   * Built from the same `buildFormulaItems` the reports use, so a
+   * 유동성자금 here and a 유동성자금 on 자산현황 cannot come out
+   * different — they are the same function over the same accounts, asked
+   * about two different dates.
+   *
+   * A formula whose expression is broken, or which names a term this
+   * period has nothing for, simply does not get a row: this screen is a
+   * comparison and half a comparison is worse than none. The report it
+   * was written on says what is wrong with it.
+   */
+  const formulaValuesFor = (amounts: readonly { accountId: string; baseAmount: number }[]) =>
+    formulaValues(
+      buildFormulaItems({
+        scope: SCOPE_FORMULAS[scope],
+        groupOrder: parseGroupOrder(section.groupOrder),
+        accounts: catalog,
+        amountByAccountId: new Map(amounts.map((a) => [a.accountId, a.baseAmount])),
+        labels: { totals: formulaTotalLabels(SCOPE_FORMULAS[scope], t) },
+      }),
+    );
+  const previousValues = { byKey: formulaValuesFor(previousAmounts) };
+  const currentValues = { byKey: formulaValuesFor(currentAmounts) };
+
+  const comparedFormulas = formulaRows.flatMap((row) => {
+    const formula = { terms: parseTerms(row.terms), expression: row.expression };
+    const was = evaluateFormula(formula, previousValues, section.baseCurrency);
+    const now = evaluateFormula(formula, currentValues, section.baseCurrency);
+    if (!was.ok || !now.ok) return [];
+    return [
+      {
+        id: row.id,
+        name: row.name,
+        previous: was.amount,
+        current: now.amount,
+        change: now.amount - was.amount,
+      },
+    ];
+  });
+
   const base = (minor: number) => formatMoney(minor, section.baseCurrency, locale);
+
+  /**
+   * Both periods, account by account, in the 「이전 / 현재」 order the
+   * screen reads in. The brief says which window each column is, so the
+   * answer can name the periods rather than calling them 1 and 2.
+   */
+  const briefLines: BriefLine[] = [
+    ...groups.flatMap((group) => [
+      {
+        label: t(GROUP_LABEL_KEY[group.group]),
+        plan: base(group.previous),
+        actual: base(group.current),
+      },
+      ...group.bands.flatMap((band) =>
+        band.rows.map((row) => ({
+          label: row.name,
+          depth: 1 as const,
+          plan: base(row.previous),
+          actual: base(row.current),
+          note: band.category,
+        })),
+      ),
+    ]),
+    ...comparedFormulas.map((row) => ({
+      label: `${row.name} (계산식)`,
+      plan: base(row.previous),
+      actual: base(row.current),
+    })),
+  ];
   const href = (next: { from?: string; to?: string; scope?: string; against?: string }) => {
     const query = new URLSearchParams({
       from: next.from ?? start,
@@ -141,7 +234,24 @@ export default async function ComparePage({
 
   return (
     <div className="space-y-4">
-      <PageHeader title={t("nav.compare")} />
+      <PageHeader title={t("nav.compare")}>
+        {analysisEnabled() && briefLines.length > 0 && (
+          <AnalysisSheet
+            brief={renderBrief({
+              heading: `${t("nav.compare")} · ${section.baseCurrency}`,
+              pair: [`이전(${previous.from}~${previous.to})`, `현재(${start}~${to})`],
+              lines: briefLines,
+              footnotes: [
+                scope === "flow"
+                  ? "비용·수익은 기간 동안 오간 금액입니다."
+                  : "자산·부채는 각 기간 종료일의 잔액입니다.",
+              ],
+            })}
+            defaultQuestion={t("analysis.compareQuestion")}
+            labels={analysisLabels(t)}
+          />
+        )}
+      </PageHeader>
 
       <PeriodNav
         prevHref={stepHref(-1)}
@@ -253,6 +363,24 @@ export default async function ComparePage({
         )}
         <Hint>{scope === "flow" ? t("compare.flowHint") : t("compare.balanceHint")}</Hint>
       </section>
+
+      {comparedFormulas.length > 0 && (
+        <section>
+          <SectionLabel>{t("formula.section")}</SectionLabel>
+          <Card>
+            {comparedFormulas.map((row) => (
+              <div
+                key={row.id}
+                data-testid="compare-formula"
+                className="not-first:border-rule-soft px-4 py-3 not-first:border-t"
+              >
+                <Line name={row.name} row={row} strong />
+              </div>
+            ))}
+          </Card>
+          <Hint>{t("compare.formulaHint")}</Hint>
+        </section>
+      )}
     </div>
   );
 }

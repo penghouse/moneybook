@@ -14,6 +14,10 @@ import { formatMoney } from "@/lib/money";
 import { PeriodNav } from "../_components/period-nav";
 import { Card, EmptyState, Hint, Money, PageHeader } from "../_components/ui";
 import { BudgetImage, type BudgetImageSection } from "./budget-image";
+import { analysisEnabled, analysisLabels } from "../_components/analysis-labels";
+import { applyBudgetProposalAction } from "./analysis-actions";
+import { AnalysisSheet } from "../_components/analysis-sheet";
+import { renderBrief, type BriefLine } from "@/lib/analysis-brief";
 import { BudgetSection } from "./budget-section";
 
 export default async function BudgetPage({
@@ -61,6 +65,9 @@ export default async function BudgetPage({
     getAccountMemos(db, { sectionId: section.id, from, to }),
   ]);
   const budgetByAccountId = new Map(periodBudgets.map((b) => [b.accountId, b.amount]));
+  const noteByAccountId = new Map(
+    periodBudgets.flatMap((b) => (b.note ? [[b.accountId, b.note] as const] : [])),
+  );
   const actualByAccountId = new Map(flows.map((f) => [f.accountId, f.baseAmount]));
 
   // On the year screen, what each account's twelve months add up to.
@@ -210,6 +217,46 @@ export default async function BudgetPage({
     };
   };
 
+  /**
+   * The month as the brief that gets sent: the figures these cards show
+   * and the notes written on the plans, and nothing else.
+   *
+   * Not the transactions, and not the memos on them. 「KTX 왕복 출장」 is
+   * why 교통비 doubled, but most questions never need to know — so the
+   * model asks for it when it does, and the reader is shown that it
+   * asked. See app/api/analyze.
+   */
+  const briefLines: BriefLine[] = [];
+  for (const [group, label] of [
+    ["income", t("budget.incomeSide")],
+    ["expense", t("budget.expenseSide")],
+  ] as const) {
+    const list = group === "income" ? incomeAccounts : expenseAccounts;
+    if (list.length === 0) continue;
+    briefLines.push({
+      label,
+      plan: base(sum(list, budgetByAccountId)),
+      actual: base(sum(list, actualByAccountId)),
+    });
+    for (const account of list) {
+      const planned = budgetByAccountId.get(account.id);
+      const spent = actualByAccountId.get(account.id) ?? 0;
+      if (planned === undefined && spent === 0) continue;
+      briefLines.push({
+        label: account.name,
+        depth: 1,
+        plan: planned === undefined ? null : base(planned),
+        actual: base(spent),
+        // The budget's own note travels — it is a line the reader wrote
+        // about the plan, and it is on the screen. The month's
+        // transaction memos do not: they are the detail behind the
+        // figure, and detail is fetched when a question turns out to
+        // need it rather than sent in case it does.
+        note: noteByAccountId.get(account.id) ?? null,
+      });
+    }
+  }
+
   const imageSections = [
     imageSection("income", t("budget.incomeSide"), incomeAccounts),
     imageSection("expense", t("budget.expenseSide"), expenseAccounts),
@@ -237,6 +284,7 @@ export default async function BudgetPage({
 
   const shared = {
     budgetByAccountId,
+    noteByAccountId,
     actualByAccountId,
     memosByAccountId,
     monthlyByAccountId,
@@ -259,7 +307,21 @@ export default async function BudgetPage({
       {/* Beside the screen name, where /assets and /income already keep
           「그래프 보기」: the picture is of the whole month, so it belongs
           to the page rather than to either side of it. */}
-      <PageHeader title={t("nav.budget")}>{exportButton}</PageHeader>
+      <PageHeader title={t("nav.budget")}>
+        {analysisEnabled() && briefLines.length > 0 && (
+          <AnalysisSheet
+            brief={renderBrief({
+              heading: `${t("nav.budget")} · ${ref.periodKey} · ${section.baseCurrency}`,
+              lines: briefLines,
+            })}
+            defaultQuestion={t("analysis.budgetQuestion")}
+            labels={analysisLabels(t)}
+            period={isYear ? undefined : ref.periodKey}
+            applyAction={applyBudgetProposalAction}
+          />
+        )}
+        {exportButton}
+      </PageHeader>
 
       <PeriodNav
         prevHref={`/budget?period=${isYear ? addYears(ref.periodKey, -1) : addMonths(ref.periodKey, -1)}`}

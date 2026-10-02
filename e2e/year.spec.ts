@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, budgets, transactionLines, transactions } from "../db/schema";
@@ -249,6 +250,42 @@ test.describe("year overview", () => {
     await page.getByRole("link", { name: "이전 해" }).click();
     await expect(page).toHaveURL(new RegExp(`year=${Number(YEAR) - 1}`));
     await expect(page.getByTestId("year-row")).toHaveCount(0);
+  });
+
+  test("the year saves as one picture, with the 분류 picked for it", async ({ page }) => {
+    await seed(currentUserId);
+    await page.goto(`/year?year=${YEAR}`);
+
+    await page.getByTestId("year-image").click();
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByTestId("year-image-confirm").click(),
+    ]);
+    const bytes = await readFile((await download.path())!);
+
+    // A PNG, and a landscape one: thirteen money columns do not go on a
+    // phone held upright. Dimensions live at bytes 16–23 of the IHDR.
+    expect(bytes.subarray(1, 4).toString()).toBe("PNG");
+    const width = bytes.readUInt32BE(16);
+    const height = bytes.readUInt32BE(20);
+    expect(width).toBe(2040);
+    expect(width).toBeGreaterThan(height);
+
+    // Dropping a 분류 makes a shorter picture, which is what choosing is
+    // for — a settlement wants 비용 and not the rest.
+    await page.getByTestId("year-image").click();
+    await page.getByTestId("year-image-income").uncheck();
+    await page.getByTestId("year-image-saving").uncheck();
+    const [expenseOnly] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByTestId("year-image-confirm").click(),
+    ]);
+    expect((await readFile((await expenseOnly.path())!)).readUInt32BE(20)).toBeLessThan(height);
+
+    // And none of them is not a picture.
+    await page.getByTestId("year-image").click();
+    await page.getByTestId("year-image-expense").uncheck();
+    await expect(page.getByTestId("year-image-confirm")).toBeDisabled();
   });
 
   test("the twelve columns scroll sideways rather than clipping", async ({ page }) => {
