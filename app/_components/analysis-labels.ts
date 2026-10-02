@@ -22,6 +22,12 @@ export function analysisLabels(t: (key: TranslationKey) => string): AnalysisLabe
     disclaimer: t("analysis.disclaimer"),
     failed: t("analysis.failed"),
     notConfigured: t("analysis.notConfigured"),
+    read: t("analysis.read"),
+    plan: t("analysis.plan"),
+    planNone: t("budget.noBudget"),
+    apply: t("analysis.apply"),
+    applying: t("common.saving"),
+    applied: t("analysis.applied"),
   };
 }
 

@@ -2,7 +2,18 @@
 
 import { useRef, useState } from "react";
 import { QUESTION_LIMIT } from "@/lib/analysis-brief";
+import { SubmitButton } from "./submit-button";
 import { buttonClass, controlClass } from "./ui";
+
+export interface ProposedBudget {
+  accountId: string;
+  account: string;
+  /** Formatted; null where nothing was budgeted. */
+  current: string | null;
+  next: string;
+  amountMajor: number;
+  why: string;
+}
 
 export interface AnalysisLabels {
   open: string;
@@ -17,6 +28,12 @@ export interface AnalysisLabels {
   disclaimer: string;
   failed: string;
   notConfigured: string;
+  read: string;
+  plan: string;
+  planNone: string;
+  apply: string;
+  applying: string;
+  applied: string;
 }
 
 /**
@@ -36,10 +53,15 @@ export function AnalysisSheet({
   brief,
   defaultQuestion,
   labels,
+  period,
+  applyAction,
 }: {
   brief: string;
   defaultQuestion: string;
   labels: AnalysisLabels;
+  /** 'YYYY-MM' on the budget screen, which is the one that can act. */
+  period?: string;
+  applyAction?: (formData: FormData) => Promise<void>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const abort = useRef<AbortController | null>(null);
@@ -49,6 +71,11 @@ export function AnalysisSheet({
     "idle",
   );
   const [followUp, setFollowUp] = useState("");
+  /** What the model fetched, in the order it asked. */
+  const [reads, setReads] = useState<string[]>([]);
+  const [plan, setPlan] = useState<ProposedBudget[]>([]);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [applied, setApplied] = useState(false);
 
   const run = async (question: string) => {
     abort.current?.abort();
@@ -57,12 +84,16 @@ export function AnalysisSheet({
 
     setAsked(question);
     setAnswer("");
+    setReads([]);
+    setPlan([]);
+    setPicked([]);
+    setApplied(false);
     setState("reading");
     try {
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ brief, question }),
+        body: JSON.stringify({ brief, question, period }),
         signal: controller.signal,
       });
       if (response.status === 503) {
@@ -75,14 +106,38 @@ export function AnalysisSheet({
       }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      // Newline-delimited JSON, so a chunk can end mid-line: whatever is
+      // past the last newline waits for the next read rather than being
+      // parsed as a truncated object.
+      let pending = "";
+      let failed = false;
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-        // Appended as it arrives: the first sentence showing up is what
-        // tells the reader the press registered.
-        setAnswer((prev) => prev + decoder.decode(value, { stream: true }));
+        pending += decoder.decode(value, { stream: true });
+        const lines = pending.split("\n");
+        pending = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const event = JSON.parse(line) as { t: string; v: unknown };
+            if (event.t === "text") setAnswer((prev) => prev + String(event.v));
+            else if (event.t === "read") setReads((prev) => [...prev, String(event.v)]);
+            else if (event.t === "plan") {
+              const rows = event.v as ProposedBudget[];
+              setPlan(rows);
+              // Ticked already: 적용 is the door that asks, and a second
+              // door in front of it only means everyone ticks all and
+              // presses anyway.
+              setPicked(rows.map((r) => r.accountId));
+            } else if (event.t === "error") failed = true;
+          } catch {
+            // A line this side cannot read is one event lost, not a
+            // reason to drop the answer already on screen.
+          }
+        }
       }
-      setState("done");
+      setState(failed ? "failed" : "done");
     } catch (error) {
       // An abort is the reader closing the sheet or asking again, not a
       // failure to report.
@@ -185,6 +240,66 @@ export function AnalysisSheet({
             </div>
           )}
 
+          {plan.length > 0 && applyAction && period && (
+            <form
+              action={async (formData) => {
+                await applyAction(formData);
+                setApplied(true);
+              }}
+              data-testid="analysis-plan"
+              className="border-rule-soft rounded-control space-y-2 border p-3"
+            >
+              <p className="text-sm font-semibold">{labels.plan}</p>
+              <input type="hidden" name="period" value={period} />
+              {plan.map((row) => {
+                const on = picked.includes(row.accountId);
+                return (
+                  <label
+                    key={row.accountId}
+                    className="flex items-start gap-2 text-sm"
+                    data-testid="analysis-plan-row"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      onChange={(e) =>
+                        setPicked((prev) =>
+                          e.target.checked
+                            ? [...prev, row.accountId]
+                            : prev.filter((id) => id !== row.accountId),
+                        )
+                      }
+                      className="accent-accent mt-0.5 size-5 shrink-0"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-baseline gap-x-2">
+                        <span className="font-semibold">{row.account}</span>
+                        <span className="tnum text-ink-muted">
+                          {row.current ?? labels.planNone} → <strong>{row.next}</strong>
+                        </span>
+                      </span>
+                      <span className="text-ink-muted block text-xs">{row.why}</span>
+                    </span>
+                    {on && (
+                      <>
+                        <input type="hidden" name="accountId" value={row.accountId} />
+                        <input type="hidden" name="amountMajor" value={row.amountMajor} />
+                        <input type="hidden" name="why" value={row.why} />
+                      </>
+                    )}
+                  </label>
+                );
+              })}
+              {applied ? (
+                <p className="text-positive text-sm font-semibold">{labels.applied}</p>
+              ) : (
+                <SubmitButton variant="primary" pendingLabel={labels.applying}>
+                  {labels.apply}
+                </SubmitButton>
+              )}
+            </form>
+          )}
+
           {/* Open on demand, but it is the request itself — the same
               string the fetch body carries. This is the one screen that
               sends the book's figures off the device, so what went is
@@ -199,6 +314,20 @@ export function AnalysisSheet({
             >
               {brief}
             </pre>
+            {/* Detail is fetched, not volunteered — so the panel says
+                what was fetched as well as what was sent. */}
+            {reads.length > 0 && (
+              <ul
+                data-testid="analysis-reads"
+                className="text-ink-muted mt-2 space-y-1 text-[11px]"
+              >
+                {reads.map((read, i) => (
+                  <li key={i}>
+                    {labels.read} {read}
+                  </li>
+                ))}
+              </ul>
+            )}
           </details>
 
           <form

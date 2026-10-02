@@ -15,6 +15,7 @@ import { PeriodNav } from "../_components/period-nav";
 import { Card, EmptyState, Hint, Money, PageHeader } from "../_components/ui";
 import { BudgetImage, type BudgetImageSection } from "./budget-image";
 import { analysisEnabled, analysisLabels } from "../_components/analysis-labels";
+import { applyBudgetProposalAction } from "./analysis-actions";
 import { AnalysisSheet } from "../_components/analysis-sheet";
 import { renderBrief, type BriefLine } from "@/lib/analysis-brief";
 import { BudgetSection } from "./budget-section";
@@ -217,12 +218,13 @@ export default async function BudgetPage({
   };
 
   /**
-   * The month as the brief that gets sent — the same figures the cards
-   * above show, plus whatever was written on them.
+   * The month as the brief that gets sent: the figures these cards show
+   * and the notes written on the plans, and nothing else.
    *
-   * The notes are the half a bare total cannot supply: 「KTX 왕복 출장」
-   * is why 교통비 doubled, and without it the answer can only say that
-   * it doubled.
+   * Not the transactions, and not the memos on them. 「KTX 왕복 출장」 is
+   * why 교통비 doubled, but most questions never need to know — so the
+   * model asks for it when it does, and the reader is shown that it
+   * asked. See app/api/analyze.
    */
   const briefLines: BriefLine[] = [];
   for (const [group, label] of [
@@ -240,16 +242,17 @@ export default async function BudgetPage({
       const planned = budgetByAccountId.get(account.id);
       const spent = actualByAccountId.get(account.id) ?? 0;
       if (planned === undefined && spent === 0) continue;
-      const memos = (memosByAccountId.get(account.id) ?? []).map((m) => m.memo);
-      const note = [noteByAccountId.get(account.id), memos.length > 0 ? memos.join(", ") : null]
-        .filter(Boolean)
-        .join(" · ");
       briefLines.push({
         label: account.name,
         depth: 1,
         plan: planned === undefined ? null : base(planned),
         actual: base(spent),
-        note: note || null,
+        // The budget's own note travels — it is a line the reader wrote
+        // about the plan, and it is on the screen. The month's
+        // transaction memos do not: they are the detail behind the
+        // figure, and detail is fetched when a question turns out to
+        // need it rather than sent in case it does.
+        note: noteByAccountId.get(account.id) ?? null,
       });
     }
   }
@@ -313,6 +316,8 @@ export default async function BudgetPage({
             })}
             defaultQuestion={t("analysis.budgetQuestion")}
             labels={analysisLabels(t)}
+            period={isYear ? undefined : ref.periodKey}
+            applyAction={applyBudgetProposalAction}
           />
         )}
         {exportButton}

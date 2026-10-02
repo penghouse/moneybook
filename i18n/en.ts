@@ -46,6 +46,10 @@ const en: Record<keyof typeof ko, string> = {
     "Analysis is not set up yet — add an API key to the deployment's environment variables.",
   "analysis.disclaimer":
     "A model wrote this from the figures above. It is not the book talking, so check the numbers on screen.",
+  "analysis.read": "Read ·",
+  "analysis.plan": "Proposed budget changes",
+  "analysis.apply": "Apply",
+  "analysis.applied": "Applied. Refresh to see it on the page.",
   "analysis.budgetQuestion":
     "Where did this month leave the plan, and what would be worth adjusting next month?",
   "analysis.yearQuestion": "What stands out in this year so far, and where is it heading?",

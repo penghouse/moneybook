@@ -44,6 +44,10 @@ const ko = {
     "분석 기능이 아직 설정되지 않았습니다. 배포 환경변수에 API 키를 넣어 주세요.",
   "analysis.disclaimer":
     "모델이 위 숫자를 읽고 쓴 것입니다. 장부가 말한 것이 아니니 숫자는 화면에서 다시 확인하세요.",
+  "analysis.read": "읽음 ·",
+  "analysis.plan": "예산 조정 제안",
+  "analysis.apply": "적용",
+  "analysis.applied": "적용했습니다. 화면을 새로 고치면 반영됩니다.",
   "analysis.budgetQuestion": "이번 달 어디서 계획을 벗어났고, 다음 달에 뭘 조정하면 좋을까?",
   "analysis.yearQuestion": "올해 흐름에서 눈에 띄는 것과, 연말 전망은?",
   "analysis.compareQuestion": "두 기간에서 가장 크게 달라진 것과, 짐작되는 이유는?",
